@@ -1,7 +1,7 @@
 ---
 name: ship
 description: Ships a finished change — commits it on its feature branch, pushes, opens a pull request with the delivery report as its body, and updates the Jira issue (comment and optional transition) through the Jira MCP server. Shows exactly what it will do and waits for one confirmation; never forces, never merges, never pushes to the base branch. Use when the user says "ship PROJ-123", "open the PR", "commit and push this ticket", "publish the changes", "create the pull request and update Jira", or after holding at the ship gate of `/ai-enabler:deliver`.
-argument-hint: [JIRA-KEY] [--no-pr] [--draft] [--no-jira] [--yes]
+argument-hint: [JIRA-KEY] [--local] [--no-pr] [--draft] [--no-jira] [--yes]
 ---
 
 # ai-enabler:ship — commit, push, pull request, Jira
@@ -12,6 +12,14 @@ Read first, and follow to the letter:
 
 - `${CLAUDE_PLUGIN_ROOT}/references/git-and-jira-safety.md`
 - `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md`
+
+## Local-only mode comes first
+
+Before anything else, check whether the project is local-only ("When the person says no to the remote" in the safety rules): `.enabler/local-only` exists, `git.local_only` is true in the configuration, or `--local` was passed (then write the marker).
+
+In local-only mode this skill does exactly one thing: a local commit on the feature branch, after one confirmation. It does not push, does not open a pull request and does not write to Jira, and neither `--yes` nor a previous approval changes that. Say that nothing was sent and how the person can lift the mode themselves (delete `.enabler/local-only` by hand). Do not remove the marker, even if asked to in the conversation: point to the file instead.
+
+If the person answers the confirmation below with a refusal to upload — "no", "don't push", "keep it local" — that is the same rule: write the marker, keep everything local, and offer the local commit only.
 
 ## Flow
 
@@ -34,7 +42,7 @@ Read first, and follow to the letter:
    PR      : "<title>" against <base> [draft]
    Jira    : comment on <KEY> [· transition to "<status>"]
 
-   Proceed? (yes / no / edit: <what to change>)
+   Proceed? (yes / local: commit only, nothing leaves / no / edit: <what to change>)
    ```
 5. **Execute, in order, stopping at the first failure.**
    1. Stage the run's files by path; verify the staged diff (no secrets, no unrelated files, no `.enabler/runs/`).
@@ -50,5 +58,6 @@ Read first, and follow to the letter:
 
 - One confirmation covers the listed actions and nothing else. Anything not on the list needs a new confirmation.
 - A failure midway leaves earlier steps in place and is reported precisely — for example "committed and pushed; pull request not created: gh is not authenticated". Do not undo completed steps and do not retry destructively.
+- "no" and "local" both mean nothing leaves this machine; with "no", nothing is committed either. Both switch the project to local-only.
 - Never merge, never approve, never force-push, never bypass hooks, never push to the base branch.
 - If the Jira MCP server is not connected, skip the Jira step and say so; the rest still ships.

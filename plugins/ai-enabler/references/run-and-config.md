@@ -54,7 +54,8 @@ Optional file `.enabler/config.json`, committed with the project. Every key is o
     "base_branch": null,
     "branch_pattern": "feature/{key}-{slug}",
     "commit_pattern": "{type}({key}): {summary}",
-    "pull_request": true
+    "pull_request": true,
+    "local_only": false
   },
   "jira": {
     "server": null,
@@ -78,6 +79,7 @@ Optional file `.enabler/config.json`, committed with the project. Every key is o
 
 - `gates` — where the pipeline stops for a human decision. `plan` is approval of the plan before any code is written; `ship` is approval before anything leaves the machine (push, pull request, Jira). An empty list runs unattended up to the ship stage, which then still requires an explicit `--ship` flag or the `ship` skill: nothing is pushed on the strength of a config file alone.
 - `git.base_branch: null` — use the base branch `repo-scout` detected (the remote's default branch).
+- `git.local_only` — `true` keeps everything on the machine, permanently: no push, no pull request, no Jira write. The same mode is switched on for a project when a person refuses the remote, through the marker file `.enabler/local-only`; see "When the person says no to the remote" in the safety rules. The plugin's hook enforces it.
 - `jira.server: null` — use the only connected Jira MCP server. If several are connected, the orchestrating skill asks once, in its preflight, and passes the choice to the analyst.
 - `jira.transition_on_ship` — the status to move the issue to once the pull request is open (for example `"In Review"`). `null` means do not transition.
 - `tests.coverage_target` and `tests.coverage_minimum` — line and branch coverage of the changed code. The test engineer aims for the target (80); the minimum (70) is the lowest result the pipeline accepts on its own. At or above the target it is `met`. Between the minimum and the target it is `acceptable`: the run continues and the figure is reported. Below the minimum it is `below minimum`, and a person decides whether to proceed. See "Coverage" below.

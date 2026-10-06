@@ -81,6 +81,10 @@ This only works when the ticket gives something to test against, so the analyst 
 
 Coverage is a separate obligation, judged after the code whichever order the tests were written in, against a target of 80 % and a minimum of 70 % of the changed code. Reaching the band is enough for the run to continue on its own. Below the minimum the pipeline does not decide: it stops, shows what is uncovered and why, and the person chooses to proceed, to have more tests written, or to stop. That is a third, conditional stop, and it holds even in an unattended configuration — a change under the minimum reaches a pull request only because someone said so, and the pull request says who and why.
 
+### A refusal to upload is enforced, not just respected
+
+Everything before the ship stage is local, and the ship stage asks first. That is not enough when the answer is "no": instructions can be misread, a later message can be ambiguous, a subagent does not know what was said. So a refusal switches the project to local-only mode through a marker file, and a `PreToolUse` hook shipped with the plugin refuses `git push`, `gh`/`glab` writes and Jira or Confluence MCP writes while the marker exists. Lifting the mode is deliberately outside the agent's reach: the hook also refuses to remove the marker, so only the person can, by hand.
+
 ### Readiness is part of intake
 
 A machine-driven flow fails quietly when the ticket is vague: it produces plausible code for the wrong behaviour. The analyst therefore returns a verdict — ready, ready with assumptions, or blocked — grades the acceptance criteria, and rewrites every acceptance criterion as an observable behaviour with an id. Those ids are traced through the plan, the tests, the review and the pull-request body.
@@ -117,6 +121,7 @@ All skills, agents, scripts and documents are in English. Skills answer in the l
 
 Not yet verified on a live Bedrock session: which form of model id Claude Code writes to the transcript there. The pricing handles every form (prefixed id, ARN, bare name plus the recorded environment), but the first real Bedrock report should be checked against its "Cost by price basis" table.
 
+- The remote guard was checked in a real session: with the marker in place, a requested `git push` was refused and the remote stayed empty. `plugins/ai-enabler/tests/test_remote_guard.py` covers the commands and MCP tools it blocks and the ones it lets through.
 - `/ai-enabler:deliver` was run end to end, unattended (`--gates none`), on a small Node.js project from a Markdown requirements file with six acceptance criteria. All eight stages ran: the acceptance tests were written before the code, the implementation made them pass, coverage of the changed code reached 100 % line and branch, four reviewers ran in parallel, and the run held before shipping as the rules require. Each subagent ran on the model its frontmatter names (Opus for planning and review, Sonnet for the rest). The KPI report's cost for the run matched Claude Code's own figure.
 
 Not yet exercised: a ticket read from a real Jira instance through MCP, the ship stage against a real remote (push, pull request, Jira comment), the fix loop with real blocking findings, the stop below the coverage minimum, and a large codebase. The first runs on a real ticket are where the instructions should be tuned — the plan gate's summary, the fix-loop budget and the review confidence floor are the likely candidates.

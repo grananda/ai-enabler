@@ -48,7 +48,7 @@ Both numbers are configurable (`tests.coverage_target`, `tests.coverage_minimum`
 What the human sees at each gate:
 
 - **Plan gate** — the approach in three sentences, the number of steps and files, the planned tests, the technical decisions taken, the assumptions made about the ticket. Answer `approve`, `adjust: ...` or `cancel`.
-- **Ship gate** — the diff size, acceptance criteria met, test results and coverage against the 80 % target and the 70 % minimum, how many criteria had their test written before the code, findings fixed and still open, and the exact list of outward actions (push, pull request, Jira comment, transition). Answer `ship`, `hold` or `fix: ...`.
+- **Ship gate** — the diff size, acceptance criteria met, test results and coverage against the 80 % target and the 70 % minimum, how many criteria had their test written before the code, findings fixed and still open, and the exact list of outward actions (push, pull request, Jira comment, transition). Answer `ship`, `local` (commit on your machine only; nothing leaves it), `hold` or `fix: ...`.
 
 The pipeline also stops when the ticket is not implementable as written (the analyst returns the questions that unblock it), when the plan turns out to be wrong in a way that changes scope, and when coverage of the changed code ends up under the minimum. Apart from those, it asks only what it cannot work out — which Jira server to use when several are connected — and stops where the safety rules require it, such as unrelated changes in the working tree.
 
@@ -131,6 +131,19 @@ Removing a gate makes the pipeline run further unattended. Removing `ship` does 
 Every ticket gets `.enabler/runs/<KEY>/`, which holds `state.json`, `requirements.json`, `repo-context.md`, `plan.md`, `acceptance-tests.md`, `test-report.md`, `review.md` and `delivery-report.md`. These are working files: keep `.enabler/runs/` out of git (the pipeline adds the ignore rule if it is missing). The delivery report becomes the pull-request body, so what matters ends up in the pull request.
 
 `state.json` also records each point where a person stepped in (`human_interventions`), which is the pipeline's own view of how autonomous a run was. The `ai-enabler-kpi` plugin measures the same thing from the outside.
+
+## When you say no, nothing leaves your machine
+
+Answer the ship gate with `local` or any refusal ("no", "don't push", "keep it local"), say at any point that nothing should be uploaded, pass `--local`, or set `git.local_only: true`, and the project becomes **local-only**:
+
+- no `git push`, no pull request, no Jira comment or transition;
+- with `local`, the work is committed on the feature branch on your machine; with `hold` or a plain "no" it stays uncommitted in the working tree.
+
+This is enforced, not just promised. The plugin ships a hook (`hooks/remote_guard.py`) that, while the file `.enabler/local-only` exists, refuses every `git push`, every `gh`/`glab` command that writes, and every Jira or Confluence MCP tool that writes — from the main conversation and from any subagent. The agents are also told never to work around a refusal and never to remove the marker.
+
+Only you lift it: delete `.enabler/local-only` by hand, then run `/ai-enabler:ship`. A later "ok, push it" in the chat is deliberately not enough.
+
+Limits worth knowing: the hook recognises the commands above; it cannot see a push hidden inside a script or a shell alias the agent runs. Claude Code's own permission prompts for `git push` remain as a second barrier unless you have allow-listed them.
 
 ## Safety rules
 

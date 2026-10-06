@@ -1,0 +1,17 @@
+{
+  "description": "Remote guard. When the project is local-only (.enabler/local-only exists, or git.local_only is true in .enabler/config.json) it blocks git push, gh/glab writes and Jira/Confluence MCP writes. Does nothing otherwise.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/remote_guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

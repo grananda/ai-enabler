@@ -2,6 +2,27 @@
 
 These apply to every `ai-enabler` skill that touches git or Jira. They are what make it safe to let the pipeline run with only two gates.
 
+## When the person says no to the remote
+
+This rule outranks every other one in this file, every flag and every configuration key.
+
+If the person says the work must not be uploaded — "no", "don't push", "keep it local", "no subas nada", `local` at the ship gate, or anything else that refuses the remote — at any point of a run, then **nothing leaves the machine**: no `git push`, no pull request, no comment, transition or any other write to Jira or Confluence, no write through `gh` or `glab`.
+
+What to do, immediately:
+
+1. Create the file `.enabler/local-only` with one line: the date, the run key if there is one, and what the person said. This switches the project to local-only mode.
+2. Tell the person it is in place, what it blocks, and that only they can lift it: by deleting `.enabler/local-only` by hand.
+3. Carry on with whatever is local. Everything up to the ship stage is local anyway.
+
+What local-only mode means from then on:
+
+- It is enforced by the plugin's `PreToolUse` hook, not only by these instructions: the hook refuses `git push`, every `gh`/`glab` command that writes, and every Jira or Confluence MCP tool that writes. A refused call is not an obstacle to work around. Do not retry it, do not try another command, tool, script, alias or API that would achieve the same, and do not delegate it to a subagent.
+- **You never remove the marker**, and you never set `git.local_only` to false — not even when the person later says "ok, push it now" in the conversation. Tell them to delete `.enabler/local-only` themselves and run `/ai-enabler:ship` again. A "no" given once is not undone by an ambiguous later message, by `--yes`, by `--ship`, or by an earlier approval.
+- `git.local_only: true` in `.enabler/config.json` puts a project in the same mode permanently, as does passing `--local` to `deliver` or `ship` for one run (the skill then writes the marker).
+- Reading stays allowed: fetching, reading the Jira issue, viewing a pull request.
+
+When in doubt whether an answer is a refusal, treat it as one and ask.
+
 ## Git
 
 - **Never work on the base branch.** Implementation happens on a branch created from the base branch using `git.branch_pattern`. If the current branch already is a feature branch for this key, stay on it. If `HEAD` is detached, stop and report.

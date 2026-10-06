@@ -35,6 +35,8 @@ One command runs the whole flow:
 /ai-enabler:deliver PROJ-123
 ```
 
+If you say no at the second stop, nothing is uploaded — and a hook enforces it (see "When you say no" in the plugin README).
+
 The pipeline stops twice: once to show the plan before any code is written, once to show the result before anything leaves the machine. Everything in between runs unattended: reading the ticket, learning the repository's conventions, writing the tests for the acceptance criteria, writing the code that makes them pass, completing the tests up to the coverage target (80 %, with 70 % as the minimum), reviewing and fixing. If coverage ends up under the minimum, it stops once more and asks whether to proceed. Each stage is also a skill of its own, for teams that want to adopt it piece by piece.
 
 ## Install
@@ -104,6 +106,8 @@ plugins/
     agents/      ticket-analyst, repo-scout, solution-planner,
                  code-implementer, test-engineer, code-reviewer
     references/  run directory and configuration, git and Jira safety rules, review checklist
+    hooks/       hooks.json, remote_guard.py (blocks uploads when the project is local-only)
+    tests/       test_remote_guard.py
   ai-enabler-kpi/
     .claude-plugin/plugin.json
     hooks/       hooks.json, kpi_hook.py
@@ -118,6 +122,7 @@ docs/            design, KPI reference, Jira MCP setup
 ```
 claude plugin validate .                       # marketplace and plugin manifests
 python3 plugins/ai-enabler-kpi/tests/test_kpi.py  # hook and report, end to end, no Claude Code needed
+python3 plugins/ai-enabler/tests/test_remote_guard.py  # what local-only mode blocks and allows
 ```
 
 Skills, agents and references are plain Markdown; edit them and start a new session (or run `/reload-plugins`) to pick up the change. Prices live in `plugins/ai-enabler-kpi/scripts/pricing.json`: refresh the Amazon Bedrock section with `python3 plugins/ai-enabler-kpi/scripts/update_pricing.py` (it reads AWS's public price list), and edit the Anthropic section by hand when list prices change.

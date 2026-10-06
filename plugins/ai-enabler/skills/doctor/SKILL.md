@@ -19,7 +19,8 @@ Run them all, then print one table: check, status (`ok`, `warn`, `missing`), and
 5. **Build and tests.** From the manifests and the project's docs, identify the build, test and coverage commands. Do not run the suite; report what was found and what is missing (no tests, no coverage tool).
 6. **Project rules.** Whether `CLAUDE.md`, `AGENTS.md` or contribution guidelines exist for the agents to follow.
 7. **Configuration.** Whether `.enabler/config.json` exists and parses; list any key that differs from the defaults in `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md`. Whether `.enabler/runs/` is git-ignored.
-8. **KPI capture.** Whether the `ai-enabler-kpi` plugin is installed (its skills are listed in this session) and whether `.enabler/kpi/` exists in the project, which is what switches capture on.
+8. **Local-only mode.** Whether `.enabler/local-only` exists (show its line) or `git.local_only` is true. If so, say that pushes, pull requests and Jira writes are blocked for this project, and that only the person lifts it by deleting the file.
+9. **KPI capture.** Whether the `ai-enabler-kpi` plugin is installed (its skills are listed in this session) and whether `.enabler/kpi/` exists in the project, which is what switches capture on.
 
 ## When something is missing
 

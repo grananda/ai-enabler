@@ -1,7 +1,7 @@
 ---
 name: deliver
 description: Machine-driven delivery of a Jira ticket, end to end. Reads the ticket through the Jira MCP server, analyses the repository, plans, implements, tests, reviews and fixes with dedicated subagents, then opens a pull request and updates Jira. The human decides at two gates only — the plan and the ship. Use when the user says "deliver PROJ-123", "implement this ticket", "take this Jira issue to a PR", "from Jira to code", "work on PROJ-123", or passes a Jira key or a requirements Markdown file and wants the work done rather than advice. Also resumes an interrupted run for the same key.
-argument-hint: <JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--ship] [--refresh] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]
+argument-hint: <JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--ship] [--local] [--refresh] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]
 ---
 
 # ai-enabler:deliver — from a Jira ticket to a pull request
@@ -38,6 +38,7 @@ Why subagents: each stage reads a lot (the ticket and its links, the repository,
 4. Confirm you are in a git repository with a clean enough working tree (see the safety rules). A repository is required; a remote is only required at the ship stage.
 5. If `.enabler/runs/<KEY>/state.json` exists, this is a **resume**: report the stage it stopped at and continue from there, reusing the files already written. A run that `/ai-enabler:plan` started is resumed the same way; if `test_order` is missing from its state, derive it as the "Test order" section of the reference says. `--from <stage>` restarts from an earlier stage; `--refresh` re-runs intake and scout even if their files exist.
 6. Otherwise create the run directory and `state.json`.
+7. Check for local-only mode ("When the person says no to the remote" in the safety rules): `.enabler/local-only` exists, `git.local_only` is true, or `--local` was passed (then write the marker now). In that mode the run goes all the way to a local result and never further; say so once at the start. If the person says at any later point that nothing should be uploaded, apply the same rule on the spot.
 
 Print one line per stage as you go (`[2/8] scout — analysing repository conventions`). Do not narrate beyond that; the human is not watching every step.
 
@@ -164,6 +165,8 @@ The commands or steps a reviewer can run.
 
 Then present the ship gate and wait. List exactly what will happen, because approval covers exactly this list:
 
+In local-only mode the gate does not offer to ship. Replace the `Will do` line with `Will do   : nothing leaves this machine (local-only) — local commit on <branch> only`, and ask `Commit locally? (local / hold / fix: <what to change>)`.
+
 ```
 READY TO SHIP — <KEY>
 Diff      : <n> files changed, +<added> −<removed>, on <branch>
@@ -175,11 +178,12 @@ Will do   : commit → push <branch> → open PR against <base> [→ comment on 
             <the Jira steps appear only when the source is a Jira issue>
 Report    : .enabler/runs/<KEY>/delivery-report.md
 
-Ship it? (ship / hold / fix: <what to change>)
+Ship it? (ship / local / hold / fix: <what to change>)
 ```
 
 - **ship** — carry out the listed actions following `${CLAUDE_PLUGIN_ROOT}/skills/ship/SKILL.md`, then record `pr_url` and set the stage to `done`.
-- **hold** — set `status` to `held` and stop with everything in the working tree and the run directory; `/ai-enabler:ship <KEY>` finishes later.
+- **local**, or **any refusal to upload** ("no", "don't push", "keep it local") — nothing leaves this machine. Follow "When the person says no to the remote" in the safety rules: write `.enabler/local-only`, then commit on the feature branch locally (staged by path, as the safety rules say) unless the person asked for no commit either, set `status` to `held`, and report the commit hash, the branch and that nothing was pushed, opened or written to Jira. Do not push, do not open the pull request, do not touch Jira.
+- **hold** — "not now": set `status` to `held` and stop with everything in the working tree and the run directory; `/ai-enabler:ship <KEY>` finishes later.
 - **fix** — treat the request as a fix list for the implementer, re-run tests and the affected lenses, record the intervention, and come back to this gate.
 
 If `ship` is not in `gates`, ship only when `--ship` was passed; otherwise stop at "hold" and say how to finish.
@@ -198,6 +202,7 @@ End with a short summary: the pull-request URL (or the branch, if held), criteri
 - **Delegate the reading and the writing; keep the judgement.** You do not write production code or tests yourself, and you do not review the diff yourself — except to verify a blocker before spending a fix round on it.
 - **Briefs are complete.** A subagent knows only what you tell it and what is in the run directory. Always pass the run directory and the mode; never assume it saw the conversation.
 - **Trust, then check.** A subagent's report is a claim. Before the ship gate, confirm the basics yourself: `git status`, `git diff --stat`, and that the files it says it wrote exist.
+- **No means no.** A refusal to upload is final for the run and for the project until the person lifts it by hand. See "When the person says no to the remote" in the safety rules.
 - **Two gates, not ten.** Do not ask for confirmation between stages, do not ask the human to choose things the configuration or the repository already decides, and do not stop on warnings. Stop for: a blocked ticket, the plan gate, a plan that turned out wrong in scope, coverage below the minimum, the ship gate, and anything the safety rules say to stop for.
 - **Report failures as they are.** A stage that failed, a threshold that was missed, a finding left open — all go in the report in plain words.
 - **The human can take over at any point.** If they say so, record a `takeover` intervention, tell them the state of the working tree and which stages are left, and stop. A later `/ai-enabler:deliver <KEY>` resumes and treats their edits as part of the change.
