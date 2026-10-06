@@ -73,26 +73,42 @@ def longest_prefix(models, base):
     return match
 
 
+def deep_merge(base, over):
+    """`over` on top of `base`; dictionaries are merged key by key."""
+    out = dict(base)
+    for key, value in over.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = deep_merge(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
 class Pricing:
     """Prices a usage row with the table of the provider that served it.
 
-    Provider, region and scope come from, in order: the project's KPI config
-    (an explicit override), what the hook recorded for the session, and the
-    shape of the model id. Every assumption made on the way is collected in
-    `self.assumptions` and printed in the report.
+    Provider and region come from, in order: the project's KPI config (an
+    explicit override), what the hook recorded for the session, and the shape
+    of the model id. Scope comes from the model id's own prefix when it has
+    one, then the config, then what the hook recorded. Every assumption made
+    on the way is collected in `self.assumptions` and printed in the report.
     """
 
     def __init__(self, paths, cfg=None):
-        self.data, self.source = {}, None
-        for p in paths:
-            if p and os.path.isfile(p):
-                with open(p, encoding="utf-8") as fh:
-                    self.data = json.load(fh)
-                self.source = p
-                break
-        if "providers" not in self.data and "models" in self.data:
-            # Flat table from an earlier version: treat it as the anthropic one.
-            self.data = {"providers": {"anthropic": self.data}}
+        # `paths` goes from the most specific table to the bundled one. They
+        # are layered, not exclusive: a project file that only adds a Bedrock
+        # region keeps every other price of the bundled table.
+        self.data, sources = {}, []
+        for p in reversed([p for p in paths if p and os.path.isfile(p)]):
+            with open(p, encoding="utf-8") as fh:
+                layer = json.load(fh)
+            if "providers" not in layer and "models" in layer:
+                # Flat table from an earlier version: treat it as the anthropic one.
+                layer = {"providers": {"anthropic": layer}}
+            self.data = deep_merge(self.data, layer)
+            sources.insert(0, p)
+        self.source = sources[0] if sources else None
+        self.sources = sources
         self.providers = self.data.get("providers") or {}
         self.cfg = cfg or {}
         self.unpriced = Counter()
@@ -112,11 +128,11 @@ class Pricing:
         regions = table.get("regions") or {}
         wanted = self.cfg.get("bedrock_region") or row.get("region") or table.get("default_region")
         order = [wanted] if wanted in regions else []
-        if wanted not in regions:
+        order += [r for r in [table.get("default_region")] + sorted(regions) if r in regions and r not in order]
+        if wanted not in regions and order:
             self.assumptions.add(
                 "No Bedrock prices for region %s; used %s. Add it with update_pricing.py --region."
-                % (wanted or "(not recorded)", table.get("default_region")))
-        order += [r for r in [table.get("default_region")] + sorted(regions) if r in regions and r not in order]
+                % (wanted or "(not recorded)", order[0]))
         for region in order:
             models = regions[region].get("models") or {}
             name = longest_prefix(models, base)
@@ -124,7 +140,9 @@ class Pricing:
                 continue
             if region != order[0] and wanted in regions:
                 self.assumptions.add("%s is not priced in %s; used the %s price." % (name, wanted, region))
-            scope = scope or row.get("scope") or self.cfg.get("bedrock_scope")
+            # The id's own prefix is a fact; a configured scope is a decision and
+            # outranks what the hook inferred from the environment.
+            scope = scope or self.cfg.get("bedrock_scope") or row.get("scope")
             if not scope:
                 scope = "regional"
                 self.assumptions.add(
@@ -231,10 +249,20 @@ def load_events(kpi_dirs, since, until, user, ticket):
                             continue
                         if user and e.get("user") != user:
                             continue
-                        if ticket and e.get("ticket") != ticket:
-                            continue
                         events.append(e)
     events.sort(key=lambda e: e["t"])
+    # The ticket is often named only in the first prompt: what a session did
+    # before that (its start, a first question) belongs to the same ticket.
+    # Done before filtering, so --ticket sees those events too.
+    first_ticket = {}
+    for e in events:
+        if e.get("ticket"):
+            first_ticket.setdefault(e.get("sid"), e["ticket"])
+    for e in events:
+        if not e.get("ticket") and e.get("sid") in first_ticket:
+            e["ticket"] = first_ticket[e["sid"]]
+    if ticket:
+        events = [e for e in events if e.get("ticket") == ticket]
     return events, files
 
 
@@ -253,6 +281,7 @@ class Group:
         self.cost_by = defaultdict(Counter)   # dimension -> name -> usd
         self.tok_by = defaultdict(lambda: defaultdict(Counter))
         self.skills, self.agents, self.commands = Counter(), Counter(), Counter()
+        self.busy = defaultdict(list)   # session -> [(start, end)] while the AI was working
         self.first = self.last = None
 
     def touch(self, e):
@@ -267,6 +296,23 @@ class Group:
         self.last = t if self.last is None else max(self.last, t)
 
     # Derived figures ---------------------------------------------------
+
+    def ai_seconds(self):
+        """Time the AI was working: the union of turns and subagent runs, less
+        the time turns spent blocked on a person. A union, because subagents
+        launched in the background keep working after the turn that started
+        them has ended, and parallel subagents overlap each other."""
+        total = 0.0
+        for spans in self.busy.values():
+            end = None
+            for a, b in sorted(spans):
+                if end is None or a > end:
+                    total += b - a
+                    end = b
+                elif b > end:
+                    total += b - end
+                    end = b
+        return max(0.0, total - self.sec["wait"])
 
     @property
     def human_prompts(self):
@@ -331,16 +377,6 @@ def aggregate(events, pricing, idle_cap):
                 dims["ticket"][e.get("ticket") or NO_TICKET],
                 dims["day"][e["ts"][:10]], dims["session"][e.get("sid")])
 
-    # The ticket is often named only in the first prompt: what a session did
-    # before that (its start, a first question) belongs to the same ticket.
-    first_ticket = {}
-    for e in events:
-        if e.get("ticket"):
-            first_ticket.setdefault(e.get("sid"), e["ticket"])
-    for e in events:
-        if not e.get("ticket") and e.get("sid") in first_ticket:
-            e["ticket"] = first_ticket[e["sid"]]
-
     for e in events:
         ev = e.get("ev")
         gs = groups(e)
@@ -369,8 +405,8 @@ def aggregate(events, pricing, idle_cap):
                         g.n["away_gaps"] += 1
             elif ev == "turn":
                 g.n["turns"] += 1
-                g.sec["ai"] += e.get("ai_s") or 0
                 g.sec["wait"] += e.get("wait_s") or 0
+                g.busy[e.get("sid")].append((e["t"] - (e.get("dur_s") or 0), e["t"]))
             elif ev == "tool":
                 g.n["tools"] += 1
                 if e.get("failed"):
@@ -385,12 +421,11 @@ def aggregate(events, pricing, idle_cap):
                     g.files.add(e["file"])
                 g.n["added"] += e.get("added") or 0
                 g.n["removed"] += e.get("removed") or 0
-                if e.get("git") == "commit":
-                    g.n["commits"] += 1
-                elif e.get("git") == "push":
-                    g.n["pushes"] += 1
-                if e.get("pr"):
-                    g.n["prs"] += 1
+                if not e.get("failed"):
+                    git_ops = str(e.get("git") or "").split("+")
+                    g.n["commits"] += "commit" in git_ops
+                    g.n["pushes"] += "push" in git_ops
+                    g.n["prs"] += bool(e.get("pr"))
             elif ev == "permission":
                 g.n["permissions"] += 1
             elif ev == "permission_denied":
@@ -398,6 +433,7 @@ def aggregate(events, pricing, idle_cap):
             elif ev == "subagent":
                 g.agents[e.get("agent") or "subagent"] += 1
                 g.sec["subagent"] += e.get("dur_s") or 0
+                g.busy[e.get("sid")].append((e["t"] - (e.get("dur_s") or 0), e["t"]))
             elif ev == "compact":
                 g.n["compactions"] += 1
             elif ev == "usage":
@@ -414,6 +450,8 @@ def aggregate(events, pricing, idle_cap):
                             g.cost_by[dim][name] += usd
                     if usd is not None:
                         g.cost += usd
+    for g in [overall] + [g for groups_ in dims.values() for g in groups_.values()]:
+        g.sec["ai"] = g.ai_seconds()
     return overall, dims, session_meta
 
 
@@ -476,8 +514,9 @@ def build_sections(overall, dims, session_meta, pricing, args, n_files):
     ])
 
     table("Time",
-          "AI working time is the sum of turn durations minus the time a turn spent blocked on "
-          "a person. Human waiting is that blocked time. Human thinking is the gap between the "
+          "AI working time is the time the AI was busy — turns and subagent runs, overlaps "
+          "counted once — minus the time a turn spent blocked on a person. Human waiting is "
+          "that blocked time. Human thinking is the gap between the "
           "end of a turn and the next prompt, counted up to the idle cap (%s); longer gaps are "
           "treated as the person being away." % dur(args.idle_cap),
           ["Measure", "Value", "Share of engaged time"], [
@@ -488,7 +527,7 @@ def build_sections(overall, dims, session_meta, pricing, args, n_files):
                pct(overall.ratio(overall.sec["think"], overall.engaged_s))],
               ["Engaged time (sum of the above)", dur(overall.engaged_s), "100%"],
               ["Gaps longer than the idle cap", num(s["away_gaps"]), ""],
-              ["Subagent run time (inside AI working time, may overlap)",
+              ["Subagent run time (summed; parallel runs overlap)",
                dur(overall.sec["subagent"]), ""],
               ["AI working time per human prompt", dur(s["ai_seconds_per_human_prompt"] or 0), ""],
           ])
@@ -524,7 +563,9 @@ def build_sections(overall, dims, session_meta, pricing, args, n_files):
     tok_headers = ["", "Input", "Output", "Cache read", "Cache write", "Cost", "Share"]
     price_note = ("Tokens are read from the session transcripts; cost is tokens × the price "
                   "table %s (%s; %s per million tokens)."
-                  % (os.path.basename(pricing.source or "?"), pricing.describe(),
+                  % (" over ".join(os.path.basename(p) if i == len(pricing.sources) - 1
+                                   else os.path.relpath(p) for i, p in enumerate(pricing.sources))
+                     or "?", pricing.describe(),
                      pricing.data.get("currency", "USD")))
     mult = float(pricing.cfg.get("cost_multiplier", 1.0))
     if mult != 1.0:

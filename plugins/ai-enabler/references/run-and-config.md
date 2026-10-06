@@ -4,7 +4,7 @@ Shared by every `ai-enabler` skill. Read it once at the start of a skill.
 
 ## Run directory
 
-Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jira key (or, for a Markdown source, the file name without extension). Stages talk to each other through these files, not through the conversation, which is what makes a run resumable and lets each subagent start with a clean context.
+Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jira key (or, for a file source, the file name without extension). `source` in `state.json` says which: with `file` there is no Jira issue, so nothing is read from or written to Jira for that run. Stages talk to each other through these files, not through the conversation, which is what makes a run resumable and lets each subagent start with a clean context.
 
 | File | Written by | Content |
 |---|---|---|
@@ -14,7 +14,7 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
 | `plan.md` | `solution-planner` | Approved implementation plan |
 | `acceptance-tests.md` | `test-engineer` (acceptance mode) | The tests written before the code, one row per acceptance criterion |
 | `test-report.md` | `test-engineer` (coverage mode) | Suite result, coverage against the target and the minimum, acceptance-criteria table |
-| `review.md` | the review skill | Consolidated findings and what was fixed |
+| `review.md` | the orchestrating skill (`deliver` or `review`), in the format the review skill defines | Consolidated findings and what was fixed |
 | `delivery-report.md` | the deliver skill | What the human reads at the ship gate; becomes the PR body |
 
 `state.json`:
@@ -26,15 +26,18 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
   "started_at": "2026-10-06T09:30:00Z",
   "base_branch": "main",
   "branch": "feature/PROJ-123-short-slug",
-  "stage": "intake | scout | plan | acceptance-tests | implement | test | review | ship | done",
+  "stage": "intake | scout | plan | acceptance-tests | implement | coverage | review | ship | done",
+  "status": "active | held | stopped",
   "test_order": "before | mixed | after",
   "stages_done": ["intake", "scout"],
   "plan_approved": false,
   "fix_rounds": 0,
-  "human_interventions": [{ "at": "", "stage": "plan", "kind": "adjustment | question | takeover", "note": "" }],
+  "human_interventions": [{ "at": "", "stage": "plan", "kind": "adjustment | question | takeover | coverage_accepted", "note": "" }],
   "pr_url": ""
 }
 ```
+
+`stage` is the stage to run next, using exactly the names above; they are also the values `--from` accepts. `status` is `held` when the run waits at the ship gate, `stopped` when a person cancelled or stopped it (the note of the last intervention says where and why), `active` otherwise.
 
 Update `state.json` whenever a stage completes and whenever the human steps in. `human_interventions` is the pipeline's own record of where a person had to act; keep each note to one line.
 
@@ -75,11 +78,11 @@ Optional file `.enabler/config.json`, committed with the project. Every key is o
 
 - `gates` — where the pipeline stops for a human decision. `plan` is approval of the plan before any code is written; `ship` is approval before anything leaves the machine (push, pull request, Jira). An empty list runs unattended up to the ship stage, which then still requires an explicit `--ship` flag or the `ship` skill: nothing is pushed on the strength of a config file alone.
 - `git.base_branch: null` — use the base branch `repo-scout` detected (the remote's default branch).
-- `jira.server: null` — use the only connected Jira MCP server; ask once if several are connected.
+- `jira.server: null` — use the only connected Jira MCP server. If several are connected, the orchestrating skill asks once, in its preflight, and passes the choice to the analyst.
 - `jira.transition_on_ship` — the status to move the issue to once the pull request is open (for example `"In Review"`). `null` means do not transition.
 - `tests.coverage_target` and `tests.coverage_minimum` — line and branch coverage of the changed code. The test engineer aims for the target (80); the minimum (70) is the lowest result the pipeline accepts on its own. At or above the target it is `met`. Between the minimum and the target it is `acceptable`: the run continues and the figure is reported. Below the minimum it is `below minimum`, and a person decides whether to proceed. See "Coverage" below.
 - `tests.order` — `auto` writes the tests for the ticket's acceptance criteria before the code whenever the ticket states usable criteria, and falls back to writing tests after the code when it does not (see "Test order" below). `after` always writes them after the code. There is no setting that skips the coverage stage.
-- `review.auto_fix` — severities the pipeline fixes on its own. Everything else is reported and left for the human.
+- `review.auto_fix` — severities `/ai-enabler:deliver` fixes on its own inside its fix loop. Everything else is reported and left for the human. The stand-alone `/ai-enabler:review` ignores this key: there it fixes only with `--fix` or when the person says so.
 
 Command-line flags on a skill override the file for that run.
 
@@ -92,6 +95,8 @@ Tests are written before the code so that they encode what the ticket asks for, 
 | `sufficient` | `before` | Tests for every stated criterion | Unit tests needed to reach the coverage target |
 | `scarce` | `mixed` | Tests for the criteria that are stated | Tests for the requirements without a criterion, then coverage |
 | `missing` | `after` | Nothing | All tests, derived from the requirements and the code, then coverage |
+
+`test_order` is written to `state.json` by whichever skill runs the intake (`deliver` or `plan`). A skill that finds it missing derives it from `requirements.json` with this table before going on.
 
 In every case the coverage stage runs after the code. With `tests.order: after` the first column is skipped whatever the ticket offers.
 
@@ -108,7 +113,7 @@ Coverage of the changed code (line and branch) is judged against two numbers: a 
 | under 70 % (minimum) | `below minimum` | **Stops and asks the person**: proceed as it is, write more tests, or stop the run |
 | no coverage tool in the project | `not measured` | Continues, says so at the ship gate; no coverage figure is claimed |
 
-The stop below the minimum happens right after the coverage stage, before the review, and it applies even when no gates are configured: an unattended run does not carry a change under the minimum to a pull request on its own. The decision and the person's reason are recorded in `state.json` under `human_interventions` and shown in the delivery report.
+The stop below the minimum happens right after the coverage stage, before the review, and it applies even when no gates are configured: an unattended run does not carry a change under the minimum to a pull request on its own. A decision to proceed is recorded in `state.json` under `human_interventions` with kind `coverage_accepted` and the person's reason, and shown in the delivery report. That record is what the ship stage looks for.
 
 ## When there is no Jira MCP server
 

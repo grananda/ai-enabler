@@ -1,7 +1,7 @@
 ---
 name: kpi-report
 description: Produces the AI usage KPI report from the events captured by the ai-enabler-kpi hooks — human interaction with the machine, AI working time versus human waiting and thinking time, output, and token usage with its cost in USD per session, user, ticket, skill, agent and model. Runs the bundled script, which writes Markdown, HTML, JSON and CSV files, then adds a short reading of the numbers. Use when the user says "KPI report", "how much did the AI cost", "AI usage report", "cost per ticket", "how much time did we spend with the AI", "show the metrics", "usage for PROJ-123", or "export the KPIs".
-argument-hint: [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--user <id>] [--ticket <KEY>] [--kpi-dir <dir> ...] [--out-dir <dir>] [--provider anthropic|bedrock] [--bedrock-region <region>] [--bedrock-scope global|regional]
+argument-hint: [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--user <id>] [--ticket <KEY>] [--kpi-dir <dir> ...] [--out-dir <dir>] [--provider anthropic|bedrock|vertex|foundry] [--bedrock-region <region>] [--bedrock-scope global|regional]
 ---
 
 # ai-enabler-kpi:kpi-report — the KPI report

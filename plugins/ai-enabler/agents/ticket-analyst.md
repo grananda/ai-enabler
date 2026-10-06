@@ -2,6 +2,7 @@
 name: ticket-analyst
 description: Stage 1 of the ai-enabler delivery pipeline. Reads a Jira issue through whichever Jira MCP server is connected (or a local Markdown requirements file), normalises it into `.enabler/runs/<KEY>/requirements.json`, and judges whether the ticket is ready to be implemented. Read-only towards Jira and the codebase. Use it from the ai-enabler skills; do not use it to edit tickets.
 disallowedTools: Edit, NotebookEdit
+model: sonnet
 color: blue
 ---
 

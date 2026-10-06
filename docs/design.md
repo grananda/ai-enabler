@@ -28,7 +28,7 @@ The goal above is AI Enablement's model — the AI executes — so that is the b
 | Idea | Source | In ai-enabler |
 |---|---|---|
 | Jira ticket (or Markdown file) as the input, read through MCP | `code-generator`, `jira-ticket-retriever` | `ticket-analyst` agent, used by `deliver` and `plan` |
-| Four-step pipeline: read requirements, analyse the repository, plan files, write code | `generate-code` and its four internal skills | Stages 1–4, each a real subagent |
+| Four-step pipeline: read requirements, analyse the repository, plan files, write code | `generate-code` and its four internal skills | Stages 1–3 and 5, each a real subagent |
 | Structured requirements with feature type, criteria and open questions | `requirements-reader` | `requirements.json`, plus a readiness verdict |
 | Repository conventions and project rules as hard constraints | `repo-analyzer` | `repo-scout`, which also finds the working build, test and coverage commands |
 | File-level blueprint approved before code is written | `code-planner`, `story-to-plan` | `plan.md` and the plan gate |
@@ -62,6 +62,10 @@ AI Enablement ships one plugin per skill, which makes a coherent flow hard to in
 In AI Enablement the orchestrator invokes four skills in sequence and passes JSON between them as arguments, all in one context. That context fills with the ticket, the repository scan and every generated file. Here each stage is a subagent with its own context that writes a file in `.enabler/runs/<KEY>/`. This gives three things: the orchestrator stays small enough to steer a long run; a run can be resumed, or one stage re-run, from the files; and the reviewer has not seen the implementer's reasoning, only its code.
 
 Subagents are used where a stage reads much and returns little, or where independence matters. Orchestration, consolidation of findings and the gates stay in the main conversation, where the human is.
+
+### A model per stage
+
+Agents do not all inherit the session's model. Planning and review run on Opus at high effort: the plan is the brief for everything downstream, and the reviewer has to be at least as capable as the author it checks. Intake, scout, implementation and tests run on Sonnet: they work from explicit material and account for most of the tokens. The choice is expressed as family aliases so it survives model releases and resolves through `ANTHROPIC_DEFAULT_*_MODEL` on Bedrock. It is a starting point to be tuned with the per-agent cost table of the KPI report, not a fixed rule.
 
 ### Two gates instead of a gate per phase
 
@@ -113,7 +117,9 @@ All skills, agents, scripts and documents are in English. Skills answer in the l
 
 Not yet verified on a live Bedrock session: which form of model id Claude Code writes to the transcript there. The pricing handles every form (prefixed id, ARN, bare name plus the recorded environment), but the first real Bedrock report should be checked against its "Cost by price basis" table.
 
-Not yet exercised end to end: `/ai-enabler:deliver` against a real Jira instance and a real codebase. The skills and agents are instructions, and the first runs on a real ticket are where they should be tuned — the plan gate's summary, the fix-loop budget and the review confidence floor are the likely candidates.
+- `/ai-enabler:deliver` was run end to end, unattended (`--gates none`), on a small Node.js project from a Markdown requirements file with six acceptance criteria. All eight stages ran: the acceptance tests were written before the code, the implementation made them pass, coverage of the changed code reached 100 % line and branch, four reviewers ran in parallel, and the run held before shipping as the rules require. Each subagent ran on the model its frontmatter names (Opus for planning and review, Sonnet for the rest). The KPI report's cost for the run matched Claude Code's own figure.
+
+Not yet exercised: a ticket read from a real Jira instance through MCP, the ship stage against a real remote (push, pull request, Jira comment), the fix loop with real blocking findings, the stop below the coverage minimum, and a large codebase. The first runs on a real ticket are where the instructions should be tuned — the plan gate's summary, the fix-loop budget and the review confidence floor are the likely candidates.
 
 ## Possible next steps
 

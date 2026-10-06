@@ -62,7 +62,7 @@ Requirements:
 ```
 /ai-enabler:doctor PROJ-123         # check the setup: Jira MCP, git, tests, config
 /ai-enabler-kpi:kpi-init            # switch KPI capture on for this repository
-                                 # (start a new session so the hooks pick it up)
+                                 # (counts from here on; earlier spend in this session is not billed)
 
 /ai-enabler:deliver PROJ-123        # ticket -> plan gate -> tests, code, coverage, review -> ship gate -> PR
 

@@ -1,6 +1,7 @@
 ---
 name: code-implementer
-description: Stage 4 of the ai-enabler delivery pipeline, and its fixer. Writes the production code described in an approved `.enabler/runs/<KEY>/plan.md`, following the conventions in `repo-context.md`, and keeps the build green. Also applies review findings or repairs failing builds when given a fix list. Use it only with an approved plan or an explicit fix list; it does not decide scope.
+description: Implementation stage (stage 5) of the ai-enabler delivery pipeline, and its fixer. Writes the production code described in an approved `.enabler/runs/<KEY>/plan.md`, following the conventions in `repo-context.md`, and keeps the build green. Also applies review findings or repairs failing builds when given a fix list. Use it only with an approved plan or an explicit fix list; it does not decide scope.
+model: sonnet
 color: green
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: review
-description: Independent multi-lens code review with a severity-ranked report and optional auto-fix. Launches read-only code-reviewer subagents in parallel (correctness, security, quality, tests), consolidates and filters their findings, writes a Markdown report, and fixes the blocking ones only when asked or configured. Works on an ai-enabler run, a branch against its base, a pull request, or paths. Use when the user says "review my changes", "code review", "review PROJ-123", "review PR 42", "security review of this branch", "is this ready to merge", or "review and fix".
+description: Independent multi-lens code review with a severity-ranked report and optional auto-fix. Launches read-only code-reviewer subagents in parallel (correctness, security, quality, tests), consolidates and filters their findings, writes a Markdown report, and fixes findings only when asked: with `--fix`, or when the person says so after reading the report. Works on an ai-enabler run, a branch against its base, a pull request, or paths. Use when the user says "review my changes", "code review", "review PROJ-123", "review PR 42", "security review of this branch", "is this ready to merge", or "review and fix".
 argument-hint: [JIRA-KEY | PR number or URL | path ...] [--base <branch>] [--lenses correctness,security,quality,tests] [--fix] [--min-confidence 80]
 ---
 
@@ -37,9 +37,9 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` for the run directory 
    ## Checked and found sound
    ```
 5. **Present** the verdict, the counts, and the critical and high findings in full; give the path for the rest.
-6. **Fix, only if authorised.** Fixing happens when `--fix` was passed, when the pipeline's configuration lists the severity in `review.auto_fix`, or when the human says so after seeing the report. Then:
+6. **Fix, only if asked.** Fixing happens when `--fix` was passed or when the human says so after seeing the report — never by default. (`review.auto_fix` in the configuration belongs to `/ai-enabler:deliver`, whose fix loop runs inside an approved pipeline; it does not authorise this skill.) With `--fix` and no further instruction, fix `critical` and `high`. Then:
    - send the selected findings to `ai-enabler:code-implementer` in `fix` mode;
-   - run the affected tests (launch `ai-enabler:test-engineer` on them);
+   - run the affected tests (launch `ai-enabler:test-engineer` in `verify` mode on them);
    - re-run only the lenses that had findings, on the files that changed;
    - append a "Fix round" section to the report: fixed, disputed by the implementer (with its reason), still open.
 

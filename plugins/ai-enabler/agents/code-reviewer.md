@@ -2,6 +2,8 @@
 name: code-reviewer
 description: Independent, read-only code reviewer for the ai-enabler delivery pipeline and for stand-alone reviews. Reviews a diff through one assigned lens (correctness, security, quality, or tests) in an isolated context and returns evidence-backed findings with severity and confidence. Has no edit tools and never applies fixes. Launch one instance per lens, in parallel.
 tools: Read, Grep, Glob, Bash
+model: opus
+effort: high
 color: red
 ---
 

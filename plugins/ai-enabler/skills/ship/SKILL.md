@@ -19,7 +19,7 @@ Read first, and follow to the letter:
    - Key from `$ARGUMENTS`, else from the current branch name, else none (a plain commit, push and pull request with no Jira step).
    - The current branch must be a feature branch, not the base branch and not a detached `HEAD`. If it is the base branch, stop: create the branch first.
    - Collect the changes: `git status --porcelain`, `git diff --stat` against the base branch. If there is nothing to commit and nothing unpushed, say so and stop.
-2. **Check readiness, and say what you find.** If the run directory has `test-report.md` and `review.md`, read their verdicts. Failing tests, coverage of the changed code below the 70 % minimum without a recorded decision to proceed, coverage not measured, an open `critical` finding, or no test and review stage having run at all, are stated at the top of the confirmation — with a recommendation to hold or to open the pull request as a draft. They do not silently block and are not silently ignored.
+2. **Check readiness, and say what you find.** If the run directory has `test-report.md` and `review.md`, read their verdicts. Failing tests or open defects, coverage of the changed code below the configured minimum without a `coverage_accepted` record in `state.json`, an open `critical` finding, or no test and review stage having run at all, make the change **not ready**: state it at the top of the confirmation, with a recommendation to hold or to open the pull request as a draft. Coverage that was not measured is stated too. None of this silently blocks, and none of it is silently ignored.
 3. **Prepare.**
    - The commit message, following the repository's convention or `git.commit_pattern`, with the key.
    - The pull-request title and body. The body is `delivery-report.md` when it exists; otherwise write one from the diff: what changed, why, how to verify.
@@ -41,10 +41,12 @@ Read first, and follow to the letter:
    2. Commit.
    3. Push, setting the upstream if needed. On rejection, one `git pull --rebase`; on conflict, abort the rebase and stop.
    4. Open the pull request (`--draft` if requested or recommended), unless `--no-pr` or `git.pull_request` is false. Without an authenticated `gh` or `glab`, print the compare URL instead.
-   5. Jira, unless `--no-jira` or no key: add the comment; perform the transition only if it is configured and available from the current status.
+   5. Jira, unless `--no-jira`, there is no key, or the run's `source` is `file`: add the comment; perform the transition only if it is configured and available from the current status.
 6. **Report** what actually happened, step by step: commit hash, branch, pull-request URL, Jira comment and transition (done, skipped and why, or failed and why). Update `state.json` with `pr_url` and the stage.
 
 ## Rules
+
+- `--yes` skips the confirmation only for a change that is ready. If the readiness check found it not ready, show the confirmation anyway: an unattended flag is not a decision to ship a failing change.
 
 - One confirmation covers the listed actions and nothing else. Anything not on the list needs a new confirmation.
 - A failure midway leaves earlier steps in place and is reported precisely — for example "committed and pushed; pull request not created: gh is not authenticated". Do not undo completed steps and do not retry destructively.

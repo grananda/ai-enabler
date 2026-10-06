@@ -12,7 +12,7 @@ It measures with hooks, so nothing is self-reported and no skill has to cooperat
 
 ```
 /ai-enabler-kpi:kpi-init       # opt this project in (creates .enabler/kpi/)
-                            # start a new session; capture begins there
+                            # capture begins with the next prompt
 ...work as usual...
 /ai-enabler-kpi:kpi-report     # write the report
 ```
@@ -77,9 +77,9 @@ Hook payloads carry no token or cost information. Cost comes from the transcript
 
 ## Opt-in, and what is stored
 
-- **Off by default.** The hooks do nothing in a project without a `.enabler/kpi/` directory. `/ai-enabler-kpi:kpi-init` creates it; removing it switches capture off. Alternatively, setting the environment variable `ENABLER_KPI_DIR` to an absolute path captures every project of that user into one place.
+- **Off by default.** The hooks do nothing in a project without a `.enabler/kpi/` directory. When it is created in the middle of a session, capture starts with the next event, and what that session had already spent is taken as the baseline rather than billed. `/ai-enabler-kpi:kpi-init` creates it; removing it switches capture off. Alternatively, setting the environment variable `ENABLER_KPI_DIR` to an absolute path captures every project of that user into one place.
 - **Passive.** The script never blocks a tool, never asks anything, prints nothing into the conversation, and always exits 0.
-- **Stored:** event type and time, session id, user id, ticket key, tool, skill and subagent names, durations, prompt length in characters, the path of files the AI wrote with line counts, the program name of shell commands (`git`, `mvn`, ...), token totals per model.
+- **Stored:** event type and time, session id, user id, ticket key, tool, skill and subagent names, durations, prompt length in characters, the path of files the AI wrote with line counts, the program name of shell commands (`git`, `mvn`, ...), the name of a slash command (never its arguments), token totals per model.
 - **Never stored:** prompt text, model output, file contents, command lines and their arguments, tool results.
 
 The user id is `git config user.email`, falling back to the OS user name. Set `"anonymize_users": true` in `.enabler/kpi/config.json` to store a stable hash instead, or `ENABLER_KPI_USER` to choose the id.
@@ -118,7 +118,7 @@ On Bedrock the price of a token depends on three things, and the report resolves
 |---|---|---|
 | **Provider** | Bedrock's table differs from Anthropic's | Recorded by the hook from `CLAUDE_CODE_USE_BEDROCK`; otherwise recognised from the model id (`anthropic.`, a region prefix, or a Bedrock ARN) |
 | **Region** | Not every model is sold in every region | Recorded by the hook from `AWS_REGION` |
-| **Scope** | Regional and geographic profiles (`eu.`, `us.`, `apac.` …) cost 10 % more than `global.` profiles on current models | From the model id when it carries the prefix; else from the model variables the hook saw (`ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_*_MODEL` …); else `bedrock_scope` from the configuration; else **regional**, the higher rate, with a note in the report |
+| **Scope** | Regional and geographic profiles (`eu.`, `us.`, `apac.` …) cost 10 % more than `global.` profiles on current models | From the model id when it carries the prefix; else `bedrock_scope` from the configuration or `--bedrock-scope`; else what the hook saw in the model variables (`ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_*_MODEL` …); else **regional**, the higher rate, with a note in the report |
 
 Model ids are reduced to their Anthropic name before lookup, so `arn:aws:bedrock:eu-west-1:…:inference-profile/eu.anthropic.claude-sonnet-4-5-20250929-v1:0` is priced as Sonnet 4.5, regional, in `eu-west-1`.
 
@@ -133,7 +133,7 @@ The report has a **Cost by price basis** table showing which table priced each p
    python3 plugins/ai-enabler-kpi/scripts/update_pricing.py --region eu-west-3
    ```
 
-   It reads AWS's public price list (no credentials) and updates the `bedrock` section. Add `--file <project>/.enabler/kpi/pricing.json` to keep a project-level table.
+   It reads AWS's public price list (no credentials) and updates the `bedrock` section. Add `--file <project>/.enabler/kpi/pricing.json` to keep the addition in the project instead. A project price file is layered over the bundled one, so it only needs to contain what it adds or changes.
 3. Pin what cannot be detected, in `.enabler/kpi/config.json`:
 
    ```json
@@ -153,7 +153,7 @@ The report has a **Cost by price basis** table showing which table priced each p
    - `cost_multiplier` — a private pricing agreement or an enterprise discount, as a factor on every row.
    - `model_aliases` — application inference profiles have opaque ARNs; map each to the model it fronts. Unmapped ones are reported as unpriced, never as zero.
 
-The same three settings exist as report flags (`--provider`, `--bedrock-region`, `--bedrock-scope`) for a what-if run.
+The same three settings exist as report flags (`--provider`, `--bedrock-region`, `--bedrock-scope`) for a what-if run. A scope given this way applies wherever the model id itself does not name the profile.
 
 ### What the Bedrock figure does not include
 

@@ -25,14 +25,14 @@ The plugin's hooks are installed for every session but stay silent until a proje
      }
      ```
 
-     Set `anonymize_users` to true with `--anonymize` (users become a stable hash instead of their git e-mail). Set `ticket_pattern` with `--ticket-pattern`, for example `"(PROJ|OPS)-\\d+"`; when the project's Jira keys are known (from `.enabler/config.json`, branch names or recent commits), propose a pattern, because the default matches anything shaped like `ABC-123`.
+     Set `anonymize_users` to true with `--anonymize` (users become a stable hash instead of their git e-mail). Set `ticket_pattern` with `--ticket-pattern`, for example `"(PROJ|OPS)-\\d+"`; when the project's Jira keys can be seen (in branch names or recent commit messages), propose a pattern, because the default matches anything shaped like `ABC-123`.
      When the session runs on Amazon Bedrock (`CLAUDE_CODE_USE_BEDROCK` is set), cost is priced with Bedrock's table for `AWS_REGION` automatically. Add pricing keys only for what cannot be detected, and ask the human rather than guessing: `"bedrock_scope": "global"` or `"regional"` when the project's inference profiles are known, `"provider": "bedrock"` when sessions go through an LLM gateway, `"cost_multiplier"` for a negotiated discount, `"model_aliases"` for application inference profile ARNs. If the region is not in the bundled table, run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/update_pricing.py" --region <region> --file .enabler/kpi/pricing.json`.
    - `.gitignore` inside `.enabler/kpi/`:
      - always: `.state/` and `reports/`;
      - by default also `events/`, so each developer's data stays on their machine;
      - with `--share`, leave `events/` out of it, so event files are committed and the team's data can be reported together. There is one file per user and session, so they do not conflict on merge.
 5. **Tell the human what happens next**, briefly:
-   - capture starts with the next session in this project (hooks load at session start);
+   - capture starts with the next prompt of this session; what the session spent before is not counted;
    - what is recorded: counts and names of prompts, tools, skills and subagents, durations, lines added and removed, token totals per model, the ticket key; and what is not: prompt text, model output, file contents, command lines;
    - with `--share`, the e-mail from `git config user.email` is written into committed files unless `--anonymize` is set — say this plainly so the team decides knowingly;
    - `/ai-enabler-kpi:kpi-report` produces the report.

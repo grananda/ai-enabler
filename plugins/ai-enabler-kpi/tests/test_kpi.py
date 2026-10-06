@@ -131,6 +131,7 @@ def main():
     assert o["commits"] == 1 and o["lines_added"] == 3 and o["files_touched"] == 1
     assert o["subagent_runs"] == 1 and o["tickets"] == 1
     assert o["human_wait_seconds"] >= 1 and o["human_think_seconds"] >= 1
+    assert o["ai_seconds"] <= 3, o["ai_seconds"]       # turn and subagent overlap, counted once
     assert list(kpi["by_ticket"]) == ["PROJ-7"]
 
     # A project that did not opt in records nothing.
@@ -141,6 +142,7 @@ def main():
     assert not os.path.exists(os.path.join(other, ".enabler")), "hook wrote without opt-in"
 
     bedrock(tmp, env)
+    regressions(tmp, env)
     print("ok — %d events, cost $%.3f, report in %s" % (len(events), o["cost_usd"], out_dir))
 
 
@@ -173,6 +175,10 @@ def bedrock(tmp, base_env):
         fh.write(assistant("b3", "claude-haiku-4-5-20251001", million))
     env = dict(base_env, CLAUDE_PROJECT_DIR=project, CLAUDE_CODE_USE_BEDROCK="1",
                AWS_REGION="eu-west-1")
+    # The session starts before anything is spent (an empty transcript is the baseline).
+    start = {"hook_event_name": "SessionStart", "session_id": sid, "cwd": project,
+             "transcript_path": transcript + ".not-yet"}
+    subprocess.run([sys.executable, HOOK], input=json.dumps(start), text=True, env=env, check=True)
     for event in ("UserPromptSubmit", "Stop"):
         payload = {"hook_event_name": event, "session_id": sid, "cwd": project,
                    "transcript_path": transcript, "prompt": "PROJ-9"}
@@ -204,6 +210,67 @@ def bedrock(tmp, base_env):
     kpi = report("--provider", "anthropic")
     assert abs(kpi["overall"]["cost_usd"] - 38.20) < 1e-6, kpi["overall"]["cost_usd"]
     assert list(kpi["pricing"]["unpriced_tokens"].values()) == [2000000], kpi["pricing"]
+
+
+def regressions(tmp, base_env):
+    """Cases found in review."""
+    sys.path.insert(0, os.path.join(ROOT, "hooks"))
+    from kpi_hook import bash_summary, SLASH_COMMAND, HARNESS_PROMPT
+
+    assert bash_summary("git commit -m 'a && b' && git push origin x")["git"] == "commit+push"
+    assert "git" not in bash_summary("git log --grep commit")
+    assert "git" not in bash_summary("git status # before commit")
+    assert bash_summary("git -C repo commit -m x")["git"] == "commit"
+    assert "pr" not in bash_summary("gh pr create --help")
+    assert bash_summary("FOO=1 gh pr create --fill").get("pr") is True
+    assert bash_summary("cd app && mvn -q test")["cmd"] == "mvn"
+    assert SLASH_COMMAND.match("/ai-enabler:deliver") and SLASH_COMMAND.match("/clear")
+    assert not SLASH_COMMAND.match("/home/acme/payroll.py")
+    assert HARNESS_PROMPT.match("<task-notification>") and not HARNESS_PROMPT.match("<div class='x'> why")
+
+    # Opting in mid-session: what was spent before is the baseline, not this turn's cost.
+    sid = "77777777-2222-3333-4444-555555555555"
+    project = os.path.join(tmp, "late-project")
+    kpi_dir = os.path.join(project, ".enabler", "kpi")
+    os.makedirs(kpi_dir)
+    transcript = os.path.join(tmp, "transcripts", sid + ".jsonl")
+    with open(transcript, "w") as fh:
+        for n in range(50):
+            fh.write(assistant("old%d" % n, "claude-opus-5-5", {"input_tokens": 1000, "output_tokens": 1000}))
+    env = dict(base_env, CLAUDE_PROJECT_DIR=project)
+
+    def fire(event, **fields):
+        payload = dict({"hook_event_name": event, "session_id": sid, "cwd": project,
+                        "transcript_path": transcript}, **fields)
+        out = subprocess.run([sys.executable, HOOK], input=json.dumps(payload), text=True,
+                             capture_output=True, env=env)
+        assert out.returncode == 0 and out.stderr == "", out.stderr
+
+    fire("UserPromptSubmit", prompt="/home/acme/secret-client/payroll.py crashes on PROJ-1")
+    fire("Stop")
+    with open(transcript, "a") as fh:
+        fh.write(assistant("new1", "claude-opus-5-5", {"input_tokens": 1000, "output_tokens": 1000}))
+    fire("UserPromptSubmit", prompt="go on")
+    fire("PostToolUseFailure", tool_name="Bash", tool_use_id="x1", tool_input={"command": "git commit -m x"})
+    fire("Stop")
+    raw = open(os.path.join(kpi_dir, "events", "dev@example.com", sid + ".jsonl")).read()
+    events = [json.loads(line) for line in raw.splitlines()]
+    assert "secret-client" not in raw and events[0]["kind"] == "human", events[0]
+    usage = [e for e in events if e["ev"] == "usage"]
+    assert len(usage) == 1 and usage[0]["rows"][0]["in"] == 1000, usage
+
+    # A project price file that only adds one Bedrock region keeps the bundled prices.
+    with open(os.path.join(kpi_dir, "pricing.json"), "w") as fh:
+        json.dump({"providers": {"bedrock": {"regions": {"xx-test-1": {"models": {
+            "claude-opus-5-5": {"regional": {"input": 1.0, "output": 1.0}}}}}}}}, fh)
+    out_dir = os.path.join(tmp, "late-report")
+    run = subprocess.run([sys.executable, REPORT, "--kpi-dir", kpi_dir, "--out-dir", out_dir, "--quiet",
+                          "--ticket", "PROJ-1"], capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    kpi = json.load(open(os.path.join(out_dir, "kpi.json")))
+    assert abs(kpi["overall"]["cost_usd"] - 0.024) < 1e-6, kpi["overall"]   # 1000*4 + 1000*20, list price
+    assert kpi["overall"]["commits"] == 0 and kpi["overall"]["tool_failures"] == 1
+    assert kpi["overall"]["human_prompts"] == 2, kpi["overall"]             # --ticket keeps the whole session
 
 
 if __name__ == "__main__":

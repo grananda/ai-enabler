@@ -29,6 +29,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -46,9 +47,14 @@ DEFAULT_TICKET_PATTERN = r"\b[A-Z][A-Z0-9]{1,9}-\d{1,6}\b"
 NOT_TICKETS = {
     "UTF", "SHA", "ISO", "CVE", "RFC", "HTTP", "TLS", "SSL", "AES", "MD", "RSA",
     "CWE", "JDK", "JSR", "ES", "PEP", "UTC", "GMT", "COVID", "HTTPS", "TCP",
-    "IPV", "X", "V", "BASE", "CP", "WINDOWS", "LATIN", "ASCII", "OPUS",
+    "IPV", "BASE", "CP", "WINDOWS", "LATIN", "ASCII", "OPUS",
     "SONNET", "HAIKU", "FABLE", "CLAUDE", "GPT", "PYTHON", "JAVA", "NODE",
 }
+# A slash command is "/name" or "/plugin:name"; "/home/me/file.py is broken" is not.
+SLASH_COMMAND = re.compile(r"^/[A-Za-z][\w-]*(:[\w-]+)*$")
+# Prompts the harness submits on its own, not a person.
+HARNESS_PROMPT = re.compile(
+    r"^<(task-notification|system-reminder|local-command-[a-z]+|command-[a-z]+|bash-[a-z]+)\b")
 WRITE_TOOLS = {"write", "edit", "multiedit", "notebookedit"}
 QUESTION_TOOLS = {"askuserquestion"}
 AGENT_TOOLS = {"agent", "task"}
@@ -297,7 +303,13 @@ def cumulative_usage(transcript_path, sid):
 def usage_delta(state, payload, sid):
     """Rows of usage added since the last snapshot; advances the snapshot."""
     cum = cumulative_usage(payload.get("transcript_path"), sid)
-    prev = state.get("usage") or {}
+    if "usage" not in state:
+        # No baseline yet: capture was switched on in the middle of this
+        # session. What the transcript already holds was spent before that,
+        # so it becomes the baseline instead of being billed to this turn.
+        state["usage"] = cum
+        return []
+    prev = state["usage"] or {}
     rows = []
     for key, tot in cum.items():
         before = prev.get(key) or {}
@@ -342,19 +354,46 @@ def bash_summary(command):
     info = {}
     if not isinstance(command, str):
         return info
-    words = re.findall(r"[^\s;&|()]+", command)
-    # Skip leading VAR=value assignments and wrappers.
-    while words and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0])
-                     or words[0] in ("sudo", "env", "time", "nohup", "cd")):
-        words = words[2:] if words[0] == "cd" else words[1:]
-    if words:
-        info["cmd"] = os.path.basename(words[0])[:32]
-    if re.search(r"\bgit\b[^|;&]*\bcommit\b", command):
-        info["git"] = "commit"
-    elif re.search(r"\bgit\b[^|;&]*\bpush\b", command):
-        info["git"] = "push"
-    if re.search(r"\b(gh\s+pr|glab\s+mr)\s+create\b", command):
-        info["pr"] = True
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:  # unbalanced quotes: fall back to a plain split
+        tokens = command.split()
+    # One simple command per segment, split on shell operators.
+    segments, current = [], []
+    for tok in tokens:
+        if tok and set(tok) <= set(";&|()<>"):
+            if current:
+                segments.append(current)
+            current = []
+        else:
+            current.append(tok)
+    if current:
+        segments.append(current)
+    git_ops = []
+    for words in segments:
+        # Skip leading VAR=value assignments and wrappers.
+        while words and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0])
+                         or words[0] in ("sudo", "env", "time", "nohup")):
+            words = words[1:]
+        if not words:
+            continue
+        prog = os.path.basename(words[0])
+        if "cmd" not in info and prog != "cd":
+            info["cmd"] = prog[:32]
+        args = words[1:]
+        if prog == "git":
+            # The subcommand is the first word that is not a global option.
+            while args and args[0].startswith("-"):
+                args = args[2:] if args[0] in ("-C", "-c", "--git-dir", "--work-tree") else args[1:]
+            if args and args[0] in ("commit", "push") and args[0] not in git_ops:
+                git_ops.append(args[0])
+        elif prog in ("gh", "glab") and args[:2] in (["pr", "create"], ["mr", "create"]):
+            if "--help" not in args and "-h" not in args:
+                info["pr"] = True
+    if git_ops:
+        info["git"] = "+".join(git_ops)
     return info
 
 
@@ -419,15 +458,16 @@ def handle(payload):
         elif event == "userpromptsubmit":
             prompt = payload.get("prompt") if isinstance(payload.get("prompt"), str) else ""
             head = prompt.lstrip()
-            if head.startswith("<"):
+            first = head.split(None, 1)[0] if head else ""
+            if HARNESS_PROMPT.match(head):
                 kind = "system"  # task notifications and other harness messages
-            elif head.startswith("/"):
+            elif SLASH_COMMAND.match(first):
                 kind = "command"
             else:
-                kind = "human"
+                kind = "human"   # includes text that merely starts with a path or a tag
             fields = {"kind": kind, "chars": len(prompt)}
             if kind == "command":
-                fields["command"] = head.split(None, 1)[0][1:80]
+                fields["command"] = first[1:80]
             if kind != "system":
                 ticket = find_ticket(prompt, cfg)
                 if ticket:
