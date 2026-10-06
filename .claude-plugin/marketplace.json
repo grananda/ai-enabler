@@ -1,0 +1,19 @@
+{
+  "name": "ai-enabler",
+  "owner": {
+    "name": "Julio Fernández"
+  },
+  "description": "Machine-driven delivery from a Jira ticket to a pull request, without spec-driven development, plus measured KPIs of AI usage (human interaction, time and cost).",
+  "plugins": [
+    {
+      "name": "ai-enabler",
+      "source": "./plugins/ai-enabler",
+      "description": "Jira ticket to pull request: intake through the Jira MCP server, repository analysis, plan, implementation, tests with a coverage threshold, independent parallel review with auto-fix, and shipping. Two human gates: the plan and the ship."
+    },
+    {
+      "name": "ai-enabler-kpi",
+      "source": "./plugins/ai-enabler-kpi",
+      "description": "Opt-in hooks that capture human interaction, AI working time and token usage, and a report skill that turns them into KPIs and cost in USD per session, user, ticket, skill and model."
+    }
+  ]
+}

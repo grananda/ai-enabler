@@ -1,0 +1,30 @@
+---
+name: doctor
+description: Checks that a project is ready for the ai-enabler delivery pipeline and helps set it up — Jira MCP connection, git remote and pull-request CLI, test and coverage commands, project configuration, and whether KPI capture is active. Read-only unless asked to write the configuration. Use when the user says "set up ai-enabler", "check my ai-enabler setup", "why can't it read my Jira ticket", "is Jira connected", "ai-enabler doctor", or before the first `/ai-enabler:deliver` in a repository.
+argument-hint: [JIRA-KEY to test with] [--init]
+---
+
+# ai-enabler:doctor — is this project ready?
+
+A quick preflight for a repository. It reports; it changes nothing unless `--init` is passed or the human asks.
+
+## Checks
+
+Run them all, then print one table: check, status (`ok`, `warn`, `missing`), and what to do about it.
+
+1. **Git.** Inside a repository; a remote exists; the base branch can be determined; the working tree state.
+2. **Pull requests.** `gh` (or `glab`) installed and authenticated (`gh auth status`). Missing is a warning: the pipeline can still push and print a compare URL.
+3. **Jira MCP.** Look through the tools available in this session for one that fetches a Jira issue by key (for example `getJiraIssue` on Atlassian's remote server, or `jira_get_issue` on `mcp-atlassian`). Report which server provides it, or that none is connected. If a key was given in `$ARGUMENTS`, fetch it and report the title and status as proof that reading works. Also note whether tools for adding a comment and for transitioning an issue are present, since the ship stage uses them.
+4. **Confluence MCP (optional).** Present or not; only needed when tickets point to Confluence pages for their specification.
+5. **Build and tests.** From the manifests and the project's docs, identify the build, test and coverage commands. Do not run the suite; report what was found and what is missing (no tests, no coverage tool).
+6. **Project rules.** Whether `CLAUDE.md`, `AGENTS.md` or contribution guidelines exist for the agents to follow.
+7. **Configuration.** Whether `.enabler/config.json` exists and parses; list any key that differs from the defaults in `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md`. Whether `.enabler/runs/` is git-ignored.
+8. **KPI capture.** Whether the `ai-enabler-kpi` plugin is installed (its skills are listed in this session) and whether `.enabler/kpi/` exists in the project, which is what switches capture on.
+
+## When something is missing
+
+- **No Jira MCP server.** Explain that the pipeline reads tickets only through MCP, and point to `docs/jira-mcp.md` in the marketplace repository, which has ready-to-copy configurations for Jira Cloud (Atlassian's remote MCP server, OAuth in the browser) and for Jira Data Center (`mcp-atlassian` with a personal access token kept in the environment). Do not ask for credentials in the chat and do not write tokens into any file.
+- **No configuration.** The defaults work. With `--init`, or if the human wants one, write `.enabler/config.json` with the defaults, filling in the detected base branch, and add `.enabler/runs/` to `.gitignore`. Ask only for what cannot be detected and matters: the Jira status name for the optional transition at ship.
+- **KPI capture off.** Mention `/ai-enabler-kpi:kpi-init`.
+
+Close with the verdict in one line: ready, ready with warnings, or not ready and the one thing to fix first.
