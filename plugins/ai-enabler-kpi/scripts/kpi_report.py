@@ -21,7 +21,6 @@ inference-profile scope (scripts/pricing.json, overridable with
 
 import argparse
 import csv
-import html
 import json
 import os
 import re
@@ -30,6 +29,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import charts as C  # noqa: E402
 TOKEN_FIELDS = ("in", "out", "cr", "cw5", "cw1")
 NO_TICKET = "(no ticket)"
 
@@ -660,60 +661,79 @@ def render_md(sections, header):
     return "\n".join(out)
 
 
-CSS = """
-:root{--bg:#fbfaf7;--fg:#1d1c1a;--muted:#6b6862;--line:#e3e0d8;--card:#ffffff;--bar:#3f6fb5}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17171a;--fg:#ecebe7;
---muted:#a09d96;--line:#2e2e33;--card:#1f1f23;--bar:#7ea6e0}}
-:root[data-theme="dark"]{--bg:#17171a;--fg:#ecebe7;--muted:#a09d96;--line:#2e2e33;--card:#1f1f23;--bar:#7ea6e0}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);
-font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:1080px;margin:0 auto;padding:32px 16px 64px}
-h1{font-size:28px;margin:0 0 4px}h2{font-size:18px;margin:36px 0 6px}
-.meta,.note{color:var(--muted);font-size:13px;max-width:75ch}.note{margin:0 0 10px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:24px 0}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px}
-.tile b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
-.tile span{color:var(--muted);font-size:12px}
-.wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}
-table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
-th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
-td:first-child{white-space:normal}th{color:var(--muted);font-weight:600;font-size:12px}
-tr:last-child td{border-bottom:0}.bar{display:inline-block;height:8px;border-radius:4px;
-background:var(--bar);vertical-align:middle;margin-right:6px}
-"""
+def build_charts(overall, dims):
+    """The chart cards of the HTML report. Tables with the same figures follow them."""
+    def cost_bars(dim, top=10, color=0):
+        names = sorted(overall.cost_by[dim], key=lambda k: -overall.cost_by[dim][k])[:top]
+        return C.hbars([{"label": n or "-", "value": overall.cost_by[dim][n],
+                         "note": pct(overall.ratio(overall.cost_by[dim][n], overall.cost)),
+                         "tip": "%s: %s" % (n or "-", money(overall.cost_by[dim][n]))} for n in names],
+                       "USD", color_index=color, digits=2)
+
+    def group_bars(groups, value, unit, note, top=12, color=0, digits=None):
+        names = sorted(groups, key=lambda k: -value(groups[k]))[:top]
+        return C.hbars([{"label": n, "value": value(groups[n]), "note": note(groups[n])} for n in names
+                        if value(groups[n])], unit, color_index=color, digits=digits)
+
+    days = sorted(dims["day"])
+    time_row = [{"label": "Engaged time", "values": [overall.sec["ai"] / 60.0, overall.sec["wait"] / 60.0,
+                                                    overall.sec["think"] / 60.0]}]
+    return "".join([
+        C.section("Where the money goes",
+                  C.grid(C.card("Cost by agent", cost_bars("agent"), "the main conversation and each subagent type"),
+                         C.card("Cost by model", cost_bars("model", color=1), "tokens × published price")),
+                  C.grid(C.card("Cost by skill", cost_bars("skill", color=2), "'-' is work outside any skill"),
+                         C.card("Cost per day", C.columns(
+                             [{"label": d[5:], "value": dims["day"][d].cost, "n": "%d sess." % len(dims["day"][d].sessions),
+                               "tip": "%s: %s" % (d, money(dims["day"][d].cost))} for d in days[-21:]],
+                             "USD", digits=2), "USD · days are UTC"))),
+        C.section("Time and interaction",
+                  C.grid(C.card("How engaged time splits", C.stacked(
+                             time_row, ["AI working", "human waiting (approvals, questions)",
+                                        "human thinking (between turns)"], "min", digits=1), "minutes"),
+                         C.card("Human interactions by kind", C.hbars(
+                             [{"label": k, "value": v} for k, v in (
+                                 ("Free-text prompts", overall.n["prompt_human"]),
+                                 ("Slash commands", overall.n["prompt_command"]),
+                                 ("Permission prompts", overall.n["permissions"]),
+                                 ("Questions answered", overall.n["questions"]),
+                                 ("Interrupted tool calls", overall.n["interrupts"])) if v], "", color_index=4)))),
+        C.section("Per ticket and per developer",
+                  C.grid(C.card("Cost per ticket", group_bars(
+                             dims["ticket"], lambda g: g.cost, "USD",
+                             lambda g: "%d interactions · %s AI time" % (g.interactions, dur(g.sec["ai"])), digits=2)),
+                         C.card("Cost per developer", group_bars(
+                             dims["user"], lambda g: g.cost, "USD",
+                             lambda g: "%d sessions · %d tickets" % (len(g.sessions), len(g.tickets)),
+                             color=1, digits=2))),
+                  C.grid(C.card("Human interactions per developer", group_bars(
+                             dims["user"], lambda g: g.interactions, "",
+                             lambda g: "%s tool calls per prompt" % num(g.ratio(g.n["tools"], g.human_prompts), 1),
+                             color=4)),
+                         C.card("Lines written by the AI per developer", group_bars(
+                             dims["user"], lambda g: g.n["added"], "lines",
+                             lambda g: "%d files" % len(g.files), color=2))),
+                  note="Developers are identified by the git e-mail the hook recorded. Cost and interactions "
+                       "depend on what each person was working on, not only on how they work."),
+    ])
 
 
-def render_html(sections, header, tiles):
-    e = html.escape
-    out = ["<!doctype html><html lang='en'><head><meta charset='utf-8'>",
-           "<meta name='viewport' content='width=device-width,initial-scale=1'>",
-           "<title>AI usage KPIs</title><style>%s</style></head><body><main>" % CSS,
-           "<h1>AI usage KPI report</h1>",
-           "<p class='meta'>%s</p>" % " · ".join("%s: %s" % (e(k), e(str(v))) for k, v in header),
-           "<div class='tiles'>"]
-    out += ["<div class='tile'><b>%s</b><span>%s</span></div>" % (e(v), e(k)) for k, v in tiles]
-    out.append("</div>")
+def render_html(sections, header, tiles, charts_html=""):
+    tables = []
     for sec in sections:
-        out.append("<h2>%s</h2>" % e(sec["title"]))
-        if sec["note"]:
-            out.append("<p class='note'>%s</p>" % e(sec["note"]))
         if not sec["rows"]:
-            out.append("<p class='note'>No data.</p>")
-            continue
-        out.append("<div class='wrap'><table><thead><tr>%s</tr></thead><tbody>"
-                   % "".join("<th>%s</th>" % e(h) for h in sec["headers"]))
-        for row in sec["rows"]:
-            cells = []
-            for i, c in enumerate(row):
-                if i == sec["bar"]:
-                    cells.append("<td><span class='bar' style='width:%dpx'></span>%s</td>"
-                                 % (max(1, round(c * 90)), pct(c)))
-                else:
-                    cells.append("<td>%s</td>" % e(str(c)))
-            out.append("<tr>%s</tr>" % "".join(cells))
-        out.append("</tbody></table></div>")
-    out.append("</main></body></html>")
-    return "\n".join(out)
+            body = "<p class='note'>No data.</p>"
+        else:
+            rows = [[pct(c) if i == sec["bar"] else c for i, c in enumerate(row)] for row in sec["rows"]]
+            numeric = tuple(range(1, len(sec["headers"]))) if len(sec["headers"]) > 2 else ()
+            body = C.table(sec["headers"], rows, numeric=numeric)
+        tables.append(C.section(sec["title"], body, note=sec["note"]))
+    return C.page("AI usage KPI report", ["%s: %s" % kv for kv in header],
+                  C.tiles([(k, v, None) for k, v in tiles]), charts_html,
+                  "<h2>Tables</h2><p class='note'>Every figure behind the charts, and the ones that have no chart.</p>",
+                  *tables,
+                  footer="Measured by the ai-enabler-kpi hooks. Cost is tokens at the provider's published "
+                         "on-demand price, not the invoice.")
 
 
 def write_csv(path, groups, key_name, extra=None):
@@ -806,7 +826,7 @@ def main():
     with open(os.path.join(out_dir, "report.md"), "w", encoding="utf-8") as fh:
         fh.write(md)
     with open(os.path.join(out_dir, "report.html"), "w", encoding="utf-8") as fh:
-        fh.write(render_html(sections, header, tiles))
+        fh.write(render_html(sections, header, tiles, build_charts(overall, dims)))
     with open(os.path.join(out_dir, "kpi.json"), "w", encoding="utf-8") as fh:
         json.dump({
             "period": period, "filters": {"user": args.user, "ticket": args.ticket},

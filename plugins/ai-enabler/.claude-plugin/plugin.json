@@ -1,7 +1,7 @@
 {
   "name": "ai-enabler",
   "displayName": "AI Enabler — machine-driven delivery from Jira",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Takes a Jira ticket to a pull request with the machine doing the work and the human deciding at two gates. `/ai-enabler:deliver PROJ-123` reads the ticket through the Jira MCP server and runs a pipeline of dedicated subagents — ticket analyst, repo scout, solution planner, code implementer, test engineer and parallel read-only reviewers — then commits, pushes, opens the pull request and updates Jira. Each stage is also available on its own: plan, implement, test, review, ship, doctor. No spec-driven process required.",
   "author": {
     "name": "Julio Fernández"

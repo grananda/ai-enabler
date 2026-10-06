@@ -1,7 +1,7 @@
 ---
 name: kpi-report
-description: Produces the AI usage KPI report from the events captured by the ai-enabler-kpi hooks — human interaction with the machine, AI working time versus human waiting and thinking time, output, and token usage with its cost in USD per session, user, ticket, skill, agent and model. Runs the bundled script, which writes Markdown, HTML, JSON and CSV files, then adds a short reading of the numbers. Use when the user says "KPI report", "how much did the AI cost", "AI usage report", "cost per ticket", "how much time did we spend with the AI", "show the metrics", "usage for PROJ-123", or "export the KPIs".
-argument-hint: [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--user <id>] [--ticket <KEY>] [--kpi-dir <dir> ...] [--out-dir <dir>] [--provider anthropic|bedrock|vertex|foundry] [--bedrock-region <region>] [--bedrock-scope global|regional]
+description: Produces the KPI report — AI usage from the events captured by the ai-enabler-kpi hooks, followed by the delivery-flow metrics (pull request size, review waiting time, rework, Jira cycle time) on one dashboard. AI usage covers — human interaction with the machine, AI working time versus human waiting and thinking time, output, and token usage with its cost in USD per session, user, ticket, skill, agent and model. Runs the bundled script, which writes Markdown, HTML, JSON and CSV files, then adds a short reading of the numbers. Use when the user says "KPI report", "how much did the AI cost", "AI usage report", "cost per ticket", "how much time did we spend with the AI", "show the metrics", "usage for PROJ-123", or "export the KPIs".
+argument-hint: [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--user <id>] [--ticket <KEY>] [--kpi-dir <dir> ...] [--out-dir <dir>] [--provider anthropic|bedrock|vertex|foundry] [--bedrock-region <region>] [--bedrock-scope global|regional] [--no-delivery] [--refresh]
 ---
 
 # ai-enabler-kpi:kpi-report — the KPI report
@@ -24,7 +24,8 @@ The numbers come from a script, not from you. Your part is to run it with the ri
    - the headline figures: total cost, AI working time, human time, human interactions, tool calls per prompt, cost per ticket;
    - three or four observations that the tables support — for example which ticket, skill or subagent takes most of the cost, whether human time is mostly waiting on approvals (a sign that permission rules are worth tuning) or mostly thinking between turns, how many interactions a ticket needed;
    - the paths of the files written, naming `report.html` as the one to open or share and the CSV files as the ones to load into a spreadsheet or BI tool.
-4. **Offer nothing further unless asked.** If the human wants the report somewhere else, in another format, or published, do that as a separate step.
+4. **Add the delivery-flow metrics.** A report request means the whole picture, so unless `--no-delivery` was passed, follow `${CLAUDE_PLUGIN_ROOT}/skills/delivery-report/SKILL.md` from its step 1 (it will find the AI usage report already written and put its headline on the dashboard). Then name `delivery.html` as the page that brings everything together. If neither GitHub nor Jira can be read, say what is missing in one line and leave it at the AI usage report.
+5. **Offer nothing further unless asked.** If the human wants the report somewhere else, in another format, or published, do that as a separate step.
 
 ## Reading the numbers honestly
 

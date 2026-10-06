@@ -109,6 +109,16 @@ The marketplace is expected to run mostly on Amazon Bedrock, where a token's pri
 
 The report states what was measured and does not compute savings. A saving needs a baseline the tool does not have; AIAD's metrics skill takes the same position.
 
+### Delivery metrics next to AI usage, computed by scripts
+
+AI usage figures say what the machine cost and how much attention it needed; they do not say whether delivery got better. Four delivery-flow metrics — pull request size, review waiting time, rework, Jira cycle time — were first written as long prompts that had subagents fetch data and compute statistics. Their own result reports showed where that breaks: changelogs transcribed by hand, a verification that turned out circular, scripts regenerated in a temporary folder on every run. They are now skills over versioned scripts. The model fetches nothing it can avoid and computes nothing: GitHub is read with the GitHub CLI, Jira through its REST API when the environment allows it and through a collector agent that only copies otherwise, and the script alone produces the figures.
+
+They are deliberately not in the hooks. A hook fires on every tool call and has to be instant, silent and offline; these metrics query remote systems and describe a period, not a session. They run when a report is asked for, and `kpi-report` asks for them.
+
+Three definitions were tightened on the way: backward moves count only inside the analysed sprints (the prompt counted a ticket's whole history), the status order that defines "backward" is configuration instead of a guess, and all three pull-request metrics bucket by the week of the merge.
+
+Per-developer figures are on by default, because the team asked for them, and each report carries the context those figures need.
+
 ### English artefacts
 
 All skills, agents, scripts and documents are in English. Skills answer in the language the user writes in.
@@ -122,6 +132,7 @@ All skills, agents, scripts and documents are in English. Skills answer in the l
 Not yet verified on a live Bedrock session: which form of model id Claude Code writes to the transcript there. The pricing handles every form (prefixed id, ARN, bare name plus the recorded environment), but the first real Bedrock report should be checked against its "Cost by price basis" table.
 
 - The remote guard was checked in a real session: with the marker in place, a requested `git push` was refused and the remote stayed empty. `plugins/ai-enabler/tests/test_remote_guard.py` covers the commands and MCP tools it blocks and the ones it lets through.
+- The pull-request metrics were run against a public repository with the GitHub CLI, and the rendered HTML was inspected. `plugins/ai-enabler-kpi/tests/test_delivery.py` checks all four metrics on fixtures. The Jira REST route and the collector agent have not been run against a real Jira.
 - `/ai-enabler:deliver` was run end to end, unattended (`--gates none`), on a small Node.js project from a Markdown requirements file with six acceptance criteria. All eight stages ran: the acceptance tests were written before the code, the implementation made them pass, coverage of the changed code reached 100 % line and branch, four reviewers ran in parallel, and the run held before shipping as the rules require. Each subagent ran on the model its frontmatter names (Opus for planning and review, Sonnet for the rest). The KPI report's cost for the run matched Claude Code's own figure.
 
 Not yet exercised: a ticket read from a real Jira instance through MCP, the ship stage against a real remote (push, pull request, Jira comment), the fix loop with real blocking findings, the stop below the coverage minimum, and a large codebase. The first runs on a real ticket are where the instructions should be tuned — the plan gate's summary, the fix-loop budget and the review confidence floor are the likely candidates.

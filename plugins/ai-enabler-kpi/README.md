@@ -14,14 +14,15 @@ It measures with hooks, so nothing is self-reported and no skill has to cooperat
 /ai-enabler-kpi:kpi-init       # opt this project in (creates .enabler/kpi/)
                             # capture begins with the next prompt
 ...work as usual...
-/ai-enabler-kpi:kpi-report     # write the report
+/ai-enabler-kpi:kpi-report     # AI usage + delivery flow, as HTML dashboards
 ```
 
 The report lands in `.enabler/kpi/reports/<date>/`:
 
 | File | For |
 |---|---|
-| `report.html` | Reading and sharing: headline tiles and tables, self-contained, light and dark |
+| `report.html` | AI usage: headline tiles, charts (cost by agent, model, skill, day, ticket and developer; time split; interactions) and tables. Self-contained, light and dark |
+| `delivery.html` | The delivery-flow dashboard, with links to `pr-size.html`, `review-wait.html`, `rework.html`, `cycle-time.html` |
 | `report.md` | The same content as text |
 | `kpi.json` | Every figure, overall and by ticket, user and day, for other tools |
 | `sessions.csv`, `tickets.csv`, `users.csv`, `daily.csv` | Spreadsheets and BI |
@@ -31,6 +32,53 @@ Filters: `--since`, `--until`, `--user`, `--ticket`. Several repositories can be
 ```
 python3 plugins/ai-enabler-kpi/scripts/kpi_report.py --since 2026-10-01 --ticket PROJ-123
 ```
+
+## Delivery-flow metrics
+
+The hooks measure how AI is used. Four more skills measure how the team delivers, from GitHub and Jira, for everyone's work — with or without AI. Together they give the picture a cost figure alone cannot: whether pull requests are getting smaller, reviews faster, rework rarer and tickets quicker.
+
+| Skill | Question it answers | Source |
+|---|---|---|
+| `/ai-enabler-kpi:pr-size` | How large are the pull requests we merge? Median lines changed, lock files and generated code excluded | GitHub CLI |
+| `/ai-enabler-kpi:review-wait` | How long does a PR wait for its first human review, and who reviews? | GitHub CLI |
+| `/ai-enabler-kpi:rework` | How often is merged work reverted or followed by a fix for the same ticket? | GitHub CLI |
+| `/ai-enabler-kpi:cycle-time` | How long from "In Progress" to "Done", how many tickets bounce back, how long are they blocked? | Jira |
+| `/ai-enabler-kpi:delivery-report` | All four, on one dashboard | — |
+
+`/ai-enabler-kpi:kpi-report` runs these too, so one request gives AI usage and delivery flow together.
+
+Each metric is broken down per week (or sprint), per area or issue type, and **per developer**. Every report is a self-contained HTML page with charts — `delivery.html` for the dashboard, and `pr-size.html`, `review-wait.html`, `rework.html`, `cycle-time.html` for the detail — in `.enabler/kpi/reports/<date>/`. They open offline, follow the light or dark theme, and print.
+
+### How they work
+
+- **A script does the arithmetic.** `scripts/pr_metrics.py` and `scripts/jira_cycle.py` compute every figure — medians, bootstrap confidence intervals, coverage, Wilson intervals for rates — with a fixed seed, so the same data gives the same report. The model runs the script and reads the result; it calculates nothing.
+- **GitHub is read with the GitHub CLI.** Install `gh` (https://cli.github.com) and run `gh auth login` — for GitHub Enterprise, `gh auth login --hostname <host>`. This is the recommended way: it uses each person's own access, stores no token in the project, and needs no MCP server. Answers about merged pull requests are cached under `.enabler/kpi/delivery/cache/`, so a second run is fast.
+- **Jira is read directly when possible.** With `JIRA_URL` and `JIRA_PERSONAL_TOKEN` (or `JIRA_USERNAME` and `JIRA_API_TOKEN`) in the environment — the variables the `mcp-atlassian` server already uses — the script calls Jira's REST API itself, read-only. Otherwise the `jira-collector` agent fetches the tickets through the connected Jira MCP server and saves them to files for the script; the skill then spot-checks what the agent copied.
+- **Snapshots.** Each metric leaves `.enabler/kpi/delivery/<metric>.json`. The dashboard is built from those and recomputes nothing.
+- **Not in the hooks.** These metrics query remote systems and take seconds to minutes; a hook runs on every tool call and must be instant and silent. They run when a report is asked for.
+
+### Configuration
+
+Under `delivery` in `.enabler/kpi/config.json`; everything is optional:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `repo`, `base_branch` | the current repository and its default branch | What to analyse |
+| `weeks` | `6` | Window for the pull-request metrics |
+| `followup_days` | `14` | How long after a ticket's first PR a later one counts as a follow-up |
+| `exclude` | `[]` | Extra glob patterns left out of PR size, on top of lock files, `dist/`, `coverage/`, `*.min.js`, `*.snap`, `*.generated.*` … |
+| `area_roots` | `apps`, `libs`, `packages`, `services`, `modules` | Directories whose children are areas of their own |
+| `size_buckets` | `[100, 500]` | S below the first, L from the second |
+| `show_people` | `true` | Per-developer charts and tables. Set to `false` to leave names out |
+| `jira.project`, `jira.sprints`, `jira.board` | none, `3`, first scrum board | What to analyse in Jira |
+| `jira.statuses.order` | a common workflow | The statuses from first to last; statuses in the same group are the same step. Decides what "backward" means |
+| `jira.statuses.in_progress`, `jira.statuses.blocked` | `In Progress`…, `Blocked`… | Where cycle time starts, and what counts as blocked |
+
+The ticket key pattern is the top-level `ticket_pattern`, shared with the AI usage capture.
+
+### Per-developer figures
+
+They are on by default because knowing the numbers per developer is the point for many teams. The reports attach the context they need: PR size follows the kind of work, a follow-up is attributed to whoever opened it (often the person finishing someone else's ticket), a Jira assignee is whoever held the ticket at the end, and the reviewer with the most first reviews is carrying the load. Depending on the country and the organisation, reporting on named individuals may need agreement with the people concerned or their representatives; `show_people: false` produces the same reports without names.
 
 ## What is measured
 
@@ -175,6 +223,7 @@ For organisation-wide dashboards, Claude Code's OpenTelemetry export is the comp
 
 ```
 python3 plugins/ai-enabler-kpi/tests/test_kpi.py
+python3 plugins/ai-enabler-kpi/tests/test_delivery.py
 ```
 
-Replays a short session through the hook with a synthetic transcript, runs the report, and checks interaction counts, waiting time, cost by skill and agent, privacy (no prompt or command text on disk) and the opt-in rule.
+`test_delivery.py` runs the four delivery metrics on fixtures (no GitHub or Jira needed) and checks medians, review waits with draft and bot cases, follow-up and revert detection, cycle time across a weekend, backward moves outside the window, blocked time and unknown statuses. `test_kpi.py` replays a short session through the hook with a synthetic transcript, runs the report, and checks interaction counts, waiting time, cost by skill and agent, privacy (no prompt or command text on disk) and the opt-in rule.

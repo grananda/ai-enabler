@@ -13,7 +13,7 @@
     {
       "name": "ai-enabler-kpi",
       "source": "./plugins/ai-enabler-kpi",
-      "description": "Opt-in hooks that capture human interaction, AI working time and token usage, and a report skill that turns them into KPIs and cost in USD per session, user, ticket, skill and model."
+      "description": "Opt-in hooks that capture AI usage (interaction, time, token cost) and delivery-flow skills (pull request size, review waiting time, rework, Jira cycle time), reported as HTML dashboards with charts and per-developer figures."
     }
   ]
 }

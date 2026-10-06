@@ -1,17 +1,23 @@
 {
   "name": "ai-enabler-kpi",
   "displayName": "AI Enabler KPI — AI usage measurement",
-  "version": "0.1.0",
-  "description": "Measures how AI is used in a project through passive, opt-in hooks: human interaction (prompts, approvals, questions, interruptions), AI working time versus human waiting and thinking time, output (files and lines written by the AI, commits, pull requests) and token usage with its cost in USD per session, user, ticket, skill and model. `/ai-enabler-kpi:kpi-report` turns the captured events into Markdown, HTML, JSON and CSV reports. Works with any workflow, not only the ai-enabler pipeline.",
+  "version": "0.2.0",
+  "description": "Measures how a team delivers and how it uses AI. Passive, opt-in hooks capture AI usage: human interaction, AI working time versus human waiting and thinking time, output, and token cost in USD per session, user, ticket, skill and model (Anthropic or Amazon Bedrock prices). Delivery-flow skills measure pull request size, review waiting time, rework and Jira cycle time with bundled scripts, reading GitHub through the GitHub CLI. Everything is reported as self-contained HTML with charts, including per-developer figures, plus Markdown, JSON and CSV.",
   "author": {
     "name": "Julio Fernández"
   },
   "keywords": [
+    "cost",
+    "cycle-time",
+    "dashboard",
+    "delivery",
+    "github",
+    "hooks",
+    "jira",
     "kpi",
     "metrics",
-    "cost",
-    "usage",
-    "hooks",
-    "reporting"
+    "pull-requests",
+    "reporting",
+    "usage"
   ]
 }

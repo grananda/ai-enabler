@@ -7,7 +7,7 @@ It ships two plugins:
 | Plugin | What it does |
 |---|---|
 | [`ai-enabler`](plugins/ai-enabler/README.md) | Takes a Jira ticket to a pull request. Dedicated subagents read the ticket through the Jira MCP server, analyse the repository, plan, implement, test and review; the human decides at two gates, the plan and the ship. |
-| [`ai-enabler-kpi`](plugins/ai-enabler-kpi/README.md) | Opt-in hooks that record human interaction, AI working time and token usage, and a report that turns them into KPIs and cost in USD per session, user, ticket, skill and model. Works with any workflow, not only `ai-enabler`. |
+| [`ai-enabler-kpi`](plugins/ai-enabler-kpi/README.md) | Measures AI usage with opt-in hooks (human interaction, AI working time, token cost in USD per session, user, ticket, skill and model) and delivery flow with scripts (pull request size, review waiting time, rework, Jira cycle time), and reports both as HTML dashboards with charts and per-developer figures. Works with any workflow, not only `ai-enabler`. |
 
 ## How it works
 
@@ -56,7 +56,7 @@ claude --plugin-dir plugins/ai-enabler --plugin-dir plugins/ai-enabler-kpi
 Requirements:
 
 - A Jira MCP server connected to Claude Code, to read tickets. See [docs/jira-mcp.md](docs/jira-mcp.md). Without one, the pipeline accepts a Markdown file with the requirements instead.
-- `git`, and `gh` (or `glab`) for pull requests.
+- `git`, and the GitHub CLI `gh` (https://cli.github.com, then `gh auth login`): it opens pull requests for `ai-enabler` and is how `ai-enabler-kpi` reads them for the delivery metrics. `glab` works for opening merge requests on GitLab.
 - `python3` (3.8 or later) on the `PATH`, for the KPI hooks and report. No extra packages.
 
 ## Quick start
@@ -83,7 +83,9 @@ Requirements:
 | `/ai-enabler:ship [KEY]` | Commit, push, open the pull request, update Jira |
 | `/ai-enabler:doctor` | Check or initialise the project setup |
 | `/ai-enabler-kpi:kpi-init` | Switch KPI capture on for a project |
-| `/ai-enabler-kpi:kpi-report` | Produce the KPI report |
+| `/ai-enabler-kpi:kpi-report` | Produce the KPI report: AI usage and delivery flow, as HTML dashboards with charts |
+| `/ai-enabler-kpi:delivery-report` | Delivery-flow dashboard: PR size, review waiting time, rework, Jira cycle time, per developer |
+| `/ai-enabler-kpi:pr-size`, `review-wait`, `rework`, `cycle-time` | One delivery metric at a time |
 
 ## Documentation
 
@@ -111,9 +113,11 @@ plugins/
   ai-enabler-kpi/
     .claude-plugin/plugin.json
     hooks/       hooks.json, kpi_hook.py
-    scripts/     kpi_report.py, update_pricing.py, pricing.json
-    skills/      kpi-init, kpi-report
-    tests/       test_kpi.py
+    scripts/     kpi_report.py, update_pricing.py, pricing.json,
+                 pr_metrics.py, jira_cycle.py, delivery_report.py, delivery_lib.py, charts.py
+    skills/      kpi-init, kpi-report, delivery-report, pr-size, review-wait, rework, cycle-time
+    agents/      jira-collector
+    tests/       test_kpi.py, test_delivery.py
 docs/            design, KPI reference, Jira MCP setup
 ```
 
@@ -122,6 +126,7 @@ docs/            design, KPI reference, Jira MCP setup
 ```
 claude plugin validate .                       # marketplace and plugin manifests
 python3 plugins/ai-enabler-kpi/tests/test_kpi.py  # hook and report, end to end, no Claude Code needed
+python3 plugins/ai-enabler-kpi/tests/test_delivery.py   # delivery metrics on fixtures
 python3 plugins/ai-enabler/tests/test_remote_guard.py  # what local-only mode blocks and allows
 ```
 

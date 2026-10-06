@@ -119,6 +119,23 @@ The Bedrock table carries all five prices explicitly, as published by AWS. Where
 
 `kpi.json` lists under `pricing.assumptions` every fallback taken, and under `pricing.unpriced_tokens` every model that had no price.
 
+## Delivery-flow metrics
+
+Computed by `scripts/pr_metrics.py` and `scripts/jira_cycle.py`, not by the hooks. Each writes a snapshot to `.enabler/kpi/delivery/<metric>.json` with the same structure: `overall`, then one summary per bucket (`by_week` or `by_sprint`, `by_area` / `by_type` / `by_app`, `by_author` / `by_assignee` / `by_reviewer`).
+
+A summary of sizes or durations holds: `n` (observations), `total` (items in the bucket), `coverage` (`n ÷ total`), `median`, `mean`, `ci_lo` and `ci_hi` (90 % percentile bootstrap interval of the median, 5,000 resamples, fixed seed), and `flags`: `low n` under 20 observations, `low coverage` under 70 %, `skewed` when the mean is more than twice the median. Rates carry a 90 % Wilson interval.
+
+| Metric | Definition |
+|---|---|
+| **PR size** | Lines added plus deleted per merged PR, over the PR's files, leaving out files that match the exclusion patterns (lock files, build output, generated code, plus `delivery.exclude`). PRs by bots are dropped. A PR with only excluded files is counted apart. Area = the directory with most counted lines |
+| **Review waiting time** | Hours from *ready* to the first human review. Ready = the last `ready_for_review` event before that review, else when the PR was opened. Human review = the earliest review in state approved, changes requested or commented, by someone who is neither the author nor a bot. PRs merged without one are counted apart, outside the medians. Weekday hours count Monday to Friday, UTC |
+| **Rework** | (Reverts + follow-ups) ÷ merged PRs. Revert = a PR whose title starts with "Revert". Follow-up = a PR whose ticket key (from the title, else the branch) matches an earlier PR merged at most `followup_days` before; the earlier one, the anchor, may lie in the lookback before the window. The rate on *mature* PRs counts only those merged at least `followup_days` ago |
+| **Cycle time** | Working days (Monday to Friday) from a ticket's first transition into an in-progress status to its resolution date, for tickets resolved inside a sprint's dates. Includes blocked and rework time |
+| **Backward rate** | Resolved tickets with at least one move to an earlier status in `delivery.jira.statuses.order`, dated inside the analysed sprints and not undone within a minute, ÷ resolved tickets |
+| **Blocked time** | Calendar days in a blocked status, all visits added; an open visit runs until resolution or now |
+
+All pull-request metrics place a PR in the ISO week of its merge date (UTC).
+
 ## Attribution to tickets
 
 The hook keeps one "current ticket" per session. It is set from, in order of arrival: the branch name at session start, any human prompt or slash command containing a key, and the arguments of an invoked skill. Every later event carries that key until another key appears. Events recorded before the first key of a session are attributed to that first key at report time.
