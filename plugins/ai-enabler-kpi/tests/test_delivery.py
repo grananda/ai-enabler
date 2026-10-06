@@ -203,9 +203,149 @@ def dashboard_checks(kpi, out):
         assert needle in page, needle
 
 
+def audit_regressions(tmp):
+    """Cases an audit found wrong in the first version."""
+    import jira_cycle as J
+    cfg = L.load_config(None)
+
+    # Ticket keys: look-alikes are not tickets, and the default pattern does not read lower-case branches.
+    assert L.find_ticket(cfg, "Fix UTF-8 decoding", "chore/node-20-ci") == (None, None)
+    assert L.find_ticket(cfg, "PROJ-12 add export", "x") == ("PROJ-12", "title")
+    assert L.find_ticket(cfg, "tidy", "feature/PROJ-12-export") == ("PROJ-12", "branch")
+    kpi = os.path.join(tmp, "kpi-custom")
+    os.makedirs(kpi)
+    json.dump({"ticket_pattern": r"PROJ-\d+"}, open(os.path.join(kpi, "config.json"), "w"))
+    assert L.find_ticket(L.load_config(kpi), "tidy", "feature/proj_12-export") == ("PROJ-12", "branch")
+
+    # Reverts: GitHub's title and the conventional type, not every title that begins with the word.
+    yes = ['Revert "PROJ-1 add api"', "revert: PROJ-1 add api", "revert(api): drop cache"]
+    no = ['Revert "Revert "PROJ-1 add api""', "Revert to the old logo on the home page",
+          "Revert button: fix focus ring", "Reverting PROJ-1"]
+    assert all(P.REVERT_TITLE.match(t) for t in yes) and not any(P.REVERT_TITLE.match(t) for t in no)
+
+    def data(prs, reviews=None, timeline=None, weeks=4):
+        start = NOW - timedelta(weeks=weeks)
+        return {"repo": "a/b", "host": "github.com", "base": "main", "weeks": weeks, "followup_days": 14,
+                "window_start": start.isoformat(), "window_end": NOW.isoformat(),
+                "lookback_start": (start - timedelta(days=14)).isoformat(), "prs": prs,
+                "files": {}, "reviews": reviews or {}, "timeline": timeline or {}}
+
+    # Review wait: a dismissed review still counts; a review after the merge does not.
+    prs = [pr(1, "ana", 10, "PROJ-1 a", 10, 0, created_before_h=50), pr(2, "ana", 5, "PROJ-2 b", 10, 0)]
+    created1 = NOW - timedelta(days=10, hours=50)
+    snap, _ = P.review_wait(data(prs, reviews={
+        "1": [{"login": "ben", "bot": False, "state": "DISMISSED",
+               "submitted_at": (created1 + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")},
+              {"login": "ben", "bot": False, "state": "APPROVED",
+               "submitted_at": (created1 + timedelta(hours=40)).strftime("%Y-%m-%dT%H:%M:%SZ")}],
+        "2": [{"login": "ben", "bot": False, "state": "COMMENTED", "submitted_at": ts(2)}]}), cfg)
+    assert abs(snap["overall"]["median"] - 1.0) < 1e-6 and snap["never_reviewed"] == [2], snap["overall"]
+
+    # Review while still a draft: no waiting happened.
+    prs = [pr(3, "ana", 5, "PROJ-3 c", 10, 0, created_before_h=48)]
+    created3 = NOW - timedelta(days=5, hours=48)
+    snap, _ = P.review_wait(data(prs, reviews={"3": [{"login": "ben", "bot": False, "state": "COMMENTED",
+        "submitted_at": (created3 + timedelta(hours=20)).strftime("%Y-%m-%dT%H:%M:%SZ")}]},
+        timeline={"3": [{"event": "ready_for_review",
+                         "created_at": (created3 + timedelta(hours=30)).strftime("%Y-%m-%dT%H:%M:%SZ")}]}), cfg)
+    assert snap["overall"]["median"] == 0 and snap["reviewed_as_draft"] == [3]
+
+    # Rework: the same PR is classified the same way whatever the window.
+    kinds = {}
+    for weeks in (4, 8):
+        start = NOW - timedelta(weeks=weeks, days=14)
+        prs = [p for p in (pr(1, "a", 60, "PROJ-7 one", 1, 1), pr(2, "a", 38, "PROJ-7 two", 1, 1),
+                           pr(3, "a", 27, "PROJ-7 three", 1, 1)) if L.parse_ts(p["merged_at"]) >= start]
+        snap, _ = P.rework(data(prs, weeks=weeks), cfg)
+        kinds[weeks] = [(x["number"], x["anchor"]) for x in snap["rework_prs"] if x["number"] == 3]
+    assert kinds[4] == kinds[8] == [(3, 2)], kinds
+
+    # show_people off: no person in the snapshot either.
+    snap, _ = P.rework(data([pr(1, "ana", 5, "PROJ-1 a", 1, 1), pr(2, "ben", 4, "PROJ-1 b", 1, 1)]), cfg)
+    bare = P.without_people(snap)
+    assert "by_author" not in bare and "ana" not in json.dumps(bare) and "ben" not in json.dumps(bare)
+
+    # Bad configuration is a sentence, not a traceback.
+    for bad in ({"delivery": {"exclude": "*.md"}}, {"delivery": {"size_buckets": [100]}}, {"ticket_pattern": "("}):
+        d = os.path.join(tmp, "kpi-bad-%d" % len(str(bad)))
+        os.makedirs(d, exist_ok=True)
+        json.dump(bad, open(os.path.join(d, "config.json"), "w"))
+        try:
+            L.load_config(d)
+            raise AssertionError("accepted %r" % bad)
+        except L.ConfigError:
+            pass
+
+    # Running a report where KPI capture is off must not switch it on.
+    fresh = os.path.join(tmp, "fresh")
+    os.makedirs(fresh)
+    here = os.getcwd()
+    os.chdir(fresh)
+    try:
+        snap_dir, rep_dir = L.output_dirs(None)
+    finally:
+        os.chdir(here)
+    assert not os.path.exists(os.path.join(fresh, ".enabler", "kpi")) and ".enabler/delivery" in snap_dir.replace(os.sep, "/")
+
+    # Jira: sprint closed late, resolution in the gap, duplicates, flaps, Blocked detours, raw shape with `transitions`.
+    sprints = [{"name": "S1", "startDate": "2026-09-07T08:00:00Z", "endDate": "2026-09-18T16:00:00Z"},
+               {"name": "S2", "startDate": "2026-09-21T08:00:00Z", "endDate": "2026-10-02T16:00:00Z"}]
+
+    def issue(key, resolved, moves):
+        return {"key": key, "type": "Story", "assignee": "Ana", "status": moves[-1][2], "created": "2026-09-01T09:00:00Z",
+                "resolved": resolved, "transitions": [{"at": a, "from": f, "to": t} for a, f, t in moves]}
+    r = J.analyse(sprints, [
+        issue("G-1", "2026-09-18T17:30:00Z", [("2026-09-17T09:00:00Z", "To Do", "In Progress"),
+                                              ("2026-09-18T17:30:00Z", "In Progress", "Done")]),      # after S1 was due
+        issue("G-2", "2026-09-21T07:30:00Z", [("2026-09-18T09:00:00Z", "To Do", "In Progress"),
+                                              ("2026-09-21T07:30:00Z", "In Progress", "Done")]),      # before S2 began
+        issue("F-1", "2026-09-10T10:00:20Z", [("2026-09-09T09:00:00Z", "To Do", "In Progress"),
+                                              ("2026-09-10T10:00:00Z", "In Progress", "Done"),
+                                              ("2026-09-10T10:00:10Z", "Done", "In Progress"),        # slip, undone in 10 s
+                                              ("2026-09-10T10:00:20Z", "In Progress", "Done")]),
+        issue("B-1", "2026-09-25T09:00:00Z", [("2026-09-22T09:00:00Z", "To Do", "In Progress"),
+                                              ("2026-09-23T09:00:00Z", "In Progress", "In Test"),
+                                              ("2026-09-23T10:00:00Z", "In Test", "Blocked"),
+                                              ("2026-09-24T10:00:00Z", "Blocked", "In Progress"),     # back, via Blocked
+                                              ("2026-09-25T09:00:00Z", "In Progress", "Done")]),
+        issue("O-1", "2026-08-01T09:00:00Z", [("2024-01-01T09:00:00Z", "To Do", "Blocked"),           # old history
+                                              ("2024-07-01T09:00:00Z", "Blocked", "In Progress"),
+                                              ("2026-08-01T09:00:00Z", "In Progress", "Done")]),
+    ], cfg, now=NOW)
+    # F-1, and both gap tickets, belong to S1; B-1 to S2.
+    assert r["by_sprint"]["S1"]["total"] == 3 and r["by_sprint"]["S2"]["total"] == 1, r["by_sprint"]
+    assert [t["key"] for t in r["reverted"]] == ["B-1"] and r["reverted"][0]["moves"][0]["via_blocked"]
+    assert r["resolved_outside"] == ["O-1"]
+    assert [b["key"] for b in r["blocked"]] == ["B-1"] and abs(r["blocked"][0]["days"] - 1.0) < 1e-6
+
+    raw = {"key": "R-1", "transitions": [{"id": "31", "name": "Done"}],     # Jira's `expand=transitions`
+           "fields": {"issuetype": {"name": "Bug"}, "assignee": {"displayName": "Ben"}, "status": {"name": "Done"},
+                      "created": "2026-09-01T09:00:00.000+0000", "resolutiondate": "2026-09-09T09:00:00.000+0000"},
+           "changelog": {"total": 9, "histories": [{"created": "2026-09-08T09:00:00.000+0000", "items": [
+               {"field": "status", "fromString": "To Do", "toString": "In Progress"}]}]}}
+    n = J.normalize(raw)
+    assert n["type"] == "Bug" and n["assignee"] == "Ben" and n["resolved"] and len(n["transitions"]) == 1 and n["truncated"]
+
+    d = os.path.join(tmp, "jira-dup")
+    os.makedirs(d)
+    json.dump(sprints, open(os.path.join(d, "sprints.json"), "w"))
+    one = issue("D-1", "2026-09-10T09:00:00Z", [("2026-09-09T09:00:00Z", "To Do", "In Progress"),
+                                                ("2026-09-10T09:00:00Z", "In Progress", "Done")])
+    json.dump([one], open(os.path.join(d, "issues-a.json"), "w"))
+    json.dump([one], open(os.path.join(d, "issues-b.json"), "w"))
+    _s, issues, dropped = J.load_dir(d)
+    assert len(issues) == 1 and dropped == 1
+    try:
+        J.analyse([{"name": "No dates"}], [one], cfg)
+        raise AssertionError("accepted a sprint without dates")
+    except ValueError as exc:
+        assert "No dates" in str(exc)
+
+
 def main():
     tmp = tempfile.mkdtemp(prefix="ai-enabler-delivery-test-")
     stats_checks()
+    audit_regressions(tmp)
     kpi, out = pr_checks(tmp)
     jira_checks(tmp, kpi, out)
     dashboard_checks(kpi, out)

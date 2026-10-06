@@ -27,7 +27,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import charts as C                      # noqa: E402
 import delivery_lib as L                # noqa: E402
 
-HUMAN_REVIEW_STATES = {"APPROVED", "CHANGES_REQUESTED", "COMMENTED"}
+# A review that was later dismissed (stale approvals are dismissed on every push
+# under common branch protection) still happened when it was submitted.
+HUMAN_REVIEW_STATES = {"APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED"}
+REVERT_TITLE = re.compile(r'^\s*(Revert\s+"(?!Revert\s+")|revert(\([^)]*\))?!?:\s)', re.I)
 
 
 # ------------------------------------------------------------------ helpers
@@ -321,23 +324,25 @@ def review_wait(data, cfg):
     small, large = cfg["size_buckets"]
     for p in window:
         n = str(p["number"])
+        merged_at = L.parse_ts(p["merged_at"])
         reviews = [r for r in (data["reviews"].get(n) or [])
                    if not r.get("bot") and r.get("login") and r["login"] != p["author"]
-                   and (r.get("state") or "").upper() in HUMAN_REVIEW_STATES and r.get("submitted_at")]
+                   and (r.get("state") or "").upper() in HUMAN_REVIEW_STATES and r.get("submitted_at")
+                   and L.parse_ts(r["submitted_at"]) <= merged_at]    # a comment after the merge is not a review of it
         reviews.sort(key=lambda r: r["submitted_at"])
         first = reviews[0] if reviews else None
         first_at = L.parse_ts(first["submitted_at"]) if first else None
         ready_events = sorted(L.parse_ts(t["created_at"]) for t in (data["timeline"].get(n) or [])
                               if t.get("event") == "ready_for_review" and t.get("created_at"))
         before = [t for t in ready_events if first_at is None or t <= first_at]
-        ready_at = before[-1] if before else L.parse_ts(p["created_at"])
-        p["ready_source"] = "ready event" if before else "opened"
+        # Reviewed while still a draft: someone looked before it was marked ready. No waiting happened.
+        as_draft = bool(first_at and ready_events and not before)
+        ready_at = before[-1] if before else (first_at if as_draft else L.parse_ts(p["created_at"]))
+        p["ready_source"] = "ready event" if before else ("reviewed as draft" if as_draft else "opened")
         p["size"] = p["additions"] + p["deletions"]
         p["bucket"] = "S" if p["size"] < small else ("M" if p["size"] < large else "L")
         p["reviewer"] = first["login"] if first else None
         p["never_reviewed"] = first is None
-        p["reviewed_while_draft"] = bool(first_at and ready_events and first_at < ready_events[0]
-                                         and not before)
         if first_at:
             p["hours"] = max(0.0, (first_at - ready_at).total_seconds() / 3600.0)
             p["work_hours"] = L.working_seconds(ready_at, first_at) / 3600.0
@@ -374,6 +379,7 @@ def review_wait(data, cfg):
         "overall": overall, "by_week": by_week, "by_size": by_size, "by_author": by_author,
         "by_reviewer": reviewers, "prs": len(window), "bots_dropped": len(bots),
         "ready_from_open": opened,
+        "reviewed_as_draft": [p["number"] for p in window if p["ready_source"] == "reviewed as draft"],
         "never_reviewed": [p["number"] for p in window if p["never_reviewed"]],
         "slowest": [{"number": p["number"], "author": p["author"], "reviewer": p["reviewer"],
                      "hours": p["hours"], "work_hours": p["work_hours"], "size": p["size"],
@@ -413,9 +419,9 @@ def review_wait(data, cfg):
         C.definitions([
             ("Ready", "The last time the PR was marked ready for review before its first human review. "
                       "A PR that was never a draft is ready when it was opened."),
-            ("Human review", "The earliest review that is an approval, a change request or a review comment, "
-                             "by someone other than the author and not a bot. A plain conversation comment "
-                             "is not a review."),
+            ("Human review", "The earliest review submitted before the merge — an approval, a change request "
+                             "or a review comment, also one that was dismissed later — by someone other than "
+                             "the author and not a bot. A plain conversation comment is not a review."),
             ("Waiting time", "Hours from ready to that first review. 'Weekdays only' counts Monday to "
                              "Friday (UTC, no holiday calendar)."),
             ("No human review", "Merged without one. Counted separately and kept out of the medians."),
@@ -471,6 +477,9 @@ def review_wait(data, cfg):
         C.section("Data quality", C.bullets([
             "%d PRs by bots were left out; reviews by bots do not stop the clock." % len(bots),
             "%d of %d PRs have no ready-for-review event and use the time they were opened." % (opened, len(window)),
+            "%d PRs were first reviewed while still drafts; their wait counts as 0 hours."
+            % len(snapshot["reviewed_as_draft"]),
+            "Size buckets use all changed lines, generated files included; the PR size report excludes those.",
             ("Merged with no human review: %s." % ", ".join("#%d" % n for n in snapshot["never_reviewed"]))
             if snapshot["never_reviewed"] else "Every merged PR had a human review.",
             "Weekday hours use UTC and no holiday calendar; a wait across a public holiday is overstated.",
@@ -484,30 +493,24 @@ def review_wait(data, cfg):
 def rework(data, cfg):
     start, end, humans, window, bots = scope(data)
     days = data["followup_days"]
-    key_re = re.compile(cfg["ticket_pattern"])
     scope_re = re.compile(r"^\s*\w+\(([^)]+)\)\s*!?:")
     for p in humans:
         p["merged"] = L.parse_ts(p["merged_at"])
-        m = key_re.search(p["title"])
-        p["key_source"] = "title" if m else None
-        if not m:
-            m = key_re.search(p["head_ref"].upper().replace("_", "-"))
-            p["key_source"] = "branch" if m else None
-        p["key"] = m.group(0) if m else None
-        p["revert"] = bool(re.match(r'^\s*Revert\s+"', p["title"], re.I) or
-                           re.match(r"^\s*revert[:(\s]", p["title"], re.I))
-        s = scope_re.match(p["title"])
-        p["app"] = s.group(1).strip().lower() if s else "(unscoped)"
+        p["key"], p["key_source"] = L.find_ticket(cfg, p["title"], p["head_ref"])
+        p["revert"] = bool(REVERT_TITLE.match(p["title"]))
+        s_ = scope_re.match(p["title"])
+        p["app"] = s_.group(1).strip().lower() if s_ else "(unscoped)"
         p["kind"] = "revert" if p["revert"] else None
         p["anchor"] = p["days_apart"] = None
+    # A follow-up is a PR whose ticket already had a PR merged at most `days` earlier.
+    # Comparing with the previous PR of the ticket, not with its first one in the data,
+    # makes the classification independent of how far back the report looks.
     for key, items in L.group_by([p for p in humans if not p["revert"]], lambda p: p["key"]).items():
         items.sort(key=lambda p: p["merged"])
-        anchor = items[0]
-        for p in items[1:]:
-            gap = (p["merged"] - anchor["merged"]).total_seconds() / 86400.0
+        for prev, p in zip(items, items[1:]):
+            gap = (p["merged"] - prev["merged"]).total_seconds() / 86400.0
             if gap <= days:
-                p["kind"], p["anchor"], p["days_apart"] = "follow-up", anchor["number"], gap
-    mature_cut = end - timedelta(days=days)
+                p["kind"], p["anchor"], p["days_apart"] = "follow-up", prev["number"], gap
     weeks = weeks_between(start, end)
 
     def stats(items):
@@ -522,10 +525,7 @@ def rework(data, cfg):
                 "low": n < L.LOW_N, "flags": ["low n"] if n < L.LOW_N else []}
 
     overall = stats(window)
-    mature = stats([p for p in window if p["merged"] <= mature_cut])
     by_week = {w: stats([p for p in window if p["week"] == w]) for w in weeks}
-    immature_weeks = [w for w in weeks if any(p["week"] == w and p["merged"] > mature_cut for p in window)
-                      or L.iso_week(mature_cut + timedelta(days=1)) <= w]
     by_app = {a: stats(v) for a, v in L.group_by(window, lambda p: p["app"]).items()}
     by_author = {a: stats(v) for a, v in L.group_by(window, lambda p: p["author"]).items()}
     listed = [p for p in window if p["kind"]]
@@ -533,7 +533,8 @@ def rework(data, cfg):
     snapshot = {
         "metric": "rework", "unit": "share of PRs", "generated": datetime.now(timezone.utc).isoformat(),
         "repo": data["repo"], "base": data["base"], "window": [data["window_start"], data["window_end"]],
-        "followup_days": days, "overall": overall, "mature": mature, "by_week": by_week, "by_app": by_app,
+        "followup_days": days, "overall": overall, "by_week": by_week, "by_app": by_app,
+        "default_ticket_pattern": cfg["_ticket_default"],
         "by_author": by_author, "prs": len(window), "bots_dropped": len(bots), "keyless": keyless,
         "rework_prs": [{"number": p["number"], "week": p["week"], "kind": p["kind"], "key": p["key"],
                         "key_source": p["key_source"], "anchor": p["anchor"], "days_apart": p["days_apart"],
@@ -555,46 +556,44 @@ def rework(data, cfg):
         return [{"label": short(k), "value": (table_[k]["rate"] or 0) * 100 if table_[k]["n"] else None,
                  "lo": (table_[k]["ci_lo"] or 0) * 100 if table_[k]["n"] else None,
                  "hi": (table_[k]["ci_hi"] or 0) * 100 if table_[k]["n"] else None,
-                 "low": table_[k]["low"] or k in immature_weeks, "n": "n=%d" % table_[k]["n"]} for k in order]
+                 "low": table_[k]["low"], "n": "n=%d" % table_[k]["n"]} for k in order]
 
     html_ = C.page(
         "Rework and reverts", header(data, bots, window),
         C.bullets([
-            "%s of merged PRs are rework: %d reverts and %d follow-ups out of %d PRs (90 %% CI %d – %d %%)."
-            % (pct(overall["rate"]), overall["reverts"], overall["followups"], overall["n"],
-               round((overall["ci_lo"] or 0) * 100), round((overall["ci_hi"] or 0) * 100)),
-            "Counting only PRs old enough to have had a full %d-day follow-up window: %s (%d of %d PRs)."
-            % (days, pct(mature["rate"]), mature["rework"], mature["n"]),
+            ("%s of merged PRs are rework: %d reverts and %d follow-ups out of %d PRs (90 %% CI %d – %d %%)."
+             % (pct(overall["rate"]), overall["reverts"], overall["followups"], overall["n"],
+                round((overall["ci_lo"] or 0) * 100), round((overall["ci_hi"] or 0) * 100)))
+            if overall["n"] else "No pull requests by people were merged in this window.",
             "Treat the follow-up share as an upper bound: a second PR for the same ticket is often a "
             "planned split, not a defect. The list at the end is there to check.",
         ]),
         C.tiles([("Rework rate", pct(overall["rate"]), "%d of %d PRs" % (overall["rework"], overall["n"])),
                  ("Reverts", "%d PRs" % overall["reverts"], pct(overall["revert_rate"])),
                  ("Follow-ups", "%d PRs" % overall["followups"], pct(overall["followup_rate"])),
-                 ("Rate on mature PRs", pct(mature["rate"]), "merged at least %d days ago" % days),
+                 ("Median days to follow-up", fmt(overall["median_days"], "days", 1), None),
                  ("PRs without a ticket key", "%d PRs" % keyless, "cannot be grouped")]),
         C.definitions([
-            ("Revert", 'A merged PR whose title starts with "Revert". It counts once.'),
-            ("Follow-up", "For each ticket key, the first merged PR is the anchor. Every later PR with the "
-                          "same key merged within %d days of the anchor is a follow-up." % days),
+            ("Revert", 'A merged PR titled Revert "…" (the title GitHub gives a revert) or with the commit '
+                       'type revert:. Reverting a revert is a re-land and does not count.'),
+            ("Follow-up", "A PR whose ticket already had another PR merged at most %d days earlier. That "
+                          "earlier PR is shown as its anchor." % days),
             ("Ticket key", "Matched with the pattern %s in the PR title, then in the branch name. PRs "
                            "without one stay in the total but cannot be follow-ups." % cfg["ticket_pattern"]),
             ("Rework rate", "Reverts plus follow-ups, as a share of the PRs merged in the bucket. A PR that "
                             "is both counts once, as a revert."),
             ("Lookback", "PRs merged in the %d days before the window are read only to find anchors." % days),
-            ("Immature", "PRs merged in the last %d days have not had a full follow-up window yet, so "
-                         "recent weeks understate the rate. They are drawn faded." % days),
             ("App", "The scope in a title like type(app): message; otherwise (unscoped)."),
         ]),
         C.section("Per week",
                   C.grid(C.card("Rework rate per week", C.columns(rate_points(weeks, by_week, short_week), "%"),
-                                "% of merged PRs · whisker = 90 % CI · faded = little data or immature"),
+                                "% of merged PRs · whisker = 90 % CI · faded = little data"),
                          C.card("Merged PRs by kind", C.stacked(
-                             [{"label": short_week(w), "low": w in immature_weeks,
+                             [{"label": short_week(w), "low": by_week[w]["low"],
                                "values": [by_week[w]["n"] - by_week[w]["rework"], by_week[w]["followups"],
                                           by_week[w]["reverts"]]} for w in weeks],
                              ["first delivery", "follow-up", "revert"], "PRs"), "number of PRs")),
-                  C.table(cols, [row(w, by_week[w], "immature" if w in immature_weeks else "") for w in weeks], num)),
+                  C.table(cols, [row(w, by_week[w]) for w in weeks], num)),
         C.section("Per app",
                   C.card("Rework rate per app", C.hbars(
                       [{"label": a, "value": (by_app[a]["rate"] or 0) * 100, "low": by_app[a]["low"],
@@ -619,6 +618,10 @@ def rework(data, cfg):
         C.section("Data quality", C.bullets([
             "%d PRs by bots were left out." % len(bots),
             "%d of %d PRs carry no ticket key." % (keyless, len(window)),
+            ("No ticket_pattern is configured, so anything shaped like ABC-123 counts as a key (minus known "
+             "look-alikes such as UTF-8) and lower-case branch names are not searched. Set ticket_pattern in "
+             ".enabler/kpi/config.json to the project's own keys for a reliable follow-up count.")
+            if cfg["_ticket_default"] else "Ticket keys follow the configured pattern.",
             "Reverts done by hand, without the standard revert title, are not detected.",
             "Revert commits pushed straight to the base branch without a PR are not in this report.",
         ])),
@@ -627,6 +630,20 @@ def rework(data, cfg):
 
 
 # --------------------------------------------------------------------- main
+
+PERSON_BLOCKS = ("by_author", "by_reviewer", "by_assignee")
+PERSON_FIELDS = ("author", "reviewer", "assignee")
+
+
+def without_people(snapshot):
+    """The snapshot with no person in it, for projects that switch show_people off:
+    the snapshot can end up committed, so hiding names only in the HTML is not enough."""
+    out = {k: v for k, v in snapshot.items() if k not in PERSON_BLOCKS}
+    for key, value in out.items():
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            out[key] = [{f: v for f, v in item.items() if f not in PERSON_FIELDS} for item in value]
+    return out
+
 
 METRICS = {"pr-size": pr_size, "review-wait": review_wait, "rework": rework}
 
@@ -645,7 +662,10 @@ def main():
     args = ap.parse_args()
 
     kpi_dir = args.kpi_dir or L.find_kpi_dir()
-    cfg = L.load_config(kpi_dir)
+    try:
+        cfg = L.load_config(kpi_dir)
+    except L.ConfigError as exc:
+        L.die("Configuration problem in .enabler/kpi/config.json: %s" % exc)
     need = list(METRICS) if args.metric == "all" else [args.metric]
     try:
         data = fetch(args, cfg, need)
@@ -654,6 +674,8 @@ def main():
     snap_dir, rep_dir = L.output_dirs(kpi_dir, args.out_dir)
     for name in need:
         snapshot, html_ = METRICS[name](data, cfg)
+        if not cfg["show_people"]:
+            snapshot = without_people(snapshot)
         L.save_snapshot(snap_dir, name, snapshot)
         path = os.path.join(rep_dir, name + ".html")
         with open(path, "w", encoding="utf-8") as fh:

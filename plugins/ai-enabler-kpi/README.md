@@ -54,7 +54,8 @@ Each metric is broken down per week (or sprint), per area or issue type, and **p
 - **A script does the arithmetic.** `scripts/pr_metrics.py` and `scripts/jira_cycle.py` compute every figure — medians, bootstrap confidence intervals, coverage, Wilson intervals for rates — with a fixed seed, so the same data gives the same report. The model runs the script and reads the result; it calculates nothing.
 - **GitHub is read with the GitHub CLI.** Install `gh` (https://cli.github.com) and run `gh auth login` — for GitHub Enterprise, `gh auth login --hostname <host>`. This is the recommended way: it uses each person's own access, stores no token in the project, and needs no MCP server. Answers about merged pull requests are cached under `.enabler/kpi/delivery/cache/`, so a second run is fast.
 - **Jira is read directly when possible.** With `JIRA_URL` and `JIRA_PERSONAL_TOKEN` (or `JIRA_USERNAME` and `JIRA_API_TOKEN`) in the environment — the variables the `mcp-atlassian` server already uses — the script calls Jira's REST API itself, read-only. Otherwise the `jira-collector` agent fetches the tickets through the connected Jira MCP server and saves them to files for the script; the skill then spot-checks what the agent copied.
-- **Snapshots.** Each metric leaves `.enabler/kpi/delivery/<metric>.json`. The dashboard is built from those and recomputes nothing.
+- **Snapshots.** Each metric leaves `.enabler/kpi/delivery/<metric>.json`. The dashboard is built from those and recomputes nothing; it says so when its sections were computed for different repositories or windows. In a project where KPI capture was never switched on, snapshots and reports go to `.enabler/delivery/` instead: running a report does not opt the project into capture.
+- **A ticket pattern makes rework reliable.** Follow-ups are found by ticket key. Set `ticket_pattern` to the project's own keys; without it, anything shaped like `ABC-123` counts (minus known look-alikes such as `UTF-8`), and the report says so.
 - **Not in the hooks.** These metrics query remote systems and take seconds to minutes; a hook runs on every tool call and must be instant and silent. They run when a report is asked for.
 
 ### Configuration
@@ -65,11 +66,11 @@ Under `delivery` in `.enabler/kpi/config.json`; everything is optional:
 |---|---|---|
 | `repo`, `base_branch` | the current repository and its default branch | What to analyse |
 | `weeks` | `6` | Window for the pull-request metrics |
-| `followup_days` | `14` | How long after a ticket's first PR a later one counts as a follow-up |
-| `exclude` | `[]` | Extra glob patterns left out of PR size, on top of lock files, `dist/`, `coverage/`, `*.min.js`, `*.snap`, `*.generated.*` … |
+| `followup_days` | `14` | A PR is a follow-up when its ticket already had another PR merged at most this many days earlier |
+| `exclude` | `[]` | Extra glob patterns left out of PR size, on top of lock files, `dist/`, `.nx/`, `coverage/`, `node_modules/`, `*.min.js`, `*.map`, `*.snap`, `*.generated.*` …. A pattern ending in `/**` matches that directory at any depth |
 | `area_roots` | `apps`, `libs`, `packages`, `services`, `modules` | Directories whose children are areas of their own |
 | `size_buckets` | `[100, 500]` | S below the first, L from the second |
-| `show_people` | `true` | Per-developer charts and tables. Set to `false` to leave names out |
+| `show_people` | `true` | Per-developer charts and tables. Set to `false` to leave people out of the reports and of the snapshots |
 | `jira.project`, `jira.sprints`, `jira.board` | none, `3`, first scrum board | What to analyse in Jira |
 | `jira.statuses.order` | a common workflow | The statuses from first to last; statuses in the same group are the same step. Decides what "backward" means |
 | `jira.statuses.in_progress`, `jira.statuses.blocked` | `In Progress`…, `Blocked`… | Where cycle time starts, and what counts as blocked |
@@ -78,7 +79,7 @@ The ticket key pattern is the top-level `ticket_pattern`, shared with the AI usa
 
 ### Per-developer figures
 
-They are on by default because knowing the numbers per developer is the point for many teams. The reports attach the context they need: PR size follows the kind of work, a follow-up is attributed to whoever opened it (often the person finishing someone else's ticket), a Jira assignee is whoever held the ticket at the end, and the reviewer with the most first reviews is carrying the load. Depending on the country and the organisation, reporting on named individuals may need agreement with the people concerned or their representatives; `show_people: false` produces the same reports without names.
+They are on by default because knowing the numbers per developer is the point for many teams. The reports attach the context they need: PR size follows the kind of work, a follow-up is attributed to whoever opened it (often the person finishing someone else's ticket), a Jira assignee is whoever held the ticket at the end, and the reviewer with the most first reviews is carrying the load. Depending on the country and the organisation, reporting on named individuals may need agreement with the people concerned or their representatives; `show_people: false` produces the same reports with no person in them — not in the HTML and not in the snapshot files.
 
 ## What is measured
 

@@ -50,9 +50,45 @@ DEFAULTS = {
 
 DEFAULT_EXCLUDES = [
     "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "npm-shrinkwrap.json", "*.lock",
-    "go.sum", "dist/**", "build/**", ".nx/**", "coverage/**", "node_modules/**",
+    "go.sum", "dist/**", ".nx/**", "coverage/**", "node_modules/**",
     "*.min.js", "*.min.css", "*.map", "*.snap", "*.generated.*", "*.pb.go", "*_pb2.py",
 ]
+
+
+# Things that look like issue keys and are not (the capture hook has the same list).
+NOT_TICKETS = {
+    "UTF", "SHA", "ISO", "CVE", "RFC", "HTTP", "TLS", "SSL", "AES", "MD", "RSA", "CWE", "JDK", "JSR",
+    "ES", "PEP", "UTC", "GMT", "COVID", "HTTPS", "TCP", "IPV", "BASE", "CP", "WINDOWS", "LATIN",
+    "ASCII", "OPUS", "SONNET", "HAIKU", "FABLE", "CLAUDE", "GPT", "PYTHON", "JAVA", "NODE", "OAUTH",
+    "HTML", "CSS", "ECMA", "ANGULAR", "REACT", "VUE", "SPRING", "JUNIT", "LOG4J", "X86", "ARM",
+    "WCAG", "PCI", "SOC", "GDPR", "IPV4", "IPV6", "H", "V",
+}
+DEFAULT_TICKET_PATTERN = r"\b[A-Z][A-Z0-9]{1,9}-\d{1,6}\b"
+
+
+class ConfigError(ValueError):
+    pass
+
+
+def find_ticket(cfg, title, branch):
+    """(key, where it was found) for a pull request, or (None, None).
+
+    With a project-specific pattern the branch name is searched in upper case
+    too, because branches are usually lower case. With the default pattern —
+    which matches anything shaped like ABC-123 — the branch is searched as
+    written and known look-alikes (UTF-8, NODE-20, OAUTH-2 ...) are skipped,
+    otherwise unrelated pull requests would be grouped as one ticket.
+    """
+    pattern, default = cfg["_ticket_re"], cfg["_ticket_default"]
+    sources = (("title", title or ""),
+               ("branch", (branch or "") if default else (branch or "").upper().replace("_", "-")))
+    for where, text in sources:
+        for m in pattern.finditer(text):
+            key = m.group(0)
+            if default and key.split("-")[0] in NOT_TICKETS:
+                continue
+            return key, where
+    return None, None
 
 
 # -------------------------------------------------------------------- config
@@ -89,18 +125,51 @@ def load_config(kpi_dir):
         except (OSError, ValueError):
             raw = {}
     cfg = merge(DEFAULTS, raw.get("delivery") or {})
-    if not cfg.get("ticket_pattern"):
-        cfg["ticket_pattern"] = raw.get("ticket_pattern") or r"\b[A-Z][A-Z0-9]{1,9}-\d{1,6}\b"
+    custom = cfg.get("ticket_pattern") or raw.get("ticket_pattern")
+    cfg["ticket_pattern"] = custom or DEFAULT_TICKET_PATTERN
+    cfg["_ticket_default"] = not custom
+    # Fail with a sentence, not a traceback, on a configuration that cannot work.
+    try:
+        cfg["_ticket_re"] = re.compile(cfg["ticket_pattern"])
+    except re.error as exc:
+        raise ConfigError("ticket_pattern is not a valid regular expression: %s" % exc)
+    if not isinstance(cfg["exclude"], list) or not all(isinstance(x, str) for x in cfg["exclude"]):
+        raise ConfigError('delivery.exclude must be a list of glob patterns, for example ["*.md"].')
+    b = cfg["size_buckets"]
+    if not (isinstance(b, list) and len(b) == 2 and all(isinstance(x, (int, float)) for x in b) and b[0] < b[1]):
+        raise ConfigError("delivery.size_buckets must be two increasing numbers, for example [100, 500].")
+    if not isinstance(cfg["area_roots"], list):
+        raise ConfigError("delivery.area_roots must be a list of directory names.")
     return cfg
 
 
-def output_dirs(kpi_dir, out_dir=None):
-    """(snapshot dir, report dir). Without a KPI directory, fall back to ./.enabler/kpi."""
-    kpi_dir = kpi_dir or os.path.join(os.getcwd(), ".enabler", "kpi")
-    snap = os.path.join(kpi_dir, "delivery")
-    rep = out_dir or os.path.join(kpi_dir, "reports", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
-    os.makedirs(snap, exist_ok=True)
-    os.makedirs(rep, exist_ok=True)
+def project_root():
+    try:
+        out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, timeout=5)
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return os.getcwd()
+
+
+def output_dirs(kpi_dir, out_dir=None, create=True):
+    """(snapshot dir, report dir).
+
+    Without a KPI directory the files go to <repository root>/.enabler/delivery/
+    and never to .enabler/kpi/: that directory is what switches the usage hooks
+    on, and running a report must not opt a project into capture.
+    """
+    if kpi_dir:
+        snap = os.path.join(kpi_dir, "delivery")
+        base = os.path.join(kpi_dir, "reports")
+    else:
+        snap = os.path.join(project_root(), ".enabler", "delivery")
+        base = os.path.join(snap, "reports")
+    rep = out_dir or os.path.join(base, datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    if create:
+        os.makedirs(snap, exist_ok=True)
+        os.makedirs(rep, exist_ok=True)
     return snap, rep
 
 
@@ -310,6 +379,9 @@ class Gh:
                "--search", "merged:>=%s" % since.strftime("%Y-%m-%d"), "--json", fields]
         self.calls += 1
         prs = json.loads(run(cmd, timeout=600))
+        if len(prs) >= 2000:
+            sys.stderr.write("warning: GitHub returned 2,000 pull requests, the most this report reads; "
+                             "older ones in the window are missing. Use a shorter --weeks.\n")
         out = []
         for p in prs:
             author = p.get("author") or {}

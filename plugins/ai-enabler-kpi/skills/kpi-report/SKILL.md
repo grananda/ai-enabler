@@ -16,6 +16,7 @@ The numbers come from a script, not from you. Your part is to run it with the ri
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/kpi_report.py" --quiet [filters]
    ```
 
+   - `--no-delivery` and `--refresh` are for this skill: do not pass them to `kpi_report.py`, which does not know them (`--refresh` goes to the delivery scripts in step 4).
    - With no `--kpi-dir` it uses the project's `.enabler/kpi/` (or `ENABLER_KPI_DIR`). Repeat `--kpi-dir` to merge several repositories into one report.
    - Translate what the human said into filters: "this week" or "October" into `--since`/`--until` dates, a Jira key into `--ticket`, a person into `--user` (the id as it appears under `.enabler/kpi/events/`).
    - It writes `report.md`, `report.html`, `kpi.json`, `sessions.csv`, `tickets.csv`, `users.csv` and `daily.csv` to `.enabler/kpi/reports/<today>/` unless `--out-dir` says otherwise, and prints that location.

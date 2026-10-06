@@ -41,8 +41,26 @@ def week_points(by_week, key="median", scale=1.0, lo="ci_lo", hi="ci_hi"):
     return pts
 
 
+REP_DIR = None
+
+
 def link(name, text):
-    return "<p class='note'><a href='%s.html'>%s</a></p>" % (name, C.e(text))
+    """A link to a detail page, only when that page is in the same folder."""
+    if REP_DIR and os.path.isfile(os.path.join(REP_DIR, name + ".html")):
+        return "<p class='note'><a href='%s.html'>%s</a></p>" % (name, C.e(text))
+    return "<p class='note'>%s</p>" % C.e("The detailed page is not in this folder; rerun the metric to get it.")
+
+
+def origin(snap):
+    """Where and when a snapshot comes from, shown with each section."""
+    bits = []
+    if snap.get("repo"):
+        bits.append("%s · base %s" % (snap["repo"], snap.get("base")))
+    if snap.get("window"):
+        bits.append("%s to %s" % (snap["window"][0][:10], snap["window"][1][:10]))
+    if snap.get("generated"):
+        bits.append("computed %s" % snap["generated"][:10])
+    return " · ".join(bits)
 
 
 def main():
@@ -52,10 +70,15 @@ def main():
     args = ap.parse_args()
     kpi_dir = args.kpi_dir or L.find_kpi_dir()
     cfg = L.load_config(kpi_dir)
-    snap_dir, rep_dir = L.output_dirs(kpi_dir, args.out_dir)
+    global REP_DIR
+    snap_dir, rep_dir = L.output_dirs(kpi_dir, args.out_dir, create=False)
     size, wait, rework, cycle = (L.load_snapshot(snap_dir, n) for n in ("pr-size", "review-wait", "rework", "cycle-time"))
     if not any((size, wait, rework, cycle)):
         L.die("No delivery snapshots in %s. Run the metric skills first." % snap_dir)
+    os.makedirs(rep_dir, exist_ok=True)
+    REP_DIR = rep_dir
+    scopes = {(s_["repo"], s_["base"], s_["window"][0][:10], s_["window"][1][:10])
+              for s_ in (size, wait, rework) if s_}
 
     tiles, parts, missing = [], [], []
     if cycle:
@@ -75,8 +98,9 @@ def main():
                          "note": "blocked now" if b["still_blocked"] else b["type"]} for b in cycle["blocked"][:8]],
                        "days", color_index=7, digits=1), "calendar days, longest first")),
             link("cycle-time", "Full cycle-time report: per issue type, per developer, every backward move →"),
-            note="Last %d closed sprints, %s to %s." % (len(names), cycle["sprints"][0]["start"][:10],
-                                                         cycle["sprints"][-1]["end"][:10])))
+            note="Last %d closed sprints, %s to %s · computed %s."
+                 % (len(names), cycle["sprints"][0]["start"][:10], cycle["sprints"][-1]["end"][:10],
+                    (cycle.get("generated") or "")[:10])))
     else:
         missing.append("cycle time (Jira)")
     if size:
@@ -90,8 +114,8 @@ def main():
                        [{"label": a, "value": s["median"], "low": s["low"], "note": "%d PRs" % s["n"]}
                         for a, s in sorted(size["by_area"].items(), key=lambda kv: -kv[1]["n"])[:8]], "lines"))),
             link("pr-size", "Full PR size report: per developer, largest PRs, exclusions →"),
-            note="%s over 400 lines, %s over 1,000 lines, across %d PRs."
-                 % (pct(o["over_400"]), pct(o["over_1000"]), o["n"])))
+            note="%s over 400 lines, %s over 1,000 lines, across %d PRs. %s."
+                 % (pct(o["over_400"]), pct(o["over_1000"]), o["n"], origin(size))))
     else:
         missing.append("pull request size")
     if wait:
@@ -106,8 +130,8 @@ def main():
                          "low": s["low"], "n": "n=%d" % s["n"]} for k, s in wait["by_size"].items()],
                        "hours", digits=1), "hours · S, M, L by lines changed")),
             link("review-wait", "Full review report: per developer, per reviewer, slowest PRs →"),
-            note="%s reviewed within 4 hours; %d PRs merged with no human review."
-                 % (pct(o["within_4h"]), o["never_reviewed"])))
+            note="%s reviewed within 4 hours; %d PRs merged with no human review. %s."
+                 % (pct(o["within_4h"]), o["never_reviewed"], origin(wait))))
     else:
         missing.append("review waiting time")
     if rework:
@@ -124,8 +148,7 @@ def main():
                            rework["by_week"][w]["followups"], rework["by_week"][w]["reverts"]]} for w in weeks],
                        ["first delivery", "follow-up", "revert"], "PRs"))),
             link("rework", "Full rework report: per app, per developer, every rework PR →"),
-            note="Upper bound: a second PR for the same ticket is often a planned split. On mature PRs only: %s."
-                 % pct(rework["mature"]["rate"])))
+            note="Upper bound: a second PR for the same ticket is often a planned split. %s." % origin(rework)))
     else:
         missing.append("rework")
 
@@ -172,16 +195,18 @@ def main():
     ai = ""
     try:
         with open(os.path.join(rep_dir, "kpi.json"), encoding="utf-8") as fh:
-            k = json.load(fh)["overall"]
-        ai = C.section("AI usage in the same period", C.tiles([
+            kpi = json.load(fh)
+        k = kpi["overall"]
+        ai = C.section("AI usage", C.tiles([
             ("AI cost", "$%.2f" % k["cost_usd"], "published prices"),
             ("Cost per ticket", "–" if k.get("cost_usd_per_ticket") is None else "$%.2f" % k["cost_usd_per_ticket"], None),
             ("AI working time", "%.1f hours" % (k["ai_seconds"] / 3600.0), None),
             ("Human interactions", "%d" % k["human_interactions"], None),
             ("Lines written by AI", "{:,}".format(k["lines_added"]), None)]),
             link("report", "Full AI usage report →"),
-            note="From the hooks of this plugin. Shown here for context; the delivery metrics above come from "
-                 "GitHub and Jira and cover the whole team, with or without AI.")
+            note="Captured by the hooks of this plugin for %s — its own period, which need not match the "
+                 "windows above. The delivery metrics come from GitHub and Jira and cover the whole team, "
+                 "with or without AI." % kpi.get("period", "the sessions recorded"))
     except (OSError, ValueError, KeyError):
         pass
 
@@ -193,7 +218,10 @@ def main():
     if cycle:
         meta.append("Jira %s" % (cycle.get("project") or ""))
     meta.append("generated %s UTC" % datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"))
-    page = C.page("Delivery flow", meta, C.tiles(tiles),
+    mixed = ("<p class='note'><b>The pull-request sections do not describe the same scope</b> — they were "
+             "computed for different repositories, branches or windows (see the line under each). Rerun "
+             "them together for a consistent page.</p>") if len(scopes) > 1 else ""
+    page = C.page("Delivery flow", meta, C.tiles(tiles), mixed,
                   ("<p class='note'>Not in this report, because it has not been collected yet: %s.</p>"
                    % C.e(", ".join(missing))) if missing else "",
                   *parts, people, ai,

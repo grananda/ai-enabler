@@ -137,13 +137,22 @@ Every ticket gets `.enabler/runs/<KEY>/`, which holds `state.json`, `requirement
 Answer the ship gate with `local` or any refusal ("no", "don't push", "keep it local"), say at any point that nothing should be uploaded, pass `--local`, or set `git.local_only: true`, and the project becomes **local-only**:
 
 - no `git push`, no pull request, no Jira comment or transition;
-- with `local`, the work is committed on the feature branch on your machine; with `hold` or a plain "no" it stays uncommitted in the working tree.
+- with `local`, the work is committed on the feature branch on your machine; with a plain "no" it stays uncommitted in the working tree.
 
-This is enforced, not just promised. The plugin ships a hook (`hooks/remote_guard.py`) that, while the file `.enabler/local-only` exists, refuses every `git push`, every `gh`/`glab` command that writes, and every Jira or Confluence MCP tool that writes — from the main conversation and from any subagent. The agents are also told never to work around a refusal and never to remove the marker.
+`hold` is different: it means "not now". Nothing is sent and nothing is committed, but the project does not become local-only, and `/ai-enabler:ship` can finish later.
+
+This is enforced, not just promised. The plugin ships a hook (`hooks/remote_guard.py`) that, while the file `.enabler/local-only` exists anywhere from the working directory up to the repository root, refuses — from the main conversation and from any subagent:
+
+- `git push` in every shape it can recognise: chained, on a new line, inside `bash -c` or `eval`, behind `timeout`, `xargs` or `env`, through `git subtree`, `git lfs`, `git svn`, `hub`, or an alias defined on the spot;
+- every `gh`/`glab` command that writes, including `gh api` write requests, and `curl`/`wget` write requests to GitHub, GitLab, Bitbucket or Atlassian hosts;
+- every MCP tool of GitHub, GitLab, Bitbucket, Jira or Confluence that is not clearly a read;
+- anything that would lift the mode: deleting, moving or overwriting the marker, `git clean`, `git stash -u`, and any edit of `.enabler/config.json`.
+
+Reading stays allowed: fetch, pull, viewing a pull request, reading a Jira issue. The agents are also told never to work around a refusal.
 
 Only you lift it: delete `.enabler/local-only` by hand, then run `/ai-enabler:ship`. A later "ok, push it" in the chat is deliberately not enough.
 
-Limits worth knowing: the hook recognises the commands above; it cannot see a push hidden inside a script or a shell alias the agent runs. Claude Code's own permission prompts for `git push` remain as a second barrier unless you have allow-listed them.
+What it cannot do: no parser sees inside every program. A push performed by a script file, a Makefile target or a binary the agent runs is invisible to the hook. Claude Code's own permission prompt for commands is the second barrier, and for a guarantee that does not depend on either, remove the push credentials or the remote from the machine.
 
 ## Safety rules
 

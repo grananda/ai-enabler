@@ -133,13 +133,17 @@ def columns(points, unit="", height=230, color_index=0, digits=None):
     slot = plot_w / len(points)
     bar_w = min(24.0, slot * 0.6)
     out = ["<svg viewBox='0 0 %d %d' role='img'>" % (width, height)]
+    step = ymax / 4.0
+    tick_digits = 0
+    while tick_digits < 4 and abs(step * 10 ** tick_digits - round(step * 10 ** tick_digits)) > 1e-9:
+        tick_digits += 1    # as many decimals as the gridline values really have
     for i in range(5):
         v = ymax * i / 4
         y = top + plot_h - plot_h * i / 4
         out.append("<line x1='%d' x2='%d' y1='%.1f' y2='%.1f' stroke='var(--%s)' stroke-width='1'/>"
                    % (left, width - right, y, y, "axis" if i == 0 else "grid"))
         out.append("<text class='tick' x='%d' y='%.1f' text-anchor='end'>%s</text>"
-                   % (left - 6, y + 4, e(fmt_num(v, 0 if ymax >= 8 else 1))))
+                   % (left - 6, y + 4, e(fmt_num(v, tick_digits))))
     for i, p in enumerate(points):
         cx = left + slot * (i + 0.5)
         label = str(p["label"])
@@ -294,6 +298,7 @@ def section(title, *parts, note=None):
 
 
 def bullets(items):
+    items = [i for i in items if i]
     return "<ul class='lede'>%s</ul>" % "".join("<li>%s</li>" % e(i) for i in items) if items else ""
 
 

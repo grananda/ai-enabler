@@ -91,7 +91,7 @@ A plan with a blocking question cannot be auto-approved: even when `plan` is not
 1. Create the feature branch from the base branch, per the safety rules and `git.branch_pattern`. Record it in `state.json`.
 2. If `test_order` is `before` or `mixed`, launch `ai-enabler:test-engineer` with `mode: acceptance` and the run directory. It writes the tests for the criteria the ticket states and `acceptance-tests.md`; no production code exists yet, so the tests are expected to fail or not to build.
 3. Read what it returns. A criterion it could not turn into a test without guessing is not a reason to stop: it moves to the after-code stage and is named in the delivery report.
-4. If `test_order` is `after`, skip this step and say so in one line, with the reason (the ticket states no acceptance criteria, or the configuration asks for it).
+4. If `test_order` is `after`, the branch is still created but no tests are written yet: skip items 2 and 3 and say so in one line, with the reason (the ticket states no acceptance criteria, or the configuration asks for it).
 
 ## Step 5 — Implement
 
@@ -165,8 +165,6 @@ The commands or steps a reviewer can run.
 
 Then present the ship gate and wait. List exactly what will happen, because approval covers exactly this list:
 
-In local-only mode the gate does not offer to ship. Replace the `Will do` line with `Will do   : nothing leaves this machine (local-only) — local commit on <branch> only`, and ask `Commit locally? (local / hold / fix: <what to change>)`.
-
 ```
 READY TO SHIP — <KEY>
 Diff      : <n> files changed, +<added> −<removed>, on <branch>
@@ -181,9 +179,12 @@ Report    : .enabler/runs/<KEY>/delivery-report.md
 Ship it? (ship / local / hold / fix: <what to change>)
 ```
 
+In local-only mode the gate does not offer to ship. Replace the `Will do` line with `Will do   : nothing leaves this machine (local-only) — local commit on <branch> only`, and ask `Commit locally? (local / hold / fix: <what to change>)`.
+
 - **ship** — carry out the listed actions following `${CLAUDE_PLUGIN_ROOT}/skills/ship/SKILL.md`, then record `pr_url` and set the stage to `done`.
-- **local**, or **any refusal to upload** ("no", "don't push", "keep it local") — nothing leaves this machine. Follow "When the person says no to the remote" in the safety rules: write `.enabler/local-only`, then commit on the feature branch locally (staged by path, as the safety rules say) unless the person asked for no commit either, set `status` to `held`, and report the commit hash, the branch and that nothing was pushed, opened or written to Jira. Do not push, do not open the pull request, do not touch Jira.
-- **hold** — "not now": set `status` to `held` and stop with everything in the working tree and the run directory; `/ai-enabler:ship <KEY>` finishes later.
+- **local** — nothing leaves this machine, and the work is committed here. Follow "When the person says no to the remote" in the safety rules: write `.enabler/local-only`, commit on the feature branch locally (staged by path, as the safety rules say), set `status` to `held`, and report the commit hash, the branch and that nothing was pushed, opened or written to Jira.
+- **any other refusal to upload** ("no", "don't push", "keep it local") — the same, without the commit: write `.enabler/local-only`, leave the changes in the working tree, set `status` to `held`, and offer `local` if they want it committed. Do not push, do not open the pull request, do not touch Jira.
+- **hold** — "not now", which is not a refusal: no marker is written. Set `status` to `held` and stop with everything in the working tree and the run directory; `/ai-enabler:ship <KEY>` finishes later.
 - **fix** — treat the request as a fix list for the implementer, re-run tests and the affected lenses, record the intervention, and come back to this gate.
 
 If `ship` is not in `gates`, ship only when `--ship` was passed; otherwise stop at "hold" and say how to finish.

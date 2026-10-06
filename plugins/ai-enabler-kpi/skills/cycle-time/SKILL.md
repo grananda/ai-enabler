@@ -17,7 +17,7 @@ How long does a ticket take once work starts, how often is it sent back, and how
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/jira_cycle.py" --project <KEY> [--sprints N] [--board ID]
    ```
 
-   It reads Jira's REST API when the environment has `JIRA_URL` and `JIRA_PERSONAL_TOKEN` (or `JIRA_USERNAME` and `JIRA_API_TOKEN`) — the same variables the `mcp-atlassian` server uses. This is the preferred route: nothing passes through a model, so nothing can be mistyped. Never ask for a token in the chat and never write one to a file.
+   (`--refresh` is this skill's own flag, not the script's.) It reads Jira's REST API when the environment has `JIRA_URL` and `JIRA_PERSONAL_TOKEN` (or `JIRA_USERNAME` and `JIRA_API_TOKEN`) — the same variables the `mcp-atlassian` server uses. This is the preferred route: nothing passes through a model, so nothing can be mistyped. `JIRA_URL` must be https. Never ask for a token in the chat and never write one to a file.
 3. **If it answers `NO_JIRA_ACCESS`,** collect through MCP instead:
    - Unless `--refresh` was passed, reuse an existing collection in `.enabler/kpi/delivery/jira-input/` that is less than a day old.
    - Otherwise launch the `ai-enabler-kpi:jira-collector` agent with the project key, the number of sprints, and the output directory `.enabler/kpi/delivery/jira-input/`. For more than about 25 tickets, launch several collectors in parallel, one per batch of ticket keys, each writing its own file. They return a count and a path, never ticket data.
@@ -30,10 +30,11 @@ How long does a ticket take once work starts, how often is it sent back, and how
    - If no Jira MCP server is connected either, say what is needed (the environment variables above, or a Jira MCP server) and stop.
 4. **Read the snapshot** `.enabler/kpi/delivery/cycle-time.json` and tell the person:
    - the headline: median cycle time with its 90 % confidence interval and coverage, per sprint, and whether the sprint-to-sprint differences are larger than the intervals (usually they are not);
-   - the backward rate, and how many of those tickets were sent back from testing, acceptance or done rather than re-planned;
+   - the backward rate, and how many of those tickets were sent back from a stage after in progress (review, test, acceptance, done) rather than re-planned;
    - blocked time: how many tickets, how many days, which are blocked right now;
    - what stands out per issue type and per developer, with the report's own caveat about assignees;
    - **statuses the script did not recognise** (`unknown_statuses`). They are ignored when looking for backward moves, so if the list is not empty, propose adding them to `delivery.jira.statuses.order` in the configuration, in the right position, and offer to rerun;
+   - anything under `resolved_outside` (tickets resolved before the first sprint or after the last, in no bucket), `truncated_changelogs` (Jira returned only part of their history — collect those one by one and rerun) and `duplicates_dropped`;
    - how the data was obtained (REST, or collected by an agent and spot-checked), and the path of the HTML report.
 
 ## The workflow is configuration

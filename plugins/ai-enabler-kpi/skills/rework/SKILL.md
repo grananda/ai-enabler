@@ -6,7 +6,7 @@ argument-hint: "[--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--followup-da
 
 # ai-enabler-kpi:rework — rework and reverts
 
-How often does merged work need to be undone or fixed straight away? The metric is reverts plus follow-up PRs — a later PR for the same ticket key merged within the follow-up window (14 days by default) of the first one — as a share of merged PRs.
+How often does merged work need to be undone or fixed straight away? The metric is reverts plus follow-up PRs — a PR whose ticket already had another PR merged within the follow-up window (14 days by default) of the first one — as a share of merged PRs.
 
 The arithmetic is done by a script, not by you: `pr_metrics.py` reads GitHub through the GitHub CLI, computes every figure, and writes a snapshot plus an HTML report with charts.
 
@@ -21,11 +21,11 @@ The arithmetic is done by a script, not by you: `pr_metrics.py` reads GitHub thr
    With no flags it analyses the repository of the current directory, its default branch, and the window in `.enabler/kpi/config.json` (`delivery.weeks`, default 6). Translate what the person said into flags: "last quarter" → `--weeks 13`, "on develop" → `--base develop`, another repository → `--repo owner/name`. `--refresh` ignores the local cache of GitHub answers.
 2. **If it stops with a message**, relay it. A message about `gh` means the GitHub CLI is missing or not signed in: see the rules below.
 3. **It prints the path of the HTML report** (`.enabler/kpi/reports/<date>/rework.html`). Read the snapshot `.enabler/kpi/delivery/rework.json` and tell the person:
-   - the headline: the rework rate with its 90 % confidence interval, split into reverts and follow-ups, and the rate on mature PRs only;
+   - the headline: the rework rate with its 90 % confidence interval, split into reverts and follow-ups;
    - **that the follow-up share is an upper bound**: a second PR for the same ticket is often a planned split or a review-driven polish, not a defect. Say this every time you quote the rate;
    - which tickets account for most follow-ups — they usually cluster in two or three;
    - how many PRs carry no ticket key (they cannot be follow-ups) and that hand-made reverts are not detected;
-   - that the most recent weeks are immature and understate the rate;
+   - whether a ticket pattern is configured (`default_ticket_pattern` in the snapshot). Without one, keys are guessed from anything shaped like ABC-123 and lower-case branch names are not read, so the follow-up count is less reliable: recommend setting `ticket_pattern` in `.enabler/kpi/config.json`;
    - the path of the HTML report, as the thing to open.
 4. If the person wants the whole picture, point to `/ai-enabler-kpi:delivery-report`, which runs every delivery metric and builds one dashboard.
 
