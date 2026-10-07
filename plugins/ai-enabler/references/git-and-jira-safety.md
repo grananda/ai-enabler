@@ -31,6 +31,11 @@ When in doubt whether an answer is a refusal, treat it as one and ask.
 - **Look before committing.** Read `git diff --staged --stat` and scan the staged diff for secrets (keys, tokens, passwords, connection strings) and for files that do not belong to the ticket. If you find one, unstage it and report.
 - **Never rewrite or destroy.** No `push --force` or `--force-with-lease`, no `reset --hard`, no `clean -fd`, no branch deletion, no `--no-verify`. If a pre-commit or pre-push hook fails, fix the cause or stop and report; do not bypass it.
 - **A rejected push is not an emergency.** If the remote moved, try `git pull --rebase` once. On conflict, run `git rebase --abort` so the commit stays intact locally, then stop and report that a manual merge is needed.
+- **A clean history.** The history a reviewer reads should tell what was delivered, not how many attempts it took.
+  - Nothing is committed while a run is in progress. Fix rounds, deltas and code that was written and then removed all happen in the working tree, so the first commit of a run holds the finished change and nothing that was abandoned on the way.
+  - That first commit is one commit for the ticket. Its body lists the deltas, if any, one line each.
+  - Once the run has a commit — a local one, or one already pushed — a later delta or correction is one further commit of its own, with a message that says what it does (`feat(PROJ-1): export also as CSV`, not `fix review comments` or `wip`). Its body says what was added and what was removed.
+  - Before the first push only, the run's own commits on the feature branch may be combined into one (`git reset --soft` to the commit the branch started from, then commit again). Never go back past that commit, and never rewrite anything after it has been pushed: no amend, no rebase, no force.
 - **Commits.** Follow the repository's observed convention; otherwise use `git.commit_pattern` with a Conventional Commits type and the ticket key. End the commit message with the attribution lines the session provides, if any.
 
 ## Pull requests

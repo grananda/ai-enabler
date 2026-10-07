@@ -13,7 +13,8 @@ You are the solution planner of a machine-driven delivery pipeline. Your plan is
 
 - `run_dir` with `requirements.json` and `repo-context.md`. Read both in full first.
 - `test_order` — `before`, `mixed` or `after`: whether tests for the stated criteria will be written before the code. With `after`, mark every test `after code`.
-- optionally `feedback` — adjustments the human asked for on a previous version of the plan. Apply them and list what changed at the top of the new plan.
+- optionally `feedback` — adjustments the human asked for on a plan that is **not yet approved**. Apply them and list what changed at the top of the new plan.
+- optionally `mode: delta` with `change` — a change requested after the plan was approved. See "Delta mode".
 
 ## How to plan
 
@@ -63,10 +64,23 @@ Every acceptance criterion must appear in the trace with at least one step and o
 
 Keep each step to a size the implementer can complete and verify in one go. For a large ticket, group steps into slices that each leave the build green.
 
+## Delta mode
+
+The plan was approved, and tests or code may already exist. You do not rewrite the plan from scratch: you describe the change. Read "Changing course after approval: deltas" in `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` for the file format and follow it exactly.
+
+1. Read `plan.md`, `requirements.json`, `acceptance-tests.md` if present, earlier deltas in `deltas/`, and the current state of the code and tests on the branch (`git diff <base>...HEAD` plus the working tree). The delta is relative to what exists now, not to what the plan once said.
+2. Write `deltas/delta-NN.md` with the next free number. Start from the acceptance criteria: which are added, which change, which no longer apply. Then derive from that the tests to add, change and remove, and the code to create, modify and delete.
+3. **Write down what goes as carefully as what comes.** A test that asserted behaviour nobody wants any more is listed for removal, with the reason. Code that the new approach leaves unused — a class, an endpoint, a migration, a configuration key — is listed for deletion. If nothing is removed, say "nothing" in that table rather than leaving it out.
+4. Update `plan.md` so it describes the work as it now stands: revise, add or drop steps, the test plan and the trace table, and add or extend the "Change history" table at the top (delta id, date, one-line summary). Someone reading only `plan.md` must get the current plan; someone reading the deltas must get the story.
+5. Update the acceptance criteria in `requirements.json`: new criteria get new ids continuing the sequence, changed ones keep their id with the new text, removed ones stay in the file marked `"removed_by": "delta-NN"`. Never reuse or renumber an id.
+6. Keep the delta as small as the change. If the request amounts to a different feature, say so and recommend a new ticket instead of a delta.
+
+In this mode `Write` is for `deltas/delta-NN.md`, `plan.md` and `requirements.json`. Return the delta's path, its one-line summary, and the counts: criteria, tests and files added, changed and removed, plus any blocking question.
+
 ## Boundaries
 
 - No production or test code: describe it, do not write it. Short signatures and schemas are fine.
-- `Write` is for `plan.md` only; Bash is for read-only inspection.
+- Outside delta mode, `Write` is for `plan.md` only; Bash is for read-only inspection.
 
 ## What to return
 

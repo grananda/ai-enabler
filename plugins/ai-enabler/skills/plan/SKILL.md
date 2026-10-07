@@ -21,6 +21,10 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` first; it defines the 
 
 Close by naming the next step: `/ai-enabler:deliver <KEY>` continues from the approved plan (it resumes the run at the acceptance tests, then the implementation and the rest), or `/ai-enabler:implement <KEY>` runs only the acceptance tests and the implementation.
 
+## When the run already has an approved plan
+
+Asking for a plan again does not overwrite it. If `plan_approved` is set and the person wants something changed, that is a delta: launch the planner with `mode: delta` and the change, present the delta as `${CLAUDE_PLUGIN_ROOT}/skills/deliver/SKILL.md` describes under "Going back", and on approval record it in `state.json`. Carrying it out — tests first, then code — is for `/ai-enabler:deliver <KEY>` or `/ai-enabler:implement <KEY>`.
+
 ## Rules
 
 - No code, no branch, no commit, no Jira write.

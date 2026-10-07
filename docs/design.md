@@ -71,7 +71,7 @@ Agents do not all inherit the session's model. Planning and review run on Opus a
 
 `smart-review` alone has five confirmation gates; `generate-tests` has three. That is appropriate when the AI is being supervised step by step, and it is exactly the human interaction this project wants to reduce and measure. The pipeline keeps the two decisions that are worth a person's attention: what will be built, before it is built, and what will leave the machine, before it does. Everything else is bounded by rules rather than by confirmations, and both gates are configurable.
 
-Three conditional stops remain, where proceeding is not the machine's call: a ticket that is not implementable as written, a plan that proved wrong in scope, and coverage of the changed code under the minimum.
+Besides the gates (which also show each delta), three conditional stops remain, where proceeding is not the machine's call: a ticket that is not implementable as written, a plan that proved wrong in scope, and coverage of the changed code under the minimum.
 
 ### Tests before the code, coverage after it
 
@@ -84,6 +84,16 @@ Coverage is a separate obligation, judged after the code whichever order the tes
 ### A refusal to upload is enforced, not just respected
 
 Everything before the ship stage is local, and the ship stage asks first. That is not enough when the answer is "no": instructions can be misread, a later message can be ambiguous, a subagent does not know what was said. So a refusal switches the project to local-only mode through a marker file, and a `PreToolUse` hook shipped with the plugin refuses pushes, `gh`/`glab` and API writes, and MCP writes to GitHub, GitLab, Bitbucket, Jira and Confluence while the marker exists. Lifting the mode is kept out of the agent's reach as far as a hook can: it refuses the commands and edits that would remove the marker or flip the configuration flag. It is a parser, not a sandbox — a push hidden inside a script the agent runs is invisible to it — so the documentation says plainly what it cannot see.
+
+### Changes to an approved plan are deltas
+
+The first version let a person ask for a "fix" at the ship gate and sent it straight to the implementer, and told the orchestrator to "go back to the plan gate" when a plan proved wrong, without saying what became of the tests already written against the old plan. Both paths could change what was being built without anyone approving it, and could leave tests and code of an abandoned approach behind.
+
+A change of scope, behaviour or acceptance criteria is now a delta: a small document, approved at the plan gate, that lists what is added and what is removed — criteria, tests, code. It is executed in the pipeline's own order, so the acceptance tests change first (new ones written, obsolete ones deleted) and the code follows (new code written, dead code deleted). `plan.md` is kept current and the deltas keep the story; the pull request gets both. A correction that leaves the plan true is not a delta and takes the short loop through implementer, coverage and review.
+
+Commits follow from the same idea. Nothing is committed during a run, so attempts, fix rounds and removed code never reach the history; the ship stage makes one commit for the finished change, and a delta arriving after that is one more commit that says what it does.
+
+Rounds at a gate are counted per gate and capped at three by default — as an offer to take over, not as a refusal to continue. The rounds are the person's own requests; the pipeline's part is to notice that a fourth attempt is unlikely to go better than the third and say so.
 
 ### Readiness is part of intake
 
@@ -135,7 +145,7 @@ Not yet verified on a live Bedrock session: which form of model id Claude Code w
 - The pull-request metrics were run against a public repository with the GitHub CLI, and the rendered HTML was inspected. `plugins/ai-enabler-kpi/tests/test_delivery.py` checks all four metrics on fixtures, including the cases an independent audit found wrong in the first version (dismissed and post-merge reviews, look-alike ticket keys, window-dependent follow-ups, sprints closed late, duplicates, moves through Blocked). The Jira REST route and the collector agent have not been run against a real Jira.
 - `/ai-enabler:deliver` was run end to end, unattended (`--gates none`), on a small Node.js project from a Markdown requirements file with six acceptance criteria. All eight stages ran: the acceptance tests were written before the code, the implementation made them pass, coverage of the changed code reached 100 % line and branch, four reviewers ran in parallel, and the run held before shipping as the rules require. Each subagent ran on the model its frontmatter names (Opus for planning and review, Sonnet for the rest). The KPI report's cost for the run matched Claude Code's own figure.
 
-Not yet exercised: a ticket read from a real Jira instance through MCP, the ship stage against a real remote (push, pull request, Jira comment), the fix loop with real blocking findings, the stop below the coverage minimum, and a large codebase. The first runs on a real ticket are where the instructions should be tuned — the plan gate's summary, the fix-loop budget and the review confidence floor are the likely candidates.
+Not yet exercised: the delta path (a change of scope after approval) and the round limit at a gate, which are instructions added after that run. Also not yet exercised: a ticket read from a real Jira instance through MCP, the ship stage against a real remote (push, pull request, Jira comment), the fix loop with real blocking findings, the stop below the coverage minimum, and a large codebase. The first runs on a real ticket are where the instructions should be tuned — the plan gate's summary, the fix-loop budget and the review confidence floor are the likely candidates.
 
 ## Possible next steps
 

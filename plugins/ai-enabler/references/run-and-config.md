@@ -11,7 +11,8 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
 | `state.json` | the orchestrating skill | Where the run is (see below) |
 | `requirements.json` | `ticket-analyst` | Normalised ticket and readiness verdict |
 | `repo-context.md` | `repo-scout` | Stack, commands, conventions, hard rules |
-| `plan.md` | `solution-planner` | Approved implementation plan |
+| `plan.md` | `solution-planner` | The implementation plan as it stands now: the approved plan with every approved delta folded in |
+| `deltas/delta-NN.md` | `solution-planner` (delta mode) | One file per change made after the plan was approved: why, what is added, what is removed |
 | `acceptance-tests.md` | `test-engineer` (acceptance mode) | The tests written before the code, one row per acceptance criterion |
 | `test-report.md` | `test-engineer` (coverage mode) | Suite result, coverage against the target and the minimum, acceptance-criteria table |
 | `review.md` | the orchestrating skill (`deliver` or `review`), in the format the review skill defines | Consolidated findings and what was fixed |
@@ -32,12 +33,15 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
   "stages_done": ["intake", "scout"],
   "plan_approved": false,
   "fix_rounds": 0,
+  "gate_rounds": { "plan": 0, "ship": 0 },
+  "deltas": [{ "id": "delta-01", "at": "", "trigger": "ship gate | plan proved wrong | resumed with changes",
+               "summary": "", "approved": true }],
   "human_interventions": [{ "at": "", "stage": "plan", "kind": "adjustment | question | takeover | coverage_accepted", "note": "" }],
   "pr_url": ""
 }
 ```
 
-`stage` is the stage to run next, using exactly the names above; they are also the values `--from` accepts. `status` is `held` when the run waits at the ship gate, `stopped` when a person cancelled or stopped it (the note of the last intervention says where and why), `active` otherwise.
+`gate_rounds` and `deltas` are explained under "Rounds at a gate" and "Changing course after approval". `stage` is the stage to run next, using exactly the names above; they are also the values `--from` accepts. `status` is `held` when the run waits at the ship gate, `stopped` when a person cancelled or stopped it (the note of the last intervention says where and why), `active` otherwise.
 
 Update `state.json` whenever a stage completes and whenever the human steps in. `human_interventions` is the pipeline's own record of where a person had to act; keep each note to one line.
 
@@ -50,6 +54,7 @@ Optional file `.enabler/config.json`, committed with the project. Every key is o
 ```json
 {
   "gates": ["plan", "ship"],
+  "max_gate_rounds": 3,
   "git": {
     "base_branch": null,
     "branch_pattern": "feature/{key}-{slug}",
@@ -78,6 +83,7 @@ Optional file `.enabler/config.json`, committed with the project. Every key is o
 ```
 
 - `gates` — where the pipeline stops for a human decision. `plan` is approval of the plan before any code is written; `ship` is approval before anything leaves the machine (push, pull request, Jira). An empty list runs unattended up to the ship stage, which then still requires an explicit `--ship` flag or the `ship` skill: nothing is pushed on the strength of a config file alone.
+- `max_gate_rounds` — how many times a person can send the work back at one gate (`adjust` at the plan gate, `fix` at the ship gate) before the pipeline offers to hand over. Counted per gate, not per run. See "Rounds at a gate" below.
 - `git.base_branch: null` — use the base branch `repo-scout` detected (the remote's default branch).
 - `git.local_only` — `true` keeps everything on the machine, permanently: no push, no pull request, no Jira write. The same mode is switched on for a project when a person refuses the remote, through the marker file `.enabler/local-only`; see "When the person says no to the remote" in the safety rules. The plugin's hook enforces it.
 - `jira.server: null` — use the only connected Jira MCP server. If several are connected, the orchestrating skill asks once, in its preflight, and passes the choice to the analyst.
@@ -87,6 +93,59 @@ Optional file `.enabler/config.json`, committed with the project. Every key is o
 - `review.auto_fix` — severities `/ai-enabler:deliver` fixes on its own inside its fix loop. Everything else is reported and left for the human. The stand-alone `/ai-enabler:review` ignores this key: there it fixes only with `--fix` or when the person says so.
 
 Command-line flags on a skill override the file for that run.
+
+## Changing course after approval: deltas
+
+Once a plan is approved, it is not rewritten quietly. A change to what is being built — to the scope, the behaviour or the acceptance criteria — is made as a **delta**: a small, approved change to the plan that says what is added and what is removed, and is carried out in the same order as the original work.
+
+A delta is needed when:
+
+- the person asks at the ship gate for something that changes behaviour, scope or acceptance criteria;
+- the implementer stops because the plan is wrong in a way that changes scope;
+- a run is resumed and the ticket, or the person's instructions, have changed.
+
+A delta is **not** needed for a correction that leaves the plan true: a bug in the implementation, a naming or style point, a review finding. Those are fix lists for the implementer.
+
+What a delta is, on disk — `deltas/delta-NN.md`, numbered from 01:
+
+```markdown
+# Delta NN — <KEY>: <what changes, in one line>
+
+**Trigger:** who asked for it or what revealed it, and when.
+**Why:** the reason, in two or three sentences.
+
+## Acceptance criteria
+| AC | Change (added / changed / removed) | Before | After |
+
+## Tests
+| Test | Action (add / change / remove) | File | Covers | Why |
+
+## Code
+| File | Action (create / modify / delete) | What |
+
+## Plan steps affected
+Which steps of plan.md change, are added, or are dropped.
+
+## Risks and impact
+```
+
+Both sides are always written down: what the delta adds and what it takes away. A test that no longer describes wanted behaviour is listed under "remove"; so is code that the new approach makes dead. Nothing is deleted that the delta does not name.
+
+How a delta is carried out — the same order as the pipeline, acceptance criteria first:
+
+1. **Plan.** The planner, in `delta` mode, writes `deltas/delta-NN.md`, updates `plan.md` so that it describes the work as it now stands (with a "Change history" table at the top, one row per delta), and updates the acceptance criteria in `requirements.json`: new ones get new ids, a removed one is kept and marked `"removed_by": "delta-NN"`, ids are never reused.
+2. **Approval.** The delta is shown at the plan gate, in the same compact form as a plan, and needs the same approval. No test or code changes before that.
+3. **Acceptance tests.** The test engineer, in `acceptance` mode with the delta, writes the tests for added and changed criteria and removes the tests the delta lists as obsolete — those and no others — then updates `acceptance-tests.md`.
+4. **Implementation.** The implementer makes the new tests pass and deletes the code the delta lists for deletion.
+5. **Coverage, then review** of the lenses the change touches, and back to the ship gate.
+
+`state.json` records each delta. The delivery report lists them under "Changes after the plan was approved", so the pull request shows not only the result but how it got there.
+
+## Rounds at a gate
+
+Each gate counts how many times the person has sent the work back: `adjust` (and a delta that is adjusted) at the plan gate, `fix` at the ship gate. The two counters are separate (`gate_rounds.plan`, `gate_rounds.ship`).
+
+When a counter reaches `max_gate_rounds` (3 by default), do not start another round on your own. Say that this is the third time round, summarise what has changed each time, and offer the choice: take over by hand (the run stays resumable), continue with another round, or stop. The person decides; this is an offer, not a limit on them. Repeated rounds usually mean the ticket or the plan is unclear, and saying so is more useful than a fourth attempt.
 
 ## Test order
 

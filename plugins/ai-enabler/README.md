@@ -50,7 +50,41 @@ What the human sees at each gate:
 - **Plan gate** — the approach in three sentences, the number of steps and files, the planned tests, the technical decisions taken, the assumptions made about the ticket. Answer `approve`, `adjust: ...` or `cancel`.
 - **Ship gate** — the diff size, acceptance criteria met, test results and coverage against the 80 % target and the 70 % minimum, how many criteria had their test written before the code, findings fixed and still open, and the exact list of outward actions (push, pull request, Jira comment, transition). Answer `ship`, `local` (commit on your machine only; nothing leaves it), `hold` or `fix: ...`.
 
-The pipeline also stops when the ticket is not implementable as written (the analyst returns the questions that unblock it), when the plan turns out to be wrong in a way that changes scope, and when coverage of the changed code ends up under the minimum. Apart from those, it asks only what it cannot work out — which Jira server to use when several are connected — and stops where the safety rules require it, such as unrelated changes in the working tree.
+A delta is shown at Gate 1 like a plan. The pipeline also stops when the ticket is not implementable as written (the analyst returns the questions that unblock it), when the plan turns out to be wrong in a way that changes scope, and when coverage of the changed code ends up under the minimum. Apart from those, it asks only what it cannot work out — which Jira server to use when several are connected — and stops where the safety rules require it, such as unrelated changes in the working tree.
+
+## Changing course: adjustments, fixes and deltas
+
+The pipeline runs forward, but you can send it back at either gate.
+
+| Where | You say | What happens |
+|---|---|---|
+| Gate 1 | `adjust: …` | The plan is not approved yet, so it is revised and shown again |
+| Gate 1 | `cancel` | The run stops. Nothing exists outside its folder |
+| Gate 2 | `fix: …` — a correction (a bug, a name, a missed edge case) | Implementer → coverage stage → the review lenses it touches → back to Gate 2 |
+| Gate 2 | `fix: …` — a change to what is being built | A **delta** (below) → Gate 1 for the delta → back through the pipeline to Gate 2 |
+| during implementation | the implementer finds the plan wrong in scope | A delta, same path |
+
+### Deltas
+
+An approved plan is never rewritten quietly. A change to scope, behaviour or acceptance criteria is written as a delta, `deltas/delta-NN.md`, and approved like the plan was. A delta always states both sides: what it **adds** and what it **removes**.
+
+It is carried out in the pipeline's own order, acceptance criteria first:
+
+1. the planner writes the delta, brings `plan.md` up to date and updates the acceptance criteria (a removed criterion is kept, marked with the delta that removed it);
+2. you approve it at the plan gate;
+3. the test engineer writes the tests for the added and changed criteria and **deletes the tests the delta lists as obsolete** — those and no others;
+4. the implementer makes the new tests pass and **deletes the code the delta lists** — the classes, endpoints or settings the change leaves unused;
+5. coverage, the review lenses the change touches, and the ship gate again.
+
+So after a delta nothing of the abandoned approach is left behind, and nothing disappears without a record: the delta says what went and why, and the pull-request body carries a "Changes after the plan was approved" section built from the deltas.
+
+### A clean history
+
+Nothing is committed while a run is in progress. Rounds of fixes, deltas, and code that was written and later removed all happen in the working tree, so the commit made at the ship stage holds the finished change and none of the detours; its body lists the deltas. If a delta comes after the work was already committed or pushed, it becomes one further commit with a message that says what it does — never `wip` or `fix review comments` — and pushed history is never rewritten.
+
+### Rounds at a gate
+
+Each gate counts how often you send the work back, separately: `adjust` at Gate 1, `fix` at Gate 2. After three at the same gate (`max_gate_rounds`), the pipeline stops trying on its own, summarises what changed each time, and offers a choice: take over by hand, go another round, or stop. It is an offer, not a limit on you — repeated rounds usually mean the ticket or the plan is unclear, and that is worth saying out loud.
 
 ## Skills
 
@@ -113,6 +147,7 @@ Optional, in `.enabler/config.json` at the project root. Every key has a default
 ```json
 {
   "gates": ["plan", "ship"],
+  "max_gate_rounds": 3,
   "git": { "base_branch": null, "branch_pattern": "feature/{key}-{slug}",
            "commit_pattern": "{type}({key}): {summary}", "pull_request": true },
   "jira": { "server": null, "comment_on_ship": true, "transition_on_ship": null },
@@ -126,11 +161,38 @@ Optional, in `.enabler/config.json` at the project root. Every key has a default
 
 Removing a gate makes the pipeline run further unattended. Removing `ship` does not make it push on its own: without the gate, shipping needs the `--ship` flag or a separate `/ai-enabler:ship`.
 
-## The run directory
+## The run directory: what each file is
 
-Every ticket gets `.enabler/runs/<KEY>/`, which holds `state.json`, `requirements.json`, `repo-context.md`, `plan.md`, `acceptance-tests.md`, `test-report.md`, `review.md` and `delivery-report.md`. These are working files: keep `.enabler/runs/` out of git (the pipeline adds the ignore rule if it is missing). The delivery report becomes the pull-request body, so what matters ends up in the pull request.
+Every ticket gets its own folder, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jira key or, for a requirements file, the file name without its extension. Each stage of the pipeline leaves one file there and the next stage reads it. That is how the stages talk to each other, and it is why a run can be interrupted and resumed.
 
-`state.json` also records each point where a person stepped in (`human_interventions`), which is the pipeline's own view of how autonomous a run was. The `ai-enabler-kpi` plugin measures the same thing from the outside.
+| File | Written at | By | What it is |
+|---|---|---|---|
+| `state.json` | start, then after every stage | the skill | Where the run stands: the stage to run next, the stages done, the branch, whether the plan was approved, whether tests go before or after the code, how many fix rounds were used, the pull-request URL, and every point where a person stepped in. This is what `/ai-enabler:deliver <KEY>` reads to resume. |
+| `requirements.json` | stage 1, intake | `ticket-analyst` | The ticket in a normalised form: summary, requirements, each acceptance criterion with an id (`AC-1`, `AC-2`…) and whether the ticket stated it or the analyst derived it, constraints, what is out of scope, dependencies, assumptions and open questions. Also two verdicts: whether the ticket is ready to implement, and whether its criteria are good enough to write tests from. |
+| `repo-context.md` | stage 2, scout | `repo-scout` | How this repository is built and written: stack and versions, the build, test and coverage commands that really work here, the directory structure, the conventions seen in existing code, the hard rules from `CLAUDE.md` and similar files, git conventions, the existing code closest to the ticket, and warnings (no tests, no coverage tool…). |
+| `deltas/delta-NN.md` | whenever the approved plan changes | `solution-planner` | One file per change made after the plan was approved: what triggered it and why, the acceptance criteria added, changed and removed, the tests to add and the obsolete ones to delete, the code to create, modify and delete. The record of how the work got from the first plan to the final one. |
+| `plan.md` | stage 3, plan | `solution-planner` | The implementation plan you approve at the first gate, kept current: after a delta it describes the work as it now stands, with a change-history table at the top. Contains the approach, the decisions taken and the alternatives rejected, the ordered steps with the files each one creates or modifies, the test plan (which tests are written before the code), a table tracing every acceptance criterion to steps and tests, risks, assumptions and open questions. |
+| `acceptance-tests.md` | stage 4, before the code | `test-engineer` | The list of tests written from the ticket's acceptance criteria before any production code existed: for each criterion, the test file, the test names and what each asserts, plus any criterion that could not be turned into a test and why. Absent when the ticket had no usable criteria. |
+| `test-report.md` | stage 6, coverage | `test-engineer` | The test results after the code: commands run, tests passed and failed, coverage of the changed code per file against the target and the minimum, the acceptance-criteria table (which test covers each, written before or after the code, passing or not), defects found, failures that existed before the change, and the test files added. |
+| `review.md` | stage 7, review | the skill, from the reviewers' reports | The consolidated code review: the verdict, the findings numbered by severity with file and line, why each matters and how to fix it, the acceptance-criteria check, the findings still to validate, what was checked and found sound, and one section per fix round saying what was fixed, disputed or left open. |
+| `delivery-report.md` | stage 8, before the ship gate | the skill | The summary for whoever reviews the pull request: what changed, the acceptance criteria with their status and evidence, tests and coverage, the review outcome and open findings, deviations from the plan and assumptions, and how to verify. It is used as the pull-request body. |
+
+A few things worth knowing:
+
+- **You can read and edit them.** They are plain Markdown and JSON. Adjusting `plan.md` by hand before approving it is fine; the implementer follows what the file says.
+- **Not every run has every file.** `/ai-enabler:plan` stops after `plan.md`. A run whose ticket states no acceptance criteria has no `acceptance-tests.md`.
+- **They stay out of git.** `.enabler/runs/` holds working files; the pipeline adds it to `.gitignore` if it is missing and never stages it. What matters ends up in the pull request through `delivery-report.md`.
+- **Stand-alone skills use `.enabler/runs/adhoc/`.** `/ai-enabler:test` and `/ai-enabler:review` without a ticket write their `repo-context.md`, `test-report.md` and `review-<date>.md` there.
+- **Deleting a run folder is safe** once the work is merged or abandoned. It only removes the ability to resume that run.
+
+`state.json` records each point where a person stepped in (`human_interventions`), which is the pipeline's own view of how autonomous a run was. The `ai-enabler-kpi` plugin measures the same thing from the outside.
+
+Two more files can sit directly in `.enabler/`:
+
+| File | What it is |
+|---|---|
+| `config.json` | Optional project configuration for the pipeline (the keys in "Configuration" above). Meant to be committed. |
+| `local-only` | A marker that exists only after someone refused to upload. While it is there, nothing leaves the machine. See the next section. |
 
 ## When you say no, nothing leaves your machine
 

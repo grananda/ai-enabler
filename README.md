@@ -12,21 +12,27 @@ It ships two plugins:
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TD
     J[(Jira ticket)] -->|MCP| A[ticket-analyst]
     A --> S[repo-scout]
     S --> P[solution-planner]
-    P --> G1{{Gate 1: approve plan}}
-    G1 --> AT[test-engineer<br/>acceptance tests first]
+    P --> G1{{"Gate 1 — plan"}}
+    G1 -->|adjust| P
+    G1 -->|cancel| X([run stopped])
+    G1 -->|approve| AT["test-engineer<br/>acceptance tests first"]
     AT --> I[code-implementer]
-    I --> T[test-engineer<br/>coverage 70-80 %]
-    T --> R[code-reviewer x4<br/>in parallel]
+    I --> T["test-engineer<br/>coverage 70–80 %"]
+    T --> R["code-reviewer × 4<br/>in parallel"]
     R -->|blocking findings| I
-    R --> G2{{Gate 2: ship}}
-    G2 --> PR[(commit · push · PR)]
-    G2 -->|MCP| JU[(Jira comment / transition)]
-    H[[ai-enabler-kpi hooks]] -. observe every step .-> K[(events)]
-    K --> REP[KPI report<br/>md · html · json · csv]
+    R --> G2{{"Gate 2 — ship"}}
+    G2 -->|"fix: a correction"| I
+    G2 -->|"fix: a change of scope"| DL["solution-planner<br/>delta: what is added, what is removed"]
+    I -.->|plan proved wrong| DL
+    DL --> G1
+    G2 -->|ship| PR[(commit · push · PR)]
+    PR -->|MCP| JU[(Jira comment / transition)]
+    G2 -->|local| LC([local commit, nothing uploaded])
+    G2 -->|"hold / no"| H([held, nothing uploaded])
 ```
 
 One command runs the whole flow:
@@ -36,6 +42,13 @@ One command runs the whole flow:
 ```
 
 If you say no at the second stop, nothing is uploaded — and a hook enforces it (see "When you say no" in the plugin README).
+
+Reading the loops in the diagram:
+
+- **Gate 1, `adjust`** — the plan goes back to the planner and returns to the gate. **`cancel`** stops the run; nothing was written outside its folder.
+- **Gate 2, `fix`** — a correction goes to the implementer and comes back through coverage and review. A change to *what* is being built becomes a **delta**: a written, approved change to the plan that lists what is added and what is removed, and is carried out acceptance tests first — new tests written and obsolete ones deleted, then code written and dead code deleted.
+- **Gate 2, `local` / `hold` / `no`** — nothing is uploaded: a local commit, or the work left as it is.
+- After three rounds at the same gate the pipeline offers to hand over instead of trying a fourth time on its own.
 
 The pipeline stops twice: once to show the plan before any code is written, once to show the result before anything leaves the machine. Everything in between runs unattended: reading the ticket, learning the repository's conventions, writing the tests for the acceptance criteria, writing the code that makes them pass, completing the tests up to the coverage target (80 %, with 70 % as the minimum), reviewing and fixing. If coverage ends up under the minimum, it stops once more and asks whether to proceed. Each stage is also a skill of its own, for teams that want to adopt it piece by piece.
 
@@ -86,6 +99,36 @@ Requirements:
 | `/ai-enabler-kpi:kpi-report` | Produce the KPI report: AI usage and delivery flow, as HTML dashboards with charts |
 | `/ai-enabler-kpi:delivery-report` | Delivery-flow dashboard: PR size, review waiting time, rework, Jira cycle time, per developer |
 | `/ai-enabler-kpi:pr-size`, `review-wait`, `rework`, `cycle-time` | One delivery metric at a time |
+
+## What appears in your project: the `.enabler/` folder
+
+Both plugins keep their files in one folder at the root of the project where you use them. Nothing is written anywhere else in your repository apart from the code, the tests and the `.gitignore` rule.
+
+```
+.enabler/
+  config.json                 pipeline settings for this project (optional, commit it)
+  local-only                  present only after someone said "do not upload"; blocks push, PR and Jira writes
+  runs/                       one folder per ticket — working files, kept out of git
+    <KEY>/
+      state.json              where the run stands; lets it be resumed
+      requirements.json       the ticket, normalised, with its acceptance criteria
+      repo-context.md         how this repository is built and written
+      plan.md                 the implementation plan as it stands, deltas folded in
+      deltas/delta-NN.md      each change made after approval: why, what is added, what is removed
+      acceptance-tests.md     the tests written from the ticket before the code
+      test-report.md          test results and coverage after the code
+      review.md               the consolidated code review and its fix rounds
+      delivery-report.md      the summary that becomes the pull-request body
+  kpi/                        exists only after /ai-enabler-kpi:kpi-init; its presence switches capture on
+    config.json               capture, pricing and delivery-metric settings
+    events/<user>/<session>.jsonl   what the hooks recorded, one line per event
+    delivery/<metric>.json    latest result of each delivery metric
+    reports/<date>/           the reports: report.html, delivery.html, pr-size.html, … plus .md, .json, .csv
+```
+
+Each file of a run is described in [plugins/ai-enabler/README.md](plugins/ai-enabler/README.md#the-run-directory-what-each-file-is), and the KPI files in [plugins/ai-enabler-kpi/README.md](plugins/ai-enabler-kpi/README.md) and [docs/kpi-reference.md](docs/kpi-reference.md).
+
+What to commit: `.enabler/config.json`, and `.enabler/kpi/config.json` if the team shares its KPI settings. Everything else is ignored by default — run folders because they are working files, KPI events and snapshots because they name people (see `kpi-init --share` to change that deliberately).
 
 ## Documentation
 

@@ -22,6 +22,8 @@ Read first:
 5. **Check.** Read the report, including the state of each acceptance test. Confirm with `git status` and `git diff --stat` that the files it names exist and changed. If its verification failed, give it one more pass in `fix` mode with the failing output. If it stopped because the plan is wrong in scope, relay its explanation and stop.
 6. **Report.** Acceptance tests written and how many pass, files created and modified, deviations from the plan, the verification commands and their result, and anything not done. Update `state.json`.
 
+If `state.json` holds an approved delta that has not been carried out, pass it to both agents: the test engineer adds and removes tests as the delta says, then the implementer writes and deletes code as it says.
+
 Close by naming the next steps: `/ai-enabler:test <KEY>` (remaining tests and the coverage check), then `/ai-enabler:review <KEY>`, then `/ai-enabler:ship <KEY>` — or `/ai-enabler:deliver <KEY>` to run the rest in one go.
 
 ## Rules

@@ -1,7 +1,7 @@
 ---
 name: deliver
 description: Machine-driven delivery of a Jira ticket, end to end. Reads the ticket through the Jira MCP server, analyses the repository, plans, implements, tests, reviews and fixes with dedicated subagents, then opens a pull request and updates Jira. The human decides at two gates only — the plan and the ship. Use when the user says "deliver PROJ-123", "implement this ticket", "take this Jira issue to a PR", "from Jira to code", "work on PROJ-123", or passes a Jira key or a requirements Markdown file and wants the work done rather than advice. Also resumes an interrupted run for the same key.
-argument-hint: <JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--ship] [--local] [--refresh] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]
+argument-hint: <JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--max-rounds 3] [--ship] [--local] [--refresh] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]
 ---
 
 # ai-enabler:deliver — from a Jira ticket to a pull request
@@ -27,6 +27,8 @@ Before anything else, read these two files and follow them throughout:
 | 8 | ship | this skill, following `ai-enabler:ship` | commit, push, PR, Jira update | **ship** |
 
 Tests come before the code. A test written from the ticket says what the code must do; a test written from the code only confirms what it already does, errors included. Stage 4 therefore runs whenever the ticket states acceptance criteria worth testing against, and the ticket decides how much it can cover — read "Test order" in the run-and-config reference. Stage 6 always runs, whatever the order: it aims at 80 % coverage of the changed code, accepts 70 % or more, and below that hands the decision to the person ("Coverage" in the same reference).
+
+The stages run forward, but a person can send the work back at either gate, and the plan can prove wrong on the way. Those loops are part of the pipeline, not exceptions to it — see "Going back: adjustments, fixes and deltas" below.
 
 Why subagents: each stage reads a lot (the ticket and its links, the repository, the full diff) and only its conclusion matters to the next one. Running stages in their own context keeps yours small enough to steer a long run, and makes the reviewer independent of the code's author. Stages exchange files in the run directory, never long pasted text.
 
@@ -81,8 +83,8 @@ Approve this plan? (approve / adjust: <what to change> / cancel)
 ```
 
 - **approve** — set `plan_approved` and continue.
-- **adjust** — relaunch the planner with the feedback, record the intervention, and present the new plan.
-- **cancel** — set `status` to `stopped`, leave the run directory in place, and stop.
+- **adjust** — the plan is not approved yet, so it is simply revised: relaunch the planner with the feedback, record the intervention, add one to `gate_rounds.plan`, and present the new plan. Apply "Rounds at a gate" from the reference before starting a round beyond the limit.
+- **cancel** — set `status` to `stopped`, leave the run directory in place, and stop. Nothing was written outside the run directory, so there is nothing to undo.
 
 A plan with a blocking question cannot be auto-approved: even when `plan` is not in `gates`, stop and ask.
 
@@ -98,7 +100,7 @@ A plan with a blocking question cannot be auto-approved: even when `plan` is not
 1. Launch `ai-enabler:code-implementer` in `implement` mode with the run directory. When acceptance tests exist, say so in the brief: its job is to make them pass without touching them. For a plan organised in slices, launch it once per slice, in order, so each slice ends with a green build; do not run implementers in parallel on the same working tree.
 2. Read the report. Deviations go into the delivery report. A failed verification, or acceptance tests still failing, gets one more implementer pass in `fix` mode with the failing output. If it still fails after that pass, do not loop: carry the failure forward as an open defect.
 3. If the implementer disputes an acceptance test, settle it yourself against the ticket and the plan — not against the code. If the test is right, send it back as a fix. If the test contradicts the ticket or the plan, launch the test engineer in `repair` mode for that test, with the correction as guidance, and record the change and its reason in the delivery report. Never let the implementer edit a test to match its code.
-4. If the implementer stopped because the plan is wrong in a way that changes scope, go back to the plan gate with its explanation — do not let it improvise.
+4. If the implementer stopped because the plan is wrong in a way that changes scope, do not let it improvise and do not patch the plan in place: the plan was approved, so the change is a **delta**. Follow "Going back" below, with the implementer's explanation as the change.
 
 ## Step 6 — Coverage, after the code
 
@@ -156,8 +158,11 @@ Suite result, coverage on changed code versus the target and the minimum — and
 ### Review
 Lenses run, findings fixed, findings left open (severity, location, one line each).
 
+### Changes after the plan was approved
+One entry per delta, in order: what changed and why, what was added, what was removed (criteria, tests, code). Omit the section when there was none.
+
 ### Deviations and assumptions
-Where the implementation departed from the plan; assumptions made about the ticket.
+Where the implementation departed from the plan without a delta; assumptions made about the ticket.
 
 ### How to verify
 The commands or steps a reviewer can run.
@@ -172,6 +177,7 @@ Criteria  : <met>/<total> met
 Tests     : <passed> passed, <failed> failed · coverage <x>% (target <t>% · minimum <m>%) — met | acceptable | BELOW MINIMUM, accepted by <who> | not measured
             acceptance tests written before the code: <n> of <total criteria>
 Review    : <n> fixed · <n> open (<highest open severity>)
+Deltas    : <n> since the plan was approved (<one line each>, or "none")
 Will do   : commit → push <branch> → open PR against <base> [→ comment on <KEY>] [→ transition to "<status>"]
             <the Jira steps appear only when the source is a Jira issue>
 Report    : .enabler/runs/<KEY>/delivery-report.md
@@ -185,7 +191,7 @@ In local-only mode the gate does not offer to ship. Replace the `Will do` line w
 - **local** — nothing leaves this machine, and the work is committed here. Follow "When the person says no to the remote" in the safety rules: write `.enabler/local-only`, commit on the feature branch locally (staged by path, as the safety rules say), set `status` to `held`, and report the commit hash, the branch and that nothing was pushed, opened or written to Jira.
 - **any other refusal to upload** ("no", "don't push", "keep it local") — the same, without the commit: write `.enabler/local-only`, leave the changes in the working tree, set `status` to `held`, and offer `local` if they want it committed. Do not push, do not open the pull request, do not touch Jira.
 - **hold** — "not now", which is not a refusal: no marker is written. Set `status` to `held` and stop with everything in the working tree and the run directory; `/ai-enabler:ship <KEY>` finishes later.
-- **fix** — treat the request as a fix list for the implementer, re-run tests and the affected lenses, record the intervention, and come back to this gate.
+- **fix** — record the intervention, add one to `gate_rounds.ship`, and decide which kind of change it is, as "Going back" below describes: a correction goes to the implementer and returns here through coverage and review; a change to what is being built is a delta and goes through the plan gate first. Apply "Rounds at a gate" before starting a round beyond the limit.
 
 If `ship` is not in `gates`, ship only when `--ship` was passed; otherwise stop at "hold" and say how to finish.
 
@@ -193,6 +199,47 @@ A result is **not ready** when tests are failing, a defect is open, coverage is 
 
 - With the ship gate: say what is not ready first and recommend holding — the human may still decide, for example to open a draft pull request.
 - Without it (`--ship` on an unattended run): never ship a result that is not ready. Hold, and say exactly what blocks it. Nobody approved sending out a failing change.
+
+## Going back: adjustments, fixes and deltas
+
+Three situations send the run backwards. Handle each the same way every time.
+
+**1. The plan is adjusted before it is approved** (`adjust` at the plan gate). Nothing exists yet but the plan. The planner revises `plan.md` with the feedback and the gate is shown again. No delta.
+
+**2. A correction that leaves the plan true** (`fix` at the ship gate, when what is asked does not change scope, behaviour or acceptance criteria — a bug, a name, a style point, a missed edge case of an existing criterion). In this order:
+
+1. `ai-enabler:code-implementer` in `fix` mode with the request as its fix list;
+2. `ai-enabler:test-engineer` in `coverage` mode — the full coverage stage again, since code changed: the suite, any missing tests, the coverage verdict (and the stop below the minimum, if it comes to that);
+3. the review lenses the change touches, scoped to the files that changed, appended to `review.md` as a round;
+4. the delivery report rewritten, and back to the ship gate.
+
+**3. A change to what is being built** — to scope, behaviour or acceptance criteria — once the plan has been approved. It comes from a `fix` at the ship gate that asks for something different, from an implementer that found the plan wrong, or from a resumed run whose ticket or instructions changed. This is a **delta**; read "Changing course after approval: deltas" in the run-and-config reference and follow it:
+
+1. Launch `ai-enabler:solution-planner` with `mode: delta`, the run directory and the change. It writes `deltas/delta-NN.md` (what is added **and** what is removed), brings `plan.md` up to date and updates the acceptance criteria.
+2. Show the delta at the plan gate and wait — a changed plan needs approval like the plan did:
+
+   ```
+   DELTA NN — <KEY>: <one line>
+   Why         : <reason>
+   Criteria    : +<added> · ~<changed> · −<removed>
+   Tests       : +<to add> · ~<to change> · −<to remove: names>
+   Code        : +<files to create> · ~<to modify> · −<to delete: paths>
+   Full delta  : .enabler/runs/<KEY>/deltas/delta-NN.md
+
+   Approve this delta? (approve / adjust: <what to change> / cancel)
+   ```
+
+   `adjust` revises the delta and counts as a round at the plan gate. `cancel` drops the delta — delete its file, restore `plan.md` and `requirements.json` to what they were — and returns to where the run was.
+3. On approval, record the delta in `state.json` and re-run **from the acceptance-tests stage**, in the usual order:
+   - `ai-enabler:test-engineer` in `acceptance` mode with the delta: tests for the added and changed criteria are written, and the tests the delta lists as obsolete are removed;
+   - `ai-enabler:code-implementer` in `implement` mode with the delta: the new tests are made to pass and the code the delta lists is deleted;
+   - the coverage stage;
+   - the review lenses the change touches;
+   - the delivery report, with the delta under "Changes after the plan was approved", and the ship gate.
+
+When you cannot tell a correction from a delta, ask yourself whether an acceptance criterion or a step of `plan.md` becomes false. If one does, it is a delta. When still in doubt, treat it as a delta: an unneeded approval costs a minute, a silent change of scope costs the trust the plan gate exists for.
+
+Do not leave the past lying around. After a delta, no test asserts behaviour that was dropped and no code serves an approach that was abandoned — and both removals are on record in the delta, not just gone.
 
 ## Closing
 
@@ -204,6 +251,7 @@ End with a short summary: the pull-request URL (or the branch, if held), criteri
 - **Briefs are complete.** A subagent knows only what you tell it and what is in the run directory. Always pass the run directory and the mode; never assume it saw the conversation.
 - **Trust, then check.** A subagent's report is a claim. Before the ship gate, confirm the basics yourself: `git status`, `git diff --stat`, and that the files it says it wrote exist.
 - **No means no.** A refusal to upload is final for the run and for the project until the person lifts it by hand. See "When the person says no to the remote" in the safety rules.
-- **Two gates, not ten.** Do not ask for confirmation between stages, do not ask the human to choose things the configuration or the repository already decides, and do not stop on warnings. Stop for: a blocked ticket, the plan gate, a plan that turned out wrong in scope, coverage below the minimum, the ship gate, and anything the safety rules say to stop for.
+- **A change to an approved plan is a delta.** It is written down, approved, and carried out tests first; it says what is removed as well as what is added. Never rewrite an approved plan in place, and never let a "fix" change scope unannounced.
+- **Two gates, not ten.** Do not ask for confirmation between stages, do not ask the human to choose things the configuration or the repository already decides, and do not stop on warnings. Stop for: a blocked ticket, the plan gate (for the plan and for each delta), coverage below the minimum, the ship gate, the round limit at a gate, and anything the safety rules say to stop for.
 - **Report failures as they are.** A stage that failed, a threshold that was missed, a finding left open — all go in the report in plain words.
 - **The human can take over at any point.** If they say so, record a `takeover` intervention, tell them the state of the working tree and which stages are left, and stop. A later `/ai-enabler:deliver <KEY>` resumes and treats their edits as part of the change.
