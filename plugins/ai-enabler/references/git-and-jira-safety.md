@@ -17,8 +17,8 @@ What to do, immediately:
 What local-only mode means from then on:
 
 - It is enforced by the plugin's `PreToolUse` hook, not only by these instructions: the hook refuses `git push` in every form it recognises, every `gh`/`glab` command that writes, write requests to those hosts, every GitHub, GitLab, Bitbucket, Jira or Confluence MCP tool that is not clearly a read, and anything that would remove the marker or edit `.enabler/config.json`. A refused call is not an obstacle to work around. Do not retry it, do not try another command, tool, script, alias or API that would achieve the same, and do not delegate it to a subagent.
-- **You never remove the marker**, and you never set `git.local_only` to false — not even when the person later says "ok, push it now" in the conversation. Tell them to delete `.enabler/local-only` themselves and run `/ai-enabler:ship` again. A "no" given once is not undone by an ambiguous later message, by `--yes`, by `--ship`, or by an earlier approval.
-- `git.local_only: true` in `.enabler/config.json` puts a project in the same mode permanently, as does passing `--local` to `deliver` or `ship` for one run (the skill then writes the marker).
+- **You never remove the marker**, and you never set `git.local_only` to false — not even when the person later says "ok, push it now" in the conversation. Tell them to delete `.enabler/local-only` themselves and run `/ai-enabler:delivery-ship` again. A "no" given once is not undone by an ambiguous later message, by `--yes`, by `--ship`, or by an earlier approval.
+- `git.local_only: true` in `.enabler/config.json` puts a project in the same mode permanently, as does passing `--local` to `delivery-run` or `delivery-ship` for one run (the skill then writes the marker).
 - Reading stays allowed: fetching, reading the Jira issue, viewing a pull request.
 
 When in doubt whether an answer is a refusal, treat it as one and ask.
@@ -35,7 +35,7 @@ When in doubt whether an answer is a refusal, treat it as one and ask.
   - Nothing is committed while a run is in progress. Fix rounds, deltas and code that was written and then removed all happen in the working tree, so the first commit of a run holds the finished change and nothing that was abandoned on the way.
   - That first commit is one commit for the ticket. Its body lists the deltas, if any, one line each.
   - Once the run has a commit — a local one, or one already pushed — a later delta or correction is one further commit of its own, with a message that says what it does (`feat(PROJ-1): export also as CSV`, not `fix review comments` or `wip`). Its body says what was added and what was removed.
-  - Before the first push only, the run's own commits on the feature branch may be combined into one (`git reset --soft` to the commit the branch started from, then commit again). Never go back past that commit, and never rewrite anything after it has been pushed: no amend, no rebase, no force.
+  - History is never rewritten: no amend, no squash, no interactive rebase, no force — not even for commits that have not been pushed. (`git pull --rebase` to bring in what the remote has is a different thing and is allowed, as described above.)
 - **Commits.** Follow the repository's observed convention; otherwise use `git.commit_pattern` with a Conventional Commits type and the ticket key. End the commit message with the attribution lines the session provides, if any.
 
 ## Pull requests

@@ -1,9 +1,9 @@
 # ai-enabler — machine-driven delivery from Jira
 
-`ai-enabler` takes a Jira ticket to a pull request. The machine does the work; a person makes two decisions.
+`ai-enabler` takes a Jira ticket to a pull request. The machine does the work; a person decides at two gates, and is asked again only when a decision is genuinely theirs.
 
 ```
-/ai-enabler:deliver PROJ-123
+/ai-enabler:delivery-run PROJ-123
 ```
 
 It is not spec-driven: there is no specification to write and maintain, no change proposal, no roadmap. The Jira ticket is the input, the repository's own conventions are the rules, and the pull request is the output.
@@ -12,14 +12,14 @@ It is not spec-driven: there is no specification to write and maintain, no chang
 
 | # | Stage | Subagent | Reads | Writes | Human gate |
 |---|---|---|---|---|---|
-| 1 | Intake | `ticket-analyst` | Jira issue, links, comments (MCP) | `requirements.json` | only if the ticket is blocked |
-| 2 | Scout | `repo-scout` | manifests, code, rules, CI | `repo-context.md` | — |
-| 3 | Plan | `solution-planner` | the two files above, the code | `plan.md` | **Gate 1 — approve the plan** |
-| 4 | Acceptance tests | `test-engineer` | the ticket's acceptance criteria, the plan | tests, `acceptance-tests.md` | — |
-| 5 | Implement | `code-implementer` | plan, context, the acceptance tests | code on a feature branch that makes them pass | — |
-| 6 | Coverage | `test-engineer` | the changed code | remaining tests, `test-report.md` | only if coverage is under 70 % |
-| 7 | Review | `code-reviewer` × 4, in parallel | the diff, the criteria | `review.md` | — |
-| 7b | Fix loop | `code-implementer` | blocking findings | fixes (max 2 rounds) | — |
+| 1 | Intake | `delivery-ticket-analyst` | Jira issue, links, comments (MCP) | `requirements.json` | only if the ticket is blocked |
+| 2 | Scout | `delivery-repo-scout` | manifests, code, rules, CI | `repo-context.md` | — |
+| 3 | Plan | `delivery-solution-planner` | the two files above, the code | `plan.md` | **Gate 1 — approve the plan** |
+| 4 | Acceptance tests | `delivery-test-engineer` | the ticket's acceptance criteria, the plan | tests, `acceptance-tests.md` | — |
+| 5 | Implement | `delivery-code-implementer` | plan, context, the acceptance tests | code on a feature branch that makes them pass | — |
+| 6 | Coverage | `delivery-test-engineer` | the changed code | remaining tests, `test-report.md` | only if coverage is under 70 % |
+| 7 | Review | `delivery-code-reviewer` × 4, in parallel | the diff, the criteria | `review.md` | — |
+| 7b | Fix loop | `delivery-code-implementer` | blocking findings | fixes (max 2 rounds) | — |
 | 8 | Ship | the skill itself | `delivery-report.md` | commit, push, PR, Jira update | **Gate 2 — approve the ship** |
 
 ### Tests come before the code
@@ -59,7 +59,7 @@ The pipeline runs forward, but you can send it back at either gate.
 | Where | You say | What happens |
 |---|---|---|
 | Gate 1 | `adjust: …` | The plan is not approved yet, so it is revised and shown again |
-| Gate 1 | `cancel` | The run stops. Nothing exists outside its folder |
+| Gate 1 | `cancel` | On a plan: the run stops, and nothing exists outside its folder. On a delta: only the delta is dropped; the plan, the tests and the code go back to what they were before it was proposed |
 | Gate 2 | `fix: …` — a correction (a bug, a name, a missed edge case) | Implementer → coverage stage → the review lenses it touches → back to Gate 2 |
 | Gate 2 | `fix: …` — a change to what is being built | A **delta** (below) → Gate 1 for the delta → back through the pipeline to Gate 2 |
 | during implementation | the implementer finds the plan wrong in scope | A delta, same path |
@@ -71,34 +71,72 @@ An approved plan is never rewritten quietly. A change to scope, behaviour or acc
 It is carried out in the pipeline's own order, acceptance criteria first:
 
 1. the planner writes the delta, brings `plan.md` up to date and updates the acceptance criteria (a removed criterion is kept, marked with the delta that removed it);
-2. you approve it at the plan gate;
+2. you approve it at the plan gate — always, even in a run configured without gates; `adjust` revises the same delta and `cancel` puts the plan back exactly as it was;
 3. the test engineer writes the tests for the added and changed criteria and **deletes the tests the delta lists as obsolete** — those and no others;
 4. the implementer makes the new tests pass and **deletes the code the delta lists** — the classes, endpoints or settings the change leaves unused;
 5. coverage, the review lenses the change touches, and the ship gate again.
+
+A criterion a delta removes stays in the record but is no longer in force: no test is written for it and the review does not count it as unmet.
 
 So after a delta nothing of the abandoned approach is left behind, and nothing disappears without a record: the delta says what went and why, and the pull-request body carries a "Changes after the plan was approved" section built from the deltas.
 
 ### A clean history
 
-Nothing is committed while a run is in progress. Rounds of fixes, deltas, and code that was written and later removed all happen in the working tree, so the commit made at the ship stage holds the finished change and none of the detours; its body lists the deltas. If a delta comes after the work was already committed or pushed, it becomes one further commit with a message that says what it does — never `wip` or `fix review comments` — and pushed history is never rewritten.
+Nothing is committed while a run is in progress. Rounds of fixes, deltas, and code that was written and later removed all happen in the working tree, so the commit made at the ship stage holds the finished change and none of the detours; its body lists the deltas. If a delta comes after the work was already committed or pushed, it becomes one further commit with a message that says what it does — never `wip` or `fix review comments`. History is never rewritten, pushed or not.
 
 ### Rounds at a gate
 
-Each gate counts how often you send the work back, separately: `adjust` at Gate 1, `fix` at Gate 2. After three at the same gate (`max_gate_rounds`), the pipeline stops trying on its own, summarises what changed each time, and offers a choice: take over by hand, go another round, or stop. It is an offer, not a limit on you — repeated rounds usually mean the ticket or the plan is unclear, and that is worth saying out loud.
+Each gate counts how often you send the work back, separately: `adjust` at Gate 1, `fix` at Gate 2. Three rounds at a gate run normally (`max_gate_rounds`, or `--max-rounds` for one run). Asked for a fourth, the pipeline does not start it on its own: it summarises what changed each time and offers a choice: take over by hand, go another round, or stop. It is an offer, not a limit on you — repeated rounds usually mean the ticket or the plan is unclear, and that is worth saying out loud.
 
 ## Skills
 
 | Skill | Arguments | What it does |
 |---|---|---|
-| `deliver` | `<KEY \| file.md> [--gates ...] [--ship] [--refresh] [--from <stage>]` | The full pipeline. Run it again with the same key to resume. |
-| `plan` | `<KEY \| file.md> [--refresh]` | Stages 1–3. Plan and readiness verdict; no code, no git, no Jira write. |
-| `implement` | `<KEY> [--steps 1,2]` | Stages 4 and 5 on an approved plan: acceptance tests, then the code. |
-| `test` | `[KEY \| paths] [--base b] [--target 80] [--minimum 70] [--levels unit,integration,e2e] [--before-code]` | Stages 4 and 6, or stand-alone test generation for any change. |
-| `review` | `[KEY \| PR \| paths] [--base b] [--lenses ...] [--fix] [--min-confidence 80]` | Stage 7, or a stand-alone review of a branch, pull request or paths. |
-| `ship` | `[KEY] [--no-pr] [--draft] [--no-jira] [--yes]` | Stage 8: commit, push, pull request, Jira. |
-| `doctor` | `[KEY] [--init]` | Checks Jira MCP, git, PR CLI, test commands, configuration, KPI capture. |
+| `delivery-run` | `<KEY \| file.md> [--gates ...] [--max-rounds 3] [--ship] [--local] [--refresh] [--from <stage>]` | The full pipeline. Run it again with the same key to resume. |
+| `delivery-plan` | `<KEY \| file.md> [--refresh]` | Stages 1–3. Plan and readiness verdict; no code, no git, no Jira write. |
+| `delivery-implement` | `<KEY> [--steps 1,2]` | Stages 4 and 5 on an approved plan: acceptance tests, then the code. |
+| `delivery-test` | `[KEY \| paths] [--base b] [--target 80] [--minimum 70] [--levels unit,integration,e2e] [--before-code]` | Stages 4 and 6, or stand-alone test generation for any change. |
+| `delivery-review` | `[KEY \| PR \| paths] [--base b] [--lenses ...] [--fix] [--min-confidence 80]` | Stage 7, or a stand-alone review of a branch, pull request or paths. |
+| `delivery-ship` | `[KEY] [--no-pr] [--draft] [--no-jira] [--yes]` | Stage 8: commit, push, pull request, Jira. |
+| `delivery-doctor` | `[KEY] [--init]` | Checks Jira MCP, git, PR CLI, test commands, configuration, KPI capture. |
 
-`test`, `review` and `ship` work without a ticket, so a team can start with those and adopt `deliver` later.
+`delivery-test`, `delivery-review` and `delivery-ship` work without a ticket, so a team can start with those and adopt `delivery-run` later.
+
+## Naming, ownership and versions
+
+Every skill and agent of this plugin follows one convention, so that an asset can be found in a long list and outlives whoever wrote it. It is Standard 2 of the AI4IT SWAT framework manual, kept in [docs/reference/](../../docs/reference/README.md).
+
+- **Name:** the area first, then what it does — `delivery-plan`, `delivery-code-reviewer`. Lowercase letters, numbers and hyphens, equal to the folder (skills) or file (agents) name. Sorted, everything of one area sits together.
+- **Owner:** one named person under `metadata.owner` in the frontmatter, as `Name <email>`. An asset without an owner is a candidate for removal at the next review.
+- **Version:** a semantic version under `metadata.version`, quoted. It is bumped in the same commit as the change: patch for a fix, minor for new behaviour, major for anything that breaks existing use. The plugin (`plugin.json`) and the marketplace (`VERSION`) have versions of their own that move the same way; the rules are in [AGENTS.md](../../AGENTS.md).
+
+```yaml
+---
+name: delivery-plan
+description: …
+metadata:
+  owner: "Julio Fernandez <jfejimen@nttdata.com>"
+  version: "1.0.0"
+---
+```
+
+Claude Code accepts the `metadata` block and does not act on it; it is there for people and for tooling. `python3 tools/check_conventions.py` checks every skill and agent of the marketplace against the convention, and `python3 tools/check_versions.py` checks that whatever changed also bumped its version.
+
+### Renamed in 1.0.0
+
+Version 1.0.0 is a breaking release: every skill and agent was renamed to put the area first. The commands change as follows.
+
+| Before | From 1.0.0 |
+|---|---|
+| `/ai-enabler:deliver` | `/ai-enabler:delivery-run` |
+| `/ai-enabler:plan` | `/ai-enabler:delivery-plan` |
+| `/ai-enabler:implement` | `/ai-enabler:delivery-implement` |
+| `/ai-enabler:test` | `/ai-enabler:delivery-test` |
+| `/ai-enabler:review` | `/ai-enabler:delivery-review` |
+| `/ai-enabler:ship` | `/ai-enabler:delivery-ship` |
+| `/ai-enabler:doctor` | `/ai-enabler:delivery-doctor` |
+
+The six agents took the same prefix (`ticket-analyst` → `delivery-ticket-analyst`, and so on). Nothing changes in a project's `.enabler/` folder: run directories, `state.json` and configuration keep their format, so a run started before the rename resumes after it. KPI reports show events recorded under the old names under the new ones.
 
 ## Subagents
 
@@ -106,12 +144,12 @@ Each stage runs in its own context and hands over a file, not a conversation. Th
 
 | Agent | Role | Model | Tools |
 |---|---|---|---|
-| `ticket-analyst` | Normalises the ticket, makes each acceptance criterion testable, judges readiness | `sonnet` | Everything except edit tools (it needs the MCP tools, whose names vary by server) |
-| `repo-scout` | Finds the stack, the commands that really work here, conventions, hard rules | `sonnet` | Read, Grep, Glob, Bash, Write (its own output only) |
-| `solution-planner` | File-level plan with a trace from every criterion to steps and tests | `opus`, effort `high` | Read, Grep, Glob, Bash, Write (its own output only) |
-| `code-implementer` | Writes the code in the plan so the acceptance tests pass; applies fix lists | `sonnet` | All; never edits an acceptance test |
-| `test-engineer` | Acceptance tests before the code; after it, the remaining tests and coverage of the changed code (target 80 %, minimum 70 %) | `sonnet` | All; never edits production code |
-| `code-reviewer` | One lens per instance: correctness, security, quality, tests | `opus`, effort `high` | Read, Grep, Glob, Bash — no edit tools |
+| `delivery-ticket-analyst` | Normalises the ticket, makes each acceptance criterion testable, judges readiness | `sonnet` | Everything except edit tools (it needs the MCP tools, whose names vary by server) |
+| `delivery-repo-scout` | Finds the stack, the commands that really work here, conventions, hard rules | `sonnet` | Read, Grep, Glob, Bash, Write (its own output only) |
+| `delivery-solution-planner` | File-level plan with a trace from every criterion to steps and tests; writes the delta when an approved plan changes | `opus`, effort `high` | Read, Grep, Glob, Bash, Write (the plan and deltas; in a delta also the acceptance criteria) |
+| `delivery-code-implementer` | Writes the code in the plan so the acceptance tests pass; applies fix lists | `sonnet` | All; never edits an acceptance test |
+| `delivery-test-engineer` | Acceptance tests before the code; after it, the remaining tests and coverage of the changed code (target 80 %, minimum 70 %) | `sonnet` | All; never edits production code |
+| `delivery-code-reviewer` | One lens per instance: correctness, security, quality, tests | `opus`, effort `high` | Read, Grep, Glob, Bash — no edit tools |
 
 ### Which model does what, and why
 
@@ -157,9 +195,9 @@ Optional, in `.enabler/config.json` at the project root. Every key has a default
 }
 ```
 
-`/ai-enabler:doctor --init` writes this file with the defaults. The full description of each key is in [references/run-and-config.md](references/run-and-config.md).
+`/ai-enabler:delivery-doctor --init` writes this file with the defaults. The full description of each key is in [references/run-and-config.md](references/run-and-config.md).
 
-Removing a gate makes the pipeline run further unattended. Removing `ship` does not make it push on its own: without the gate, shipping needs the `--ship` flag or a separate `/ai-enabler:ship`.
+Removing a gate makes the pipeline run further unattended. Removing `ship` does not make it push on its own: without the gate, shipping needs the `--ship` flag or a separate `/ai-enabler:delivery-ship`.
 
 ## The run directory: what each file is
 
@@ -167,22 +205,23 @@ Every ticket gets its own folder, `.enabler/runs/<KEY>/`, where `<KEY>` is the J
 
 | File | Written at | By | What it is |
 |---|---|---|---|
-| `state.json` | start, then after every stage | the skill | Where the run stands: the stage to run next, the stages done, the branch, whether the plan was approved, whether tests go before or after the code, how many fix rounds were used, the pull-request URL, and every point where a person stepped in. This is what `/ai-enabler:deliver <KEY>` reads to resume. |
-| `requirements.json` | stage 1, intake | `ticket-analyst` | The ticket in a normalised form: summary, requirements, each acceptance criterion with an id (`AC-1`, `AC-2`…) and whether the ticket stated it or the analyst derived it, constraints, what is out of scope, dependencies, assumptions and open questions. Also two verdicts: whether the ticket is ready to implement, and whether its criteria are good enough to write tests from. |
-| `repo-context.md` | stage 2, scout | `repo-scout` | How this repository is built and written: stack and versions, the build, test and coverage commands that really work here, the directory structure, the conventions seen in existing code, the hard rules from `CLAUDE.md` and similar files, git conventions, the existing code closest to the ticket, and warnings (no tests, no coverage tool…). |
-| `deltas/delta-NN.md` | whenever the approved plan changes | `solution-planner` | One file per change made after the plan was approved: what triggered it and why, the acceptance criteria added, changed and removed, the tests to add and the obsolete ones to delete, the code to create, modify and delete. The record of how the work got from the first plan to the final one. |
-| `plan.md` | stage 3, plan | `solution-planner` | The implementation plan you approve at the first gate, kept current: after a delta it describes the work as it now stands, with a change-history table at the top. Contains the approach, the decisions taken and the alternatives rejected, the ordered steps with the files each one creates or modifies, the test plan (which tests are written before the code), a table tracing every acceptance criterion to steps and tests, risks, assumptions and open questions. |
-| `acceptance-tests.md` | stage 4, before the code | `test-engineer` | The list of tests written from the ticket's acceptance criteria before any production code existed: for each criterion, the test file, the test names and what each asserts, plus any criterion that could not be turned into a test and why. Absent when the ticket had no usable criteria. |
-| `test-report.md` | stage 6, coverage | `test-engineer` | The test results after the code: commands run, tests passed and failed, coverage of the changed code per file against the target and the minimum, the acceptance-criteria table (which test covers each, written before or after the code, passing or not), defects found, failures that existed before the change, and the test files added. |
+| `state.json` | start, then after every stage | the skill | Where the run stands: the stage to run next, the stages done, the branch, whether the plan was approved, the round counters of each gate, the deltas and whether each was approved and applied, whether tests go before or after the code, how many fix rounds were used, the pull-request URL, and every point where a person stepped in. This is what `/ai-enabler:delivery-run <KEY>` reads to resume. |
+| `requirements.json` | stage 1, intake | `delivery-ticket-analyst` | The ticket in a normalised form: summary, requirements, each acceptance criterion with an id (`AC-1`, `AC-2`…) and whether the ticket stated it or the analyst derived it, constraints, what is out of scope, dependencies, assumptions and open questions. Also two verdicts: whether the ticket is ready to implement, and whether its criteria are good enough to write tests from. |
+| `repo-context.md` | stage 2, scout | `delivery-repo-scout` | How this repository is built and written: stack and versions, the build, test and coverage commands that really work here, the directory structure, the conventions seen in existing code, the hard rules from `CLAUDE.md` and similar files, git conventions, the existing code closest to the ticket, and warnings (no tests, no coverage tool…). |
+| `deltas/delta-NN.before/` | just before a delta is written | the skill | Copies of `plan.md` and `requirements.json` as they were, so the delta can be revised or cancelled cleanly. |
+| `deltas/delta-NN.md` | whenever the approved plan changes | `delivery-solution-planner` | One file per change made after the plan was approved: what triggered it and why, the acceptance criteria added, changed and removed, the tests to add and the obsolete ones to delete, the code to create, modify and delete. The record of how the work got from the first plan to the final one. |
+| `plan.md` | stage 3, plan | `delivery-solution-planner` | The implementation plan you approve at the first gate, kept current: after a delta it describes the work as it now stands, with a change-history table at the top. Contains the approach, the decisions taken and the alternatives rejected, the ordered steps with the files each one creates or modifies, the test plan (which tests are written before the code), a table tracing every acceptance criterion to steps and tests, risks, assumptions and open questions. |
+| `acceptance-tests.md` | stage 4, before the code | `delivery-test-engineer` | The list of tests written from the ticket's acceptance criteria before any production code existed: for each criterion, the test file, the test names and what each asserts, plus any criterion that could not be turned into a test and why. Absent when the ticket had no usable criteria. |
+| `test-report.md` | stage 6, coverage | `delivery-test-engineer` | The test results after the code: commands run, tests passed and failed, coverage of the changed code per file against the target and the minimum, the acceptance-criteria table (which test covers each, written before or after the code, passing or not), defects found, failures that existed before the change, and the test files added. |
 | `review.md` | stage 7, review | the skill, from the reviewers' reports | The consolidated code review: the verdict, the findings numbered by severity with file and line, why each matters and how to fix it, the acceptance-criteria check, the findings still to validate, what was checked and found sound, and one section per fix round saying what was fixed, disputed or left open. |
-| `delivery-report.md` | stage 8, before the ship gate | the skill | The summary for whoever reviews the pull request: what changed, the acceptance criteria with their status and evidence, tests and coverage, the review outcome and open findings, deviations from the plan and assumptions, and how to verify. It is used as the pull-request body. |
+| `delivery-report.md` | stage 8, before the ship gate | the skill | The summary for whoever reviews the pull request: what changed, the changes made after the plan was approved (one entry per delta), the acceptance criteria with their status and evidence, tests and coverage, the review outcome and open findings, deviations from the plan and assumptions, and how to verify. It is used as the pull-request body. |
 
 A few things worth knowing:
 
 - **You can read and edit them.** They are plain Markdown and JSON. Adjusting `plan.md` by hand before approving it is fine; the implementer follows what the file says.
-- **Not every run has every file.** `/ai-enabler:plan` stops after `plan.md`. A run whose ticket states no acceptance criteria has no `acceptance-tests.md`.
+- **Not every run has every file.** `/ai-enabler:delivery-plan` stops after `plan.md`. A run whose ticket states no acceptance criteria has no `acceptance-tests.md`.
 - **They stay out of git.** `.enabler/runs/` holds working files; the pipeline adds it to `.gitignore` if it is missing and never stages it. What matters ends up in the pull request through `delivery-report.md`.
-- **Stand-alone skills use `.enabler/runs/adhoc/`.** `/ai-enabler:test` and `/ai-enabler:review` without a ticket write their `repo-context.md`, `test-report.md` and `review-<date>.md` there.
+- **Stand-alone skills use `.enabler/runs/adhoc/`.** `/ai-enabler:delivery-test` and `/ai-enabler:delivery-review` without a ticket write their `repo-context.md`, `test-report.md` and `review-<date>.md` there.
 - **Deleting a run folder is safe** once the work is merged or abandoned. It only removes the ability to resume that run.
 
 `state.json` records each point where a person stepped in (`human_interventions`), which is the pipeline's own view of how autonomous a run was. The `ai-enabler-kpi` plugin measures the same thing from the outside.
@@ -201,7 +240,7 @@ Answer the ship gate with `local` or any refusal ("no", "don't push", "keep it l
 - no `git push`, no pull request, no Jira comment or transition;
 - with `local`, the work is committed on the feature branch on your machine; with a plain "no" it stays uncommitted in the working tree.
 
-`hold` is different: it means "not now". Nothing is sent and nothing is committed, but the project does not become local-only, and `/ai-enabler:ship` can finish later.
+`hold` is different: it means "not now". Nothing is sent and nothing is committed, but the project does not become local-only, and `/ai-enabler:delivery-ship` can finish later.
 
 This is enforced, not just promised. The plugin ships a hook (`hooks/remote_guard.py`) that, while the file `.enabler/local-only` exists anywhere from the working directory up to the repository root, refuses — from the main conversation and from any subagent:
 
@@ -212,13 +251,13 @@ This is enforced, not just promised. The plugin ships a hook (`hooks/remote_guar
 
 Reading stays allowed: fetch, pull, viewing a pull request, reading a Jira issue. The agents are also told never to work around a refusal.
 
-Only you lift it: delete `.enabler/local-only` by hand, then run `/ai-enabler:ship`. A later "ok, push it" in the chat is deliberately not enough.
+Only you lift it: delete `.enabler/local-only` by hand, then run `/ai-enabler:delivery-ship`. A later "ok, push it" in the chat is deliberately not enough.
 
 What it cannot do: no parser sees inside every program. A push performed by a script file, a Makefile target or a binary the agent runs is invisible to the hook. Claude Code's own permission prompt for commands is the second barrier, and for a guarantee that does not depend on either, remove the push credentials or the remote from the machine.
 
 ## Safety rules
 
-The two gates are enough because the rest is bounded by rules every skill follows ([references/git-and-jira-safety.md](references/git-and-jira-safety.md)):
+Two gates and a handful of conditional stops are enough because the rest is bounded by rules every skill follows ([references/git-and-jira-safety.md](references/git-and-jira-safety.md)):
 
 - Work happens on a feature branch, never on the base branch. Unrelated changes in the working tree stop the run.
 - Files are staged by path; the staged diff is checked for secrets and strays before each commit.
@@ -231,7 +270,7 @@ The two gates are enough because the rest is bounded by rules every skill follow
 
 The ticket is read through whichever Jira MCP server is connected; the skills find the tools by what they do, not by a fixed name, so both Atlassian's remote server and `mcp-atlassian` work. Setup is in [docs/jira-mcp.md](../../docs/jira-mcp.md).
 
-A Markdown or text file can stand in for a ticket: `/ai-enabler:deliver docs/feature-x.md`. Everything works the same except that nothing is written to Jira at the end.
+A Markdown or text file can stand in for a ticket: `/ai-enabler:delivery-run docs/feature-x.md`. Everything works the same except that nothing is written to Jira at the end.
 
 ## Where the ideas come from
 

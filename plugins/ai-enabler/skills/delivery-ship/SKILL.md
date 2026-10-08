@@ -1,12 +1,15 @@
 ---
-name: ship
-description: Ships a finished change — commits it on its feature branch, pushes, opens a pull request with the delivery report as its body, and updates the Jira issue (comment and optional transition) through the Jira MCP server. Shows exactly what it will do and waits for one confirmation; never forces, never merges, never pushes to the base branch. Use when the user says "ship PROJ-123", "open the PR", "commit and push this ticket", "publish the changes", "create the pull request and update Jira", or after holding at the ship gate of `/ai-enabler:deliver`.
+name: delivery-ship
+description: Ships a finished change — commits it on its feature branch, pushes, opens a pull request with the delivery report as its body, and updates the Jira issue (comment and optional transition) through the Jira MCP server. Shows exactly what it will do and waits for one confirmation; never forces, never merges, never pushes to the base branch. Use when the user says "ship PROJ-123", "open the PR", "commit and push this ticket", "publish the changes", "create the pull request and update Jira", or after holding at the ship gate of `/ai-enabler:delivery-run`.
 argument-hint: [JIRA-KEY] [--local] [--no-pr] [--draft] [--no-jira] [--yes]
+metadata:
+  owner: "Julio Fernandez <jfejimen@nttdata.com>"
+  version: "1.0.0"
 ---
 
-# ai-enabler:ship — commit, push, pull request, Jira
+# ai-enabler:delivery-ship — commit, push, pull request, Jira
 
-Runs the last stage of the delivery pipeline. `/ai-enabler:deliver` follows these same steps after its ship gate; invoked directly, this skill finishes a run that was held, or ships a change made outside the pipeline.
+Runs the last stage of the delivery pipeline. `/ai-enabler:delivery-run` follows these same steps after its ship gate; invoked directly, this skill finishes a run that was held, or ships a change made outside the pipeline.
 
 Read first, and follow to the letter:
 
@@ -32,7 +35,7 @@ If the person answers the confirmation below with a refusal to upload — "no", 
    - The commit message, following the repository's convention or `git.commit_pattern`, with the key, and the "clean history" rule of the safety reference: one commit for the finished change, its body listing the deltas recorded in `state.json`; if the run already has a commit, this is one further commit that says what this delta or correction does, what it adds and what it removes.
    - The pull-request title and body. The body is `delivery-report.md` when it exists; otherwise write one from the diff: what changed, why, how to verify.
    - The Jira comment (branch, pull-request link, what was implemented, test result, open items) and the transition target, as configured.
-4. **Confirm once.** Unless this skill is being followed from the ship gate of `/ai-enabler:deliver` (which already obtained approval for this exact list) or `--yes` was passed, show the list and wait:
+4. **Confirm once.** Unless this skill is being followed from the ship gate of `/ai-enabler:delivery-run` (which already obtained approval for this exact list) or `--yes` was passed, show the list and wait:
 
    ```
    SHIP — <KEY>
@@ -45,7 +48,7 @@ If the person answers the confirmation below with a refusal to upload — "no", 
    Proceed? (yes / local: commit only, nothing leaves / no / edit: <what to change>)
    ```
 5. **Execute, in order, stopping at the first failure.**
-   1. Stage the run's files by path; verify the staged diff (no secrets, no unrelated files, no `.enabler/runs/`).
+   1. Stage the run's files by path; verify the staged diff (no secrets, no unrelated files, no `.enabler/runs/`). If there is nothing to stage because the work was already committed — after a `local` commit, for example — skip this step and the next and go on with the commits that exist.
    2. Commit.
    3. Push, setting the upstream if needed. On rejection, one `git pull --rebase`; on conflict, abort the rebase and stop.
    4. Open the pull request (`--draft` if requested or recommended), unless `--no-pr` or `git.pull_request` is false. Without an authenticated `gh` or `glab`, print the compare URL instead.

@@ -57,7 +57,7 @@ def main():
         assert out.stderr == "", (event, out.stderr)
 
     fire("SessionStart", source="startup")
-    fire("UserPromptSubmit", prompt="/ai-enabler:deliver PROJ-7 please, and mind UTF-8")
+    fire("UserPromptSubmit", prompt="/ai-enabler:delivery-run PROJ-7 please, and mind UTF-8")
     # An edit that needed approval: 1.2 s between request and result.
     fire("PreToolUse", tool_name="Edit", tool_use_id="t1", tool_input={})
     fire("PermissionRequest", tool_name="Edit", tool_use_id="t1")
@@ -67,10 +67,10 @@ def main():
                      "old_string": "x = 1", "new_string": "x = 2\ny = 3\nz = 4"})
     fire("PostToolUse", tool_name="Bash", tool_use_id="t2", duration_ms=50,
          tool_input={"command": "git commit -m 'secret message that must not be stored'"})
-    fire("SubagentStart", agent_id="a1", agent_type="ai-enabler:code-reviewer")
+    fire("SubagentStart", agent_id="a1", agent_type="ai-enabler:delivery-code-reviewer")
     fire("PostToolUse", tool_name="Agent", tool_use_id="t3", duration_ms=5,
-         tool_input={"subagent_type": "ai-enabler:code-reviewer", "prompt": "do not store me"})
-    fire("SubagentStop", agent_id="a1", agent_type="ai-enabler:code-reviewer")
+         tool_input={"subagent_type": "ai-enabler:delivery-code-reviewer", "prompt": "do not store me"})
+    fire("SubagentStop", agent_id="a1", agent_type="ai-enabler:delivery-code-reviewer")
     fire("PostToolUseFailure", tool_name="Bash", tool_use_id="t4", is_interrupt=True,
          tool_input={"command": "mvn test"})
 
@@ -81,11 +81,11 @@ def main():
         fh.write(assistant("m1", "claude-opus-5-5", {
             "input_tokens": 1000, "output_tokens": 2000, "cache_read_input_tokens": 100000,
             "cache_creation": {"ephemeral_5m_input_tokens": 10000, "ephemeral_1h_input_tokens": 5000}},
-            skill="ai-enabler:deliver"))
+            skill="ai-enabler:delivery-run"))
     with open(os.path.join(sub_dir, "agent-a1.jsonl"), "w") as fh:
         fh.write(assistant("m2", "claude-haiku-4-5-20251001", {"input_tokens": 500, "output_tokens": 100}))
     with open(os.path.join(sub_dir, "agent-a1.meta.json"), "w") as fh:
-        json.dump({"agentType": "ai-enabler:code-reviewer"}, fh)
+        json.dump({"agentType": "ai-enabler:delivery-code-reviewer"}, fh)
 
     fire("Stop")
     time.sleep(1.1)
@@ -122,8 +122,8 @@ def main():
     # Opus 5.5: 1000*4 + 2000*20 + 100000*0.20 + 10000*4*1.25 + 5000*4*2 = 154000 -> $0.154
     # Haiku 4.5: 500*1 + 100*5 = 1000 -> $0.001
     assert abs(o["cost_usd"] - 0.155) < 1e-6, o["cost_usd"]
-    assert abs(kpi["cost_by"]["skill"]["ai-enabler:deliver"] - 0.154) < 1e-6
-    assert abs(kpi["cost_by"]["agent"]["ai-enabler:code-reviewer"] - 0.001) < 1e-6
+    assert abs(kpi["cost_by"]["skill"]["ai-enabler:delivery-run"] - 0.154) < 1e-6
+    assert abs(kpi["cost_by"]["agent"]["ai-enabler:delivery-code-reviewer"] - 0.001) < 1e-6
     assert o["tokens_output"] == 2100 and o["tokens_cache_read"] == 100000
     assert o["commands"] == 1 and o["human_prompts"] == 1 and o["permission_prompts"] == 1
     assert o["interrupts"] == 1 and o["tool_failures"] == 1 and o["tool_calls"] == 4
@@ -224,7 +224,7 @@ def regressions(tmp, base_env):
     assert "pr" not in bash_summary("gh pr create --help")
     assert bash_summary("FOO=1 gh pr create --fill").get("pr") is True
     assert bash_summary("cd app && mvn -q test")["cmd"] == "mvn"
-    assert SLASH_COMMAND.match("/ai-enabler:deliver") and SLASH_COMMAND.match("/clear")
+    assert SLASH_COMMAND.match("/ai-enabler:delivery-run") and SLASH_COMMAND.match("/clear")
     assert not SLASH_COMMAND.match("/home/acme/payroll.py")
     assert HARNESS_PROMPT.match("<task-notification>") and not HARNESS_PROMPT.match("<div class='x'> why")
 
@@ -258,6 +258,13 @@ def regressions(tmp, base_env):
     assert "secret-client" not in raw and events[0]["kind"] == "human", events[0]
     usage = [e for e in events if e["ev"] == "usage"]
     assert len(usage) == 1 and usage[0]["rows"][0]["in"] == 1000, usage
+
+    # Events recorded before the 1.0.0 rename are reported under the current names.
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    from kpi_report import current_names
+    old = current_names({"ev": "usage", "rows": [{"skill": "ai-enabler:deliver", "agent": "ai-enabler:code-reviewer"}]})
+    assert old["rows"][0] == {"skill": "ai-enabler:delivery-run", "agent": "ai-enabler:delivery-code-reviewer"}
+    assert current_names({"ev": "prompt", "command": "ai-enabler:plan"})["command"] == "ai-enabler:delivery-plan"
 
     # A project price file that only adds one Bedrock region keeps the bundled prices.
     with open(os.path.join(kpi_dir, "pricing.json"), "w") as fh:

@@ -52,7 +52,7 @@ To make the pipeline read-only towards Jira regardless of configuration, start t
 ## Checking the connection
 
 ```
-/ai-enabler:doctor PROJ-123
+/ai-enabler:delivery-doctor PROJ-123
 ```
 
 reports which server provides the Jira tools, fetches the ticket as proof that reading works, and says whether tools for commenting and transitioning are available.
@@ -84,7 +84,7 @@ Leave the write tools on "ask" unless the team is comfortable with the ship gate
 Pass a Markdown file instead of a key:
 
 ```
-/ai-enabler:deliver docs/requirements/export-csv.md
+/ai-enabler:delivery-run docs/requirements/export-csv.md
 ```
 
 The file should state the requirements and, ideally, the acceptance criteria. The pipeline runs unchanged, minus the Jira update.

@@ -207,6 +207,33 @@ class Pricing:
         return "; ".join(parts) or "undated prices"
 
 
+# Skills and agents renamed in ai-enabler 1.0.0. Events recorded under the old
+# names are reported under the new ones, so a rename does not split the history.
+RENAMED = {
+    "ai-enabler:deliver": "ai-enabler:delivery-run", "ai-enabler:plan": "ai-enabler:delivery-plan",
+    "ai-enabler:implement": "ai-enabler:delivery-implement", "ai-enabler:test": "ai-enabler:delivery-test",
+    "ai-enabler:review": "ai-enabler:delivery-review", "ai-enabler:ship": "ai-enabler:delivery-ship",
+    "ai-enabler:doctor": "ai-enabler:delivery-doctor",
+    "ai-enabler:ticket-analyst": "ai-enabler:delivery-ticket-analyst",
+    "ai-enabler:repo-scout": "ai-enabler:delivery-repo-scout",
+    "ai-enabler:solution-planner": "ai-enabler:delivery-solution-planner",
+    "ai-enabler:code-implementer": "ai-enabler:delivery-code-implementer",
+    "ai-enabler:test-engineer": "ai-enabler:delivery-test-engineer",
+    "ai-enabler:code-reviewer": "ai-enabler:delivery-code-reviewer",
+}
+
+
+def current_names(e):
+    for field in ("skill", "agent", "command"):
+        if e.get(field) in RENAMED:
+            e[field] = RENAMED[e[field]]
+    for row in e.get("rows") or []:
+        for field in ("skill", "agent"):
+            if row.get(field) in RENAMED:
+                row[field] = RENAMED[row[field]]
+    return e
+
+
 # ------------------------------------------------------------------ loading
 
 def find_default_kpi_dir():
@@ -250,7 +277,7 @@ def load_events(kpi_dirs, since, until, user, ticket):
                             continue
                         if user and e.get("user") != user:
                             continue
-                        events.append(e)
+                        events.append(current_names(e))
     events.sort(key=lambda e: e["t"])
     # The ticket is often named only in the first prompt: what a session did
     # before that (its start, a first question) belongs to the same ticket.

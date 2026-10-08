@@ -27,14 +27,14 @@ The goal above is AI Enablement's model — the AI executes — so that is the b
 
 | Idea | Source | In ai-enabler |
 |---|---|---|
-| Jira ticket (or Markdown file) as the input, read through MCP | `code-generator`, `jira-ticket-retriever` | `ticket-analyst` agent, used by `deliver` and `plan` |
+| Jira ticket (or Markdown file) as the input, read through MCP | `code-generator`, `jira-ticket-retriever` | `delivery-ticket-analyst` agent, used by `delivery-run` and `delivery-plan` |
 | Four-step pipeline: read requirements, analyse the repository, plan files, write code | `generate-code` and its four internal skills | Stages 1–3 and 5, each a real subagent |
 | Structured requirements with feature type, criteria and open questions | `requirements-reader` | `requirements.json`, plus a readiness verdict |
-| Repository conventions and project rules as hard constraints | `repo-analyzer` | `repo-scout`, which also finds the working build, test and coverage commands |
+| Repository conventions and project rules as hard constraints | `repo-analyzer` | `delivery-repo-scout`, which also finds the working build, test and coverage commands |
 | File-level blueprint approved before code is written | `code-planner`, `story-to-plan` | `plan.md` and the plan gate |
-| Unit tests with a coverage threshold on changed code (70 % there) | `generate-tests` | `test-engineer` in coverage mode, with a target of 80 % and a minimum of 70 % |
-| Parallel review agents by focus, findings filtered by confidence ≥ 80, severity-ranked Markdown report, optional auto-fix | `smart-review` | `code-reviewer` × lenses, `review.md`, the fix loop |
-| Commit and push after confirmation | `release-doc` | `ship`, extended to the pull request and Jira |
+| Unit tests with a coverage threshold on changed code (70 % there) | `generate-tests` | `delivery-test-engineer` in coverage mode, with a target of 80 % and a minimum of 70 % |
+| Parallel review agents by focus, findings filtered by confidence ≥ 80, severity-ranked Markdown report, optional auto-fix | `smart-review` | `delivery-code-reviewer` × lenses, `review.md`, the fix loop |
+| Commit and push after confirmation | `release-doc` | `delivery-ship`, extended to the pull request and Jira |
 
 ## What was taken from AIAD
 
@@ -43,9 +43,9 @@ The goal above is AI Enablement's model — the AI executes — so that is the b
 | No measurement at all | Passive, opt-in hooks that log activity and turn duration (`aidd-activity-hook`), consumed by a metrics script (`aiba-metrics`) | The `ai-enabler-kpi` plugin |
 | The "agents" of the pipeline are skills sharing one context | A real subagent with an isolated context and no edit tools (`aiad-reviewer`) | All six agents; reviewers are read-only by construction |
 | Review checklist is generic | Comprehensive per-layer checklist (backend, API, frontend), evidence with `file:line`, "needs a test" per finding, acceptance-criteria coverage | `references/review-checklist.md` and the reviewer's output format |
-| Tests are written only after the code, from the code | Tests first, derived from acceptance criteria (`aiad-tdd`); end-to-end level (`aiad-test e2e`) | Stage 4: `test-engineer` writes the acceptance tests before the code, and the implementer has to make them pass; `e2e` level optional |
-| Push is a bare `git commit && git push` | Non-destructive rules: never force, never reset, abort a conflicting rebase, stop and report (`aiad-save`) | `references/git-and-jira-safety.md` |
-| No way to hand work between machine and human mid-ticket | The engine switch (`aiad-bridge`) | Takeover and resume: the run directory holds the state, and `deliver` treats a person's edits as part of the change |
+| Tests are written only after the code, from the code | Tests first, derived from acceptance criteria (`aiad-tdd`); end-to-end level (`aiad-test e2e`) | Stage 4: `delivery-test-engineer` writes the acceptance tests before the code, and the implementer has to make them pass; `e2e` level optional |
+| Push is a bare `git commit && git push` | Non-destructive rules: never force, never hard-reset, abort a conflicting rebase, stop and report (`aiad-save`) | `references/git-and-jira-safety.md` |
+| No way to hand work between machine and human mid-ticket | The engine switch (`aiad-bridge`) | Takeover and resume: the run directory holds the state, and `delivery-run` treats a person's edits as part of the change |
 | No record of who did what | The authorship journal | `human_interventions` in `state.json`, and the interaction KPIs |
 | Performance is not reviewed | `aiad-review perf` | Evident performance problems are part of the quality lens |
 
@@ -71,7 +71,7 @@ Agents do not all inherit the session's model. Planning and review run on Opus a
 
 `smart-review` alone has five confirmation gates; `generate-tests` has three. That is appropriate when the AI is being supervised step by step, and it is exactly the human interaction this project wants to reduce and measure. The pipeline keeps the two decisions that are worth a person's attention: what will be built, before it is built, and what will leave the machine, before it does. Everything else is bounded by rules rather than by confirmations, and both gates are configurable.
 
-Besides the gates (which also show each delta), three conditional stops remain, where proceeding is not the machine's call: a ticket that is not implementable as written, a plan that proved wrong in scope, and coverage of the changed code under the minimum.
+Besides the gates — which also show every delta, since a plan that proved wrong is handled as one — three conditional stops remain, where proceeding is not the machine's call: a ticket that is not implementable as written, coverage of the changed code under the minimum, and a further round at a gate once the round limit is reached.
 
 ### Tests before the code, coverage after it
 
@@ -91,7 +91,9 @@ The first version let a person ask for a "fix" at the ship gate and sent it stra
 
 A change of scope, behaviour or acceptance criteria is now a delta: a small document, approved at the plan gate, that lists what is added and what is removed — criteria, tests, code. It is executed in the pipeline's own order, so the acceptance tests change first (new ones written, obsolete ones deleted) and the code follows (new code written, dead code deleted). `plan.md` is kept current and the deltas keep the story; the pull request gets both. A correction that leaves the plan true is not a delta and takes the short loop through implementer, coverage and review.
 
-Commits follow from the same idea. Nothing is committed during a run, so attempts, fix rounds and removed code never reach the history; the ship stage makes one commit for the finished change, and a delta arriving after that is one more commit that says what it does.
+Commits follow from the same idea. Nothing is committed during a run, so attempts, fix rounds and removed code never reach the history; the ship stage makes one commit for the finished change, and a delta arriving after that is one more commit that says what it does. History is never rewritten, even unpushed.
+
+A delta always needs approval, also in a run configured without gates, and before the planner writes one the previous plan and criteria are copied aside, so that revising or cancelling it puts things back exactly. A criterion a delta removes is kept, marked, and no longer in force.
 
 Rounds at a gate are counted per gate and capped at three by default — as an offer to take over, not as a refusal to continue. The rounds are the person's own requests; the pipeline's part is to notice that a fourth attempt is unlikely to go better than the third and say so.
 
@@ -129,6 +131,12 @@ Three definitions were tightened on the way: backward moves count only inside th
 
 Per-developer figures are on by default, because the team asked for them, and each report carries the context those figures need.
 
+### Area-first names, an owner and a version on every asset
+
+The AI4IT SWAT framework manual ([docs/reference/](reference/README.md)) sets the convention for shared AI assets: each has a name that starts with its area, a named owner and a semantic version, so it can be found in a long list and outlives its author. The delivery plugin adopted it in 1.0.0: `plan` became `delivery-plan`, the agents took the same prefix, and each file carries `metadata.owner` and `metadata.version`. Claude Code reads the `metadata` block and ignores its content, which was checked before relying on it. The area repeats what the plugin prefix already says (`/ai-enabler:delivery-plan`); that redundancy is accepted for the sake of one convention across marketplaces.
+
+A rename breaks commands and would split the usage history, so the release is a major one, the README carries the old-to-new table, and the KPI report maps events recorded under old names to the new ones. Versions are kept at three levels that move independently, as in the sibling aidd-marketplace: the marketplace (`VERSION`), each plugin (`plugin.json`) and each skill or agent (`metadata.version`). Whoever changes something bumps what it affects in the same commit — patch, minor or major by the kind of change — and `AGENTS.md` states the rule. Two small scripts check the convention and the bumps, so that neither depends on memory. The metrics plugin has not been renamed yet and is marked as pending in that check.
+
 ### English artefacts
 
 All skills, agents, scripts and documents are in English. Skills answer in the language the user writes in.
@@ -136,14 +144,14 @@ All skills, agents, scripts and documents are in English. Skills answer in the l
 ## What was verified
 
 - Both plugin manifests and the marketplace manifest pass `claude plugin validate`.
-- A headless session with both plugins loaded ran `/ai-enabler:doctor` and captured events through the hooks; the report's cost matched Claude Code's own figure for that session.
+- A headless session with both plugins loaded ran `/ai-enabler:delivery-doctor` and captured events through the hooks; the report's cost matched Claude Code's own figure for that session.
 - `plugins/ai-enabler-kpi/tests/test_kpi.py` replays a session through the hook and checks counts, waiting time, cost attribution, privacy and opt-in, and prices a Bedrock session (geographic, global and unprefixed model ids) against the AWS prices for `eu-west-1`.
 
 Not yet verified on a live Bedrock session: which form of model id Claude Code writes to the transcript there. The pricing handles every form (prefixed id, ARN, bare name plus the recorded environment), but the first real Bedrock report should be checked against its "Cost by price basis" table.
 
 - The remote guard was checked in a real session: with the marker in place, a requested `git push` was refused and the remote stayed empty. `plugins/ai-enabler/tests/test_remote_guard.py` covers 80 commands and tools it blocks and 45 it lets through, including the bypasses an audit found in the first version (newlines, `bash -c`, wrappers, `gh api -XPOST`, GitHub MCP writes, deleting `.enabler`).
 - The pull-request metrics were run against a public repository with the GitHub CLI, and the rendered HTML was inspected. `plugins/ai-enabler-kpi/tests/test_delivery.py` checks all four metrics on fixtures, including the cases an independent audit found wrong in the first version (dismissed and post-merge reviews, look-alike ticket keys, window-dependent follow-ups, sprints closed late, duplicates, moves through Blocked). The Jira REST route and the collector agent have not been run against a real Jira.
-- `/ai-enabler:deliver` was run end to end, unattended (`--gates none`), on a small Node.js project from a Markdown requirements file with six acceptance criteria. All eight stages ran: the acceptance tests were written before the code, the implementation made them pass, coverage of the changed code reached 100 % line and branch, four reviewers ran in parallel, and the run held before shipping as the rules require. Each subagent ran on the model its frontmatter names (Opus for planning and review, Sonnet for the rest). The KPI report's cost for the run matched Claude Code's own figure.
+- `/ai-enabler:delivery-run` was run end to end, unattended (`--gates none`), on a small Node.js project from a Markdown requirements file with six acceptance criteria. All eight stages ran: the acceptance tests were written before the code, the implementation made them pass, coverage of the changed code reached 100 % line and branch, four reviewers ran in parallel, and the run held before shipping as the rules require. Each subagent ran on the model its frontmatter names (Opus for planning and review, Sonnet for the rest). The KPI report's cost for the run matched Claude Code's own figure.
 
 Not yet exercised: the delta path (a change of scope after approval) and the round limit at a gate, which are instructions added after that run. Also not yet exercised: a ticket read from a real Jira instance through MCP, the ship stage against a real remote (push, pull request, Jira comment), the fix loop with real blocking findings, the stop below the coverage minimum, and a large codebase. The first runs on a real ticket are where the instructions should be tuned — the plan gate's summary, the fix-loop budget and the review confidence floor are the likely candidates.
 

@@ -1,6 +1,6 @@
 # Review checklist
 
-Given to each `code-reviewer` instance alongside its lens. It is a list of places to look, not a list of findings to produce: report only what the changed code actually shows.
+Given to each `delivery-code-reviewer` instance alongside its lens. It is a list of places to look, not a list of findings to produce: report only what the changed code actually shows.
 
 ## All lenses
 
@@ -43,7 +43,7 @@ Given to each `code-reviewer` instance alongside its lens. It is a list of place
 - Error and boundary cases, not just the happy path.
 - Assertions that check behaviour, not that a mock was called.
 - Determinism: no dependence on time, order, network or shared state.
-- Existing tests weakened, skipped or deleted by the change.
+- Existing tests weakened, skipped or deleted by the change — other than the removals an approved delta lists.
 
 ## By layer, when the change touches it
 
