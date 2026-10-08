@@ -1,13 +1,13 @@
 # ai-enabler
 
-A Claude Code marketplace for teams that want the machine to do the delivery work — starting from a Jira ticket, without a spec-driven process — and want to measure what that costs in human attention, time and money.
+A Claude Code marketplace for teams that want the machine to do the delivery work — starting from a Jira ticket, without a spec-driven process — and want to measure both how AI is used and how the team delivers.
 
 It ships two plugins:
 
 | Plugin | What it does |
 |---|---|
 | [`ai-enabler`](plugins/ai-enabler/README.md) | Takes a Jira ticket to a pull request. Dedicated subagents read the ticket through the Jira MCP server, analyse the repository, plan, implement, test and review; the human decides at two gates, the plan and the ship. |
-| [`ai-enabler-kpi`](plugins/ai-enabler-kpi/README.md) | Measures AI usage with opt-in hooks (human interaction, AI working time, token cost in USD per session, user, ticket, skill and model) and delivery flow with scripts (pull request size, review waiting time, rework, Jira cycle time), and reports both as HTML dashboards with charts and per-developer figures. Works with any workflow, not only `ai-enabler`. |
+| [`ai-enabler-metrics`](plugins/ai-enabler-metrics/README.md) | Measures AI usage with opt-in hooks (human interaction, AI working time, token cost in USD per session, user, ticket, skill and model) and delivery flow with scripts (pull request size, review waiting time, rework, Jira cycle time), and reports both as HTML dashboards with charts. A delivery metric becomes a KPI only when the team sets a target for it; usage figures are context and never take one. Works with any workflow, not only `ai-enabler`. |
 
 ## How it works
 
@@ -57,31 +57,31 @@ The pipeline has two gates: one to show the plan before any code is written, one
 ```
 /plugin marketplace add <git URL of this repository>
 /plugin install ai-enabler@ai-enabler
-/plugin install ai-enabler-kpi@ai-enabler
+/plugin install ai-enabler-metrics@ai-enabler
 ```
 
 From a local clone, `/plugin marketplace add ./` works as well. To try it without installing:
 
 ```
-claude --plugin-dir plugins/ai-enabler --plugin-dir plugins/ai-enabler-kpi
+claude --plugin-dir plugins/ai-enabler --plugin-dir plugins/ai-enabler-metrics
 ```
 
 Requirements:
 
 - A Jira MCP server connected to Claude Code, to read tickets. See [docs/jira-mcp.md](docs/jira-mcp.md). Without one, the pipeline accepts a Markdown file with the requirements instead.
-- `git`, and the GitHub CLI `gh` (https://cli.github.com, then `gh auth login`): it opens pull requests for `ai-enabler` and is how `ai-enabler-kpi` reads them for the delivery metrics. `glab` works for opening merge requests on GitLab.
-- `python3` (3.8 or later) on the `PATH`, for the KPI hooks and report. No extra packages.
+- `git`, and the GitHub CLI `gh` (https://cli.github.com, then `gh auth login`): it opens pull requests for `ai-enabler` and is how `ai-enabler-metrics` reads them for the delivery metrics. `glab` works for opening merge requests on GitLab.
+- `python3` (3.8 or later) on the `PATH`, for the usage hooks and report. No extra packages.
 
 ## Quick start
 
 ```
-/ai-enabler:delivery-doctor PROJ-123         # check the setup: Jira MCP, git, tests, config
-/ai-enabler-kpi:kpi-init            # switch KPI capture on for this repository
-                                 # (counts from here on; earlier spend in this session is not billed)
+/ai-enabler:delivery-doctor PROJ-123          # check the setup: Jira MCP, git, tests, config
+/ai-enabler-metrics:metrics-usage-init        # switch usage capture on for this repository
+                                              # (counts from here on; earlier spend in this session is not billed)
 
-/ai-enabler:delivery-run PROJ-123        # ticket -> plan gate -> tests, code, coverage, review -> ship gate -> PR
+/ai-enabler:delivery-run PROJ-123             # ticket -> plan gate -> tests, code, coverage, review -> ship gate -> PR
 
-/ai-enabler-kpi:kpi-report          # what it took: interactions, time, cost
+/ai-enabler-metrics:metrics-usage-report      # what it took: interactions, time, cost — and the delivery dashboard
 ```
 
 ## Skills at a glance
@@ -95,10 +95,11 @@ Requirements:
 | `/ai-enabler:delivery-review [KEY \| PR \| paths]` | Independent multi-lens review, with optional auto-fix |
 | `/ai-enabler:delivery-ship [KEY]` | Commit, push, open the pull request, update Jira |
 | `/ai-enabler:delivery-doctor` | Check or initialise the project setup |
-| `/ai-enabler-kpi:kpi-init` | Switch KPI capture on for a project |
-| `/ai-enabler-kpi:kpi-report` | Produce the KPI report: AI usage and delivery flow, as HTML dashboards with charts |
-| `/ai-enabler-kpi:delivery-report` | Delivery-flow dashboard: PR size, review waiting time, rework, Jira cycle time, per developer |
-| `/ai-enabler-kpi:pr-size`, `review-wait`, `rework`, `cycle-time` | One delivery metric at a time |
+| `/ai-enabler-metrics:metrics-usage-init` | Switch usage capture on for a project |
+| `/ai-enabler-metrics:metrics-usage-report` | Produce the usage report: AI usage and delivery flow, as HTML dashboards with charts |
+| `/ai-enabler-metrics:metrics-delivery-report` | Delivery-flow dashboard: PR size, review waiting time, rework, Jira cycle time, per developer |
+| `/ai-enabler-metrics:metrics-pr-size`, `metrics-review-wait`, `metrics-rework`, `metrics-cycle-time` | One delivery metric at a time |
+| `/ai-enabler-metrics:metrics-stale-assets` | Skills and agents in use, and the ones unused for 90 days |
 
 ## What appears in your project: the `.enabler/` folder
 
@@ -119,16 +120,16 @@ Both plugins keep their files in one folder at the root of the project where you
       test-report.md          test results and coverage after the code
       review.md               the consolidated code review and its fix rounds
       delivery-report.md      the summary that becomes the pull-request body
-  kpi/                        exists only after /ai-enabler-kpi:kpi-init; its presence switches capture on
+  metrics/                    exists only after /ai-enabler-metrics:metrics-usage-init; its presence switches capture on
     config.json               capture, pricing and delivery-metric settings
     events/<user>/<session>.jsonl   what the hooks recorded, one line per event
-    delivery/<metric>.json    latest result of each delivery metric
+    delivery/<metric>.json    latest result of each delivery metric; kpis.json with the KPI verdicts
     reports/<date>/           the reports: report.html, delivery.html, pr-size.html, … plus .md, .json, .csv
 ```
 
-Each file of a run is described in [plugins/ai-enabler/README.md](plugins/ai-enabler/README.md#the-run-directory-what-each-file-is), and the KPI files in [plugins/ai-enabler-kpi/README.md](plugins/ai-enabler-kpi/README.md) and [docs/kpi-reference.md](docs/kpi-reference.md).
+Each file of a run is described in [plugins/ai-enabler/README.md](plugins/ai-enabler/README.md#the-run-directory-what-each-file-is), and the metrics files in [plugins/ai-enabler-metrics/README.md](plugins/ai-enabler-metrics/README.md) and [docs/metrics-reference.md](docs/metrics-reference.md).
 
-What to commit: `.enabler/config.json`, and `.enabler/kpi/config.json` if the team shares its KPI settings. Everything else is ignored by default — run folders because they are working files, KPI events and snapshots because they name people (see `kpi-init --share` to change that deliberately).
+What to commit: `.enabler/config.json`, and `.enabler/metrics/config.json` if the team shares its metrics settings. Everything else is ignored by default — run folders because they are working files, usage events and snapshots because they name people (see `metrics-usage-init --share` to change that deliberately).
 
 ## Documentation
 
@@ -139,8 +140,8 @@ What to commit: `.enabler/config.json`, and `.enabler/kpi/config.json` if the te
 | [docs/reference/](docs/reference/README.md) | The AI4IT SWAT framework manual this marketplace follows, and how each of its standards is implemented here |
 | [docs/design.md](docs/design.md) | Why the marketplace is shaped this way: what was taken from AI Enablement, what from AIAD, and the decisions behind the pipeline |
 | [plugins/ai-enabler/README.md](plugins/ai-enabler/README.md) | The delivery pipeline: stages, subagents, gates, configuration, run directory, safety rules |
-| [plugins/ai-enabler-kpi/README.md](plugins/ai-enabler-kpi/README.md) | KPI capture and reporting: what is measured, privacy, sharing, the report |
-| [docs/kpi-reference.md](docs/kpi-reference.md) | Event schema, KPI definitions and formulas, pricing, known limits |
+| [plugins/ai-enabler-metrics/README.md](plugins/ai-enabler-metrics/README.md) | Usage and delivery metrics: what is measured, when a metric is a KPI, privacy, sharing, the reports, coming from `ai-enabler-kpi` |
+| [docs/metrics-reference.md](docs/metrics-reference.md) | Event schema, metric definitions and formulas, pricing, known limits |
 | [docs/jira-mcp.md](docs/jira-mcp.md) | Connecting Jira (Cloud or Data Center) through MCP |
 
 ## Repository layout
@@ -157,15 +158,17 @@ plugins/
     references/  run directory and configuration, git and Jira safety rules, review checklist
     hooks/       hooks.json, remote_guard.py (blocks uploads when the project is local-only)
     tests/       test_remote_guard.py
-  ai-enabler-kpi/
+  ai-enabler-metrics/
     .claude-plugin/plugin.json
-    hooks/       hooks.json, kpi_hook.py
-    scripts/     kpi_report.py, update_pricing.py, pricing.json,
+    hooks/       hooks.json, usage_hook.py
+    scripts/     usage_report.py, assets.py, update_pricing.py, pricing.json,
                  pr_metrics.py, jira_cycle.py, delivery_report.py, delivery_lib.py, charts.py
-    skills/      kpi-init, kpi-report, delivery-report, pr-size, review-wait, rework, cycle-time
-    agents/      jira-collector
-    tests/       test_kpi.py, test_delivery.py
-docs/            design, KPI reference, Jira MCP setup
+    skills/      metrics-usage-init, metrics-usage-report, metrics-stale-assets,
+                 metrics-delivery-report, metrics-pr-size, metrics-review-wait,
+                 metrics-rework, metrics-cycle-time
+    agents/      metrics-jira-collector
+    tests/       test_usage.py, test_delivery.py
+docs/            design, metrics reference, Jira MCP setup
   reference/     the AI4IT SWAT framework manual the marketplace follows
 tools/           check_conventions.py, check_versions.py
 VERSION          the marketplace version
@@ -177,11 +180,11 @@ AGENTS.md        rules for changing this repository: versions, naming, checks
 
 ```
 claude plugin validate .                       # marketplace and plugin manifests
-python3 plugins/ai-enabler-kpi/tests/test_kpi.py  # hook and report, end to end, no Claude Code needed
-python3 plugins/ai-enabler-kpi/tests/test_delivery.py   # delivery metrics on fixtures
+python3 plugins/ai-enabler-metrics/tests/test_usage.py  # hook and report, end to end, no Claude Code needed
+python3 plugins/ai-enabler-metrics/tests/test_delivery.py   # delivery metrics on fixtures
 python3 tools/check_versions.py                         # every change carries its version bump and changelog entry
 python3 tools/check_conventions.py                      # naming, owner and version of every skill and agent
 python3 plugins/ai-enabler/tests/test_remote_guard.py  # what local-only mode blocks and allows
 ```
 
-Skills, agents and references are plain Markdown; edit them and start a new session (or run `/reload-plugins`) to pick up the change. Prices live in `plugins/ai-enabler-kpi/scripts/pricing.json`: refresh the Amazon Bedrock section with `python3 plugins/ai-enabler-kpi/scripts/update_pricing.py` (it reads AWS's public price list), and edit the Anthropic section by hand when list prices change.
+Skills, agents and references are plain Markdown; edit them and start a new session (or run `/reload-plugins`) to pick up the change. Prices live in `plugins/ai-enabler-metrics/scripts/pricing.json`: refresh the Amazon Bedrock section with `python3 plugins/ai-enabler-metrics/scripts/update_pricing.py` (it reads AWS's public price list), and edit the Anthropic section by hand when list prices change.

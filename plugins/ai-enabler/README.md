@@ -98,7 +98,7 @@ Each gate counts how often you send the work back, separately: `adjust` at Gate 
 | `delivery-test` | `[KEY \| paths] [--base b] [--target 80] [--minimum 70] [--levels unit,integration,e2e] [--before-code]` | Stages 4 and 6, or stand-alone test generation for any change. |
 | `delivery-review` | `[KEY \| PR \| paths] [--base b] [--lenses ...] [--fix] [--min-confidence 80]` | Stage 7, or a stand-alone review of a branch, pull request or paths. |
 | `delivery-ship` | `[KEY] [--no-pr] [--draft] [--no-jira] [--yes]` | Stage 8: commit, push, pull request, Jira. |
-| `delivery-doctor` | `[KEY] [--init]` | Checks Jira MCP, git, PR CLI, test commands, configuration, KPI capture. |
+| `delivery-doctor` | `[KEY] [--init]` | Checks Jira MCP, git, PR CLI, test commands, configuration, usage capture. |
 
 `delivery-test`, `delivery-review` and `delivery-ship` work without a ticket, so a team can start with those and adopt `delivery-run` later.
 
@@ -136,7 +136,7 @@ Version 1.0.0 is a breaking release: every skill and agent was renamed to put th
 | `/ai-enabler:ship` | `/ai-enabler:delivery-ship` |
 | `/ai-enabler:doctor` | `/ai-enabler:delivery-doctor` |
 
-The six agents took the same prefix (`ticket-analyst` → `delivery-ticket-analyst`, and so on). Nothing changes in a project's `.enabler/` folder: run directories, `state.json` and configuration keep their format, so a run started before the rename resumes after it. KPI reports show events recorded under the old names under the new ones.
+The six agents took the same prefix (`ticket-analyst` → `delivery-ticket-analyst`, and so on). Nothing changes in a project's `.enabler/` folder: run directories, `state.json` and configuration keep their format, so a run started before the rename resumes after it. Usage reports show events recorded under the old names under the new ones.
 
 ## Subagents
 
@@ -160,7 +160,7 @@ The two stages where a mistake is most expensive run on the strongest model; the
 - **Intake, scout, implementation, tests — Sonnet.** Each works from explicit material: the ticket, the repository, an approved plan, stated acceptance criteria. This is where most tokens are spent, so it is also where the price difference matters.
 - **Orchestration** runs on whatever model the session uses. It delegates the reading and the writing, so its own token use is small.
 
-The models are set as aliases (`opus`, `sonnet`) in each agent's frontmatter, so they follow the provider's current version. To change one, edit the `model:` line in `agents/<name>.md` (`haiku`, `sonnet`, `opus`, `fable`, `inherit`, or a full model id). The KPI report's "Cost by agent" table shows what each stage actually costs, which is the evidence to tune this with.
+The models are set as aliases (`opus`, `sonnet`) in each agent's frontmatter, so they follow the provider's current version. To change one, edit the `model:` line in `agents/<name>.md` (`haiku`, `sonnet`, `opus`, `fable`, `inherit`, or a full model id). The usage report's "Cost by agent" table shows what each stage actually costs, which is the evidence to tune this with.
 
 **On Amazon Bedrock, pin what the aliases resolve to.** Without pinning, an alias resolves to the provider's default for that family, which can be an older version than the one enabled in your account:
 
@@ -176,7 +176,7 @@ The models are set as aliases (`opus`, `sonnet`) in each agent's frontmatter, so
 }
 ```
 
-The `ai-enabler-kpi` hook reads these same variables to tell global from regional inference profiles when pricing.
+The `ai-enabler-metrics` hook reads these same variables to tell global from regional inference profiles when pricing.
 
 ## Configuration
 
@@ -224,7 +224,7 @@ A few things worth knowing:
 - **Stand-alone skills use `.enabler/runs/adhoc/`.** `/ai-enabler:delivery-test` and `/ai-enabler:delivery-review` without a ticket write their `repo-context.md`, `test-report.md` and `review-<date>.md` there.
 - **Deleting a run folder is safe** once the work is merged or abandoned. It only removes the ability to resume that run.
 
-`state.json` records each point where a person stepped in (`human_interventions`), which is the pipeline's own view of how autonomous a run was. The `ai-enabler-kpi` plugin measures the same thing from the outside.
+`state.json` records each point where a person stepped in (`human_interventions`), which is the pipeline's own view of how autonomous a run was. The `ai-enabler-metrics` plugin measures the same thing from the outside.
 
 Two more files can sit directly in `.enabler/`:
 

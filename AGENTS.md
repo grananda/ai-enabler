@@ -8,7 +8,7 @@ Whoever makes a change also bumps the versions it affects and writes the changel
 
 | Level | Where | Bumps when |
 |---|---|---|
-| Marketplace | `VERSION` at the repository root | **Always.** Any change to the repository. |
+| Marketplace | `VERSION` at the repository root | **Always.** Any change to the repository; see below for how much. |
 | Plugin | `version` in `plugins/<plugin>/.claude-plugin/plugin.json` | Something in that plugin changed: a skill, an agent, a hook, a script, a reference, the manifest. |
 | Skill or agent | `metadata.version` in its `SKILL.md` or agent file | That skill or agent changed: its file, or anything in the skill's `scripts/` or `references/`. |
 
@@ -20,7 +20,13 @@ How much to bump follows the kind of change:
 - **minor** — new behaviour, a new option, a new stage, a new output, all compatible with existing use;
 - **major** — anything that breaks someone who was using it: a renamed or removed skill, agent, command or flag, a changed file format in `.enabler/`, a changed default that alters results. Say what breaks in the plugin README.
 
-The marketplace version takes the largest bump among what changed. The versions do not have to agree with each other: a skill at `1.2.0` in a plugin at `1.5.0` in a marketplace at `1.9.0` is the normal state.
+The marketplace version is a release counter for the collection, and it moves more gently than the plugins do:
+
+- **patch** when the release holds only fixes;
+- **minor** for anything else — new behaviour, and also a breaking release of a plugin. What breaks is carried by that plugin's own major version and by the **Breaking** group of the changelog entry;
+- **major** is reserved for a change to the marketplace itself (how it is installed, what it is), and is the owner's call. Do not bump it on your own.
+
+The versions do not have to agree with each other: a skill at `1.2.0` in a plugin at `1.5.0` in a marketplace at `1.9.0` is the normal state.
 
 Check before committing:
 
@@ -35,7 +41,7 @@ It fails when a changed skill, agent or plugin did not raise its version, or whe
 `CHANGELOG.md` records what each marketplace version brought. Every change adds to it in the same commit, under the version `VERSION` was bumped to:
 
 - one section per marketplace version, newest first: `## [x.y.z] — YYYY-MM-DD`, followed by a line with the version each plugin reached;
-- entries grouped as **Breaking**, **Added**, **Changed**, **Fixed**, each starting with the plugin it concerns (`**ai-enabler:**`, `**ai-enabler-kpi:**`, or `**Marketplace:**`);
+- entries grouped as **Breaking**, **Added**, **Changed**, **Fixed**, each starting with the plugin it concerns (`**ai-enabler:**`, `**ai-enabler-metrics:**`, or `**Marketplace:**`);
 - written for someone who uses the plugins: what is different for them, not which file was edited. A breaking change says what breaks and what to do instead.
 
 Several changes made before a version is pushed go into the same section; once a version is on `main`, the next change opens a new one. `check_versions.py` fails when `VERSION` moved and the changelog has no section for it.
@@ -54,7 +60,7 @@ Every skill and agent has:
 python3 tools/check_conventions.py
 ```
 
-The `ai-enabler-kpi` plugin has not adopted the naming and metadata yet and is listed as pending in that check. Its plugin version is still bumped as above.
+Both plugins follow it. A new skill or agent arrives with its name, owner and version, or the check fails.
 
 ## Documentation follows behaviour
 
@@ -66,8 +72,8 @@ The `ai-enabler-kpi` plugin has not adopted the naming and metadata yet and is l
 python3 tools/check_versions.py
 python3 tools/check_conventions.py
 python3 plugins/ai-enabler/tests/test_remote_guard.py
-python3 plugins/ai-enabler-kpi/tests/test_kpi.py
-python3 plugins/ai-enabler-kpi/tests/test_delivery.py
+python3 plugins/ai-enabler-metrics/tests/test_usage.py
+python3 plugins/ai-enabler-metrics/tests/test_delivery.py
 claude plugin validate .
 ```
 

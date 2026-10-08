@@ -1,10 +1,10 @@
 ---
 name: delivery-doctor
-description: Checks that a project is ready for the ai-enabler delivery pipeline and helps set it up — Jira MCP connection, git remote and pull-request CLI, test and coverage commands, project configuration, and whether KPI capture is active. Read-only unless asked to write the configuration. Use when the user says "set up ai-enabler", "check my ai-enabler setup", "why can't it read my Jira ticket", "is Jira connected", "ai-enabler doctor", or before the first `/ai-enabler:delivery-run` in a repository.
+description: Checks that a project is ready for the ai-enabler delivery pipeline and helps set it up — Jira MCP connection, git remote and pull-request CLI, test and coverage commands, project configuration, and whether usage capture is active. Read-only unless asked to write the configuration. Use when the user says "set up ai-enabler", "check my ai-enabler setup", "why can't it read my Jira ticket", "is Jira connected", "ai-enabler doctor", or before the first `/ai-enabler:delivery-run` in a repository.
 argument-hint: [JIRA-KEY to test with] [--init]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # ai-enabler:delivery-doctor — is this project ready?
@@ -23,12 +23,12 @@ Run them all, then print one table: check, status (`ok`, `warn`, `missing`), and
 6. **Project rules.** Whether `CLAUDE.md`, `AGENTS.md` or contribution guidelines exist for the agents to follow.
 7. **Configuration.** Whether `.enabler/config.json` exists and parses; list any key that differs from the defaults in `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md`. Whether `.enabler/runs/` is git-ignored.
 8. **Local-only mode.** Whether `.enabler/local-only` exists (show its line) or `git.local_only` is true. If so, say that pushes, pull requests and Jira writes are blocked for this project, and that only the person lifts it by deleting the file.
-9. **KPI capture.** Whether the `ai-enabler-kpi` plugin is installed (its skills are listed in this session) and whether `.enabler/kpi/` exists in the project, which is what switches capture on.
+9. **Usage capture.** Whether the `ai-enabler-metrics` plugin is installed (its skills are listed in this session) and whether `.enabler/metrics/` — or `.enabler/kpi/`, its name before the metrics plugin's 1.0.0 — exists in the project, which is what switches capture on.
 
 ## When something is missing
 
 - **No Jira MCP server.** Explain that the pipeline reads tickets only through MCP, and point to `docs/jira-mcp.md` in the marketplace repository, which has ready-to-copy configurations for Jira Cloud (Atlassian's remote MCP server, OAuth in the browser) and for Jira Data Center (`mcp-atlassian` with a personal access token kept in the environment). Do not ask for credentials in the chat and do not write tokens into any file.
 - **No configuration.** The defaults work. With `--init`, or if the human wants one, write `.enabler/config.json` with the defaults, filling in the detected base branch, and add `.enabler/runs/` to `.gitignore`. Ask only for what cannot be detected and matters: the Jira status name for the optional transition at ship.
-- **KPI capture off.** Mention `/ai-enabler-kpi:kpi-init`.
+- **Usage capture off.** Mention `/ai-enabler-metrics:metrics-usage-init`.
 
 Close with the verdict in one line: ready, ready with warnings, or not ready and the one thing to fix first.

@@ -4,7 +4,7 @@ This document records the analysis behind the marketplace and the decisions take
 
 ## The goal
 
-Work with AI without spec-driven development, with the machine doing the delivery work from a Jira ticket, using MCP for the ticket and subagents where they pay off, and with hooks collecting KPIs — how much the person interacts with the machine, how long the AI works, and what it costs — that can be extracted as a report.
+Work with AI without spec-driven development, with the machine doing the delivery work from a Jira ticket, using MCP for the ticket and subagents where they pay off, and with hooks collecting metrics — how much the person interacts with the machine, how long the AI works, and what it costs — that can be extracted as a report.
 
 ## The two starting points
 
@@ -40,13 +40,13 @@ The goal above is AI Enablement's model — the AI executes — so that is the b
 
 | Gap in the base | AIAD idea | In ai-enabler |
 |---|---|---|
-| No measurement at all | Passive, opt-in hooks that log activity and turn duration (`aidd-activity-hook`), consumed by a metrics script (`aiba-metrics`) | The `ai-enabler-kpi` plugin |
+| No measurement at all | Passive, opt-in hooks that log activity and turn duration (`aidd-activity-hook`), consumed by a metrics script (`aiba-metrics`) | The `ai-enabler-metrics` plugin |
 | The "agents" of the pipeline are skills sharing one context | A real subagent with an isolated context and no edit tools (`aiad-reviewer`) | All six agents; reviewers are read-only by construction |
 | Review checklist is generic | Comprehensive per-layer checklist (backend, API, frontend), evidence with `file:line`, "needs a test" per finding, acceptance-criteria coverage | `references/review-checklist.md` and the reviewer's output format |
 | Tests are written only after the code, from the code | Tests first, derived from acceptance criteria (`aiad-tdd`); end-to-end level (`aiad-test e2e`) | Stage 4: `delivery-test-engineer` writes the acceptance tests before the code, and the implementer has to make them pass; `e2e` level optional |
 | Push is a bare `git commit && git push` | Non-destructive rules: never force, never hard-reset, abort a conflicting rebase, stop and report (`aiad-save`) | `references/git-and-jira-safety.md` |
 | No way to hand work between machine and human mid-ticket | The engine switch (`aiad-bridge`) | Takeover and resume: the run directory holds the state, and `delivery-run` treats a person's edits as part of the change |
-| No record of who did what | The authorship journal | `human_interventions` in `state.json`, and the interaction KPIs |
+| No record of who did what | The authorship journal | `human_interventions` in `state.json`, and the interaction metrics |
 | Performance is not reviewed | `aiad-review perf` | Evident performance problems are part of the quality lens |
 
 Deliberately left out, because they belong to the human-first model and not to this one: explaining code, the rubber duck, pairing, and triage for someone who is stuck. Teams that want them can install AIAD alongside; nothing here conflicts with it. Also left out for now: SonarQube, onboarding documentation and Dynatrace log analysis from AI Enablement, which are independent of the delivery flow and can be installed from that marketplace.
@@ -55,7 +55,7 @@ Deliberately left out, because they belong to the human-first model and not to t
 
 ### Two plugins, not one and not eleven
 
-AI Enablement ships one plugin per skill, which makes a coherent flow hard to install and version. AIAD ships one plugin. Here the split follows a real boundary: delivery and measurement are independent. `ai-enabler-kpi` has to work for teams that do not use the pipeline, and must be removable where measurement is not wanted. Everything else is one plugin, because the stages share agents, references and a run directory.
+AI Enablement ships one plugin per skill, which makes a coherent flow hard to install and version. AIAD ships one plugin. Here the split follows a real boundary: delivery and measurement are independent. `ai-enabler-metrics` has to work for teams that do not use the pipeline, and must be removable where measurement is not wanted. Everything else is one plugin, because the stages share agents, references and a run directory.
 
 ### Real subagents, exchanging files
 
@@ -65,7 +65,7 @@ Subagents are used where a stage reads much and returns little, or where indepen
 
 ### A model per stage
 
-Agents do not all inherit the session's model. Planning and review run on Opus at high effort: the plan is the brief for everything downstream, and the reviewer has to be at least as capable as the author it checks. Intake, scout, implementation and tests run on Sonnet: they work from explicit material and account for most of the tokens. The choice is expressed as family aliases so it survives model releases and resolves through `ANTHROPIC_DEFAULT_*_MODEL` on Bedrock. It is a starting point to be tuned with the per-agent cost table of the KPI report, not a fixed rule.
+Agents do not all inherit the session's model. Planning and review run on Opus at high effort: the plan is the brief for everything downstream, and the reviewer has to be at least as capable as the author it checks. Intake, scout, implementation and tests run on Sonnet: they work from explicit material and account for most of the tokens. The choice is expressed as family aliases so it survives model releases and resolves through `ANTHROPIC_DEFAULT_*_MODEL` on Bedrock. It is a starting point to be tuned with the per-agent cost table of the usage report, not a fixed rule.
 
 ### Two gates instead of a gate per phase
 
@@ -105,7 +105,7 @@ A machine-driven flow fails quietly when the ticket is vague: it produces plausi
 
 AI Enablement hard-codes one server's tool names (`mcp__jira-*__jira_get_issue`). Tool names differ between Atlassian's remote server and `mcp-atlassian`, so the agents look for a tool that fetches an issue by key rather than for a name. No server is bundled, since the right one depends on Cloud versus Data Center. Jira writes are limited to a comment and an optional transition at the ship stage; ticket creation, editing and deletion stay with AI Enablement's dedicated plugins.
 
-### KPIs by hook, cost from the transcript
+### Usage metrics by hook, cost from the transcript
 
 Hook payloads were captured from a real session to see what they contain. They carry session, prompt and tool identifiers, the tool input, and a duration on `PostToolUse` — but no tokens and no cost. The session transcript does carry `usage` on every assistant message, with the model and the active skill, and subagents have their own transcripts beside it. So the hook totals usage from the transcripts at the end of each turn and records the delta. The result agreed with the cost Claude Code reports for the same session.
 
@@ -125,7 +125,7 @@ The report states what was measured and does not compute savings. A saving needs
 
 AI usage figures say what the machine cost and how much attention it needed; they do not say whether delivery got better. Four delivery-flow metrics — pull request size, review waiting time, rework, Jira cycle time — were first written as long prompts that had subagents fetch data and compute statistics. Their own result reports showed where that breaks: changelogs transcribed by hand, a verification that turned out circular, scripts regenerated in a temporary folder on every run. They are now skills over versioned scripts. The model fetches nothing it can avoid and computes nothing: GitHub is read with the GitHub CLI, Jira through its REST API when the environment allows it and through a collector agent that only copies otherwise, and the script alone produces the figures.
 
-They are deliberately not in the hooks. A hook fires on every tool call and has to be instant, silent and offline; these metrics query remote systems and describe a period, not a session. They run when a report is asked for, and `kpi-report` asks for them.
+They are deliberately not in the hooks. A hook fires on every tool call and has to be instant, silent and offline; these metrics query remote systems and describe a period, not a session. They run when a report is asked for, and `metrics-usage-report` asks for them.
 
 Three definitions were tightened on the way: backward moves count only inside the analysed sprints (the prompt counted a ticket's whole history), the status order that defines "backward" is configuration instead of a guess, and all three pull-request metrics bucket by the week of the merge.
 
@@ -135,7 +135,19 @@ Per-developer figures are on by default, because the team asked for them, and ea
 
 The AI4IT SWAT framework manual ([docs/reference/](reference/README.md)) sets the convention for shared AI assets: each has a name that starts with its area, a named owner and a semantic version, so it can be found in a long list and outlives its author. The delivery plugin adopted it in 1.0.0: `plan` became `delivery-plan`, the agents took the same prefix, and each file carries `metadata.owner` and `metadata.version`. Claude Code reads the `metadata` block and ignores its content, which was checked before relying on it. The area repeats what the plugin prefix already says (`/ai-enabler:delivery-plan`); that redundancy is accepted for the sake of one convention across marketplaces.
 
-A rename breaks commands and would split the usage history, so the release is a major one, the README carries the old-to-new table, and the KPI report maps events recorded under old names to the new ones. Versions are kept at three levels that move independently, as in the sibling aidd-marketplace: the marketplace (`VERSION`), each plugin (`plugin.json`) and each skill or agent (`metadata.version`). Whoever changes something bumps what it affects in the same commit — patch, minor or major by the kind of change — and `AGENTS.md` states the rule. Two small scripts check the convention and the bumps, so that neither depends on memory. The metrics plugin has not been renamed yet and is marked as pending in that check.
+A rename breaks commands and would split the usage history, so the release is a major one, the README carries the old-to-new table, and the usage report maps events recorded under old names to the new ones. Versions are kept at three levels that move independently, as in the sibling aidd-marketplace: the marketplace (`VERSION`), each plugin (`plugin.json`) and each skill or agent (`metadata.version`). Whoever changes something bumps what it affects in the same commit — patch, minor or major by the kind of change — and `AGENTS.md` states the rule. Two small scripts check the convention and the bumps, so that neither depends on memory. The metrics plugin followed in its own 1.0.0.
+
+### Metrics, and KPIs only where there is a target
+
+The second plugin was called `ai-enabler-kpi`, and almost nothing in it was a KPI. Interaction, AI time and token cost are usage metrics; pull request size, review waiting time, rework and cycle time are delivery-flow metrics. A metric is a KPI only when a team has set a target for it. Calling everything a KPI invites the wrong use of the numbers, so the plugin is now `ai-enabler-metrics` and the word is kept for its strict meaning: a delivery metric with a target under `delivery.targets`, for which the dashboard gives a verdict.
+
+Two rules come from the AI4IT SWAT framework manual. Usage figures are context, never targets — a team optimises whatever becomes a target, and these measure activity, not delivery — so a target written on one is ignored and reported as such, and the usage report states what kind of numbers it holds — at the top of the HTML page, and in the reading notes of the Markdown. And a baseline comes first: the four delivery metrics are exactly the manual's four-number baseline, and the documentation asks for a measurement before a target.
+
+The verdict is deliberately cautious. A KPI is met or not met only when the whole 90 % interval lies on one side of the target; otherwise it is inconclusive. With a team of five and six weeks of data that is the common case, and saying so is better than a green or red light drawn from noise.
+
+The rename is a breaking release, softened where it costs users something real: a project that still has `.enabler/kpi/` keeps being captured and reported, the old environment variables and script flag are accepted, and recorded events keep their history under the new skill names.
+
+The manual's pruning rule — an asset unused for 90 days is archived, one without an owner goes — needs evidence, and the usage hooks already record which skills and agents run. `metrics-stale-assets` joins the two. It refuses to call anything stale on less than 90 days of recording.
 
 ### English artefacts
 
@@ -145,19 +157,19 @@ All skills, agents, scripts and documents are in English. Skills answer in the l
 
 - Both plugin manifests and the marketplace manifest pass `claude plugin validate`.
 - A headless session with both plugins loaded ran `/ai-enabler:delivery-doctor` and captured events through the hooks; the report's cost matched Claude Code's own figure for that session.
-- `plugins/ai-enabler-kpi/tests/test_kpi.py` replays a session through the hook and checks counts, waiting time, cost attribution, privacy and opt-in, and prices a Bedrock session (geographic, global and unprefixed model ids) against the AWS prices for `eu-west-1`.
+- `plugins/ai-enabler-metrics/tests/test_usage.py` replays a session through the hook and checks counts, waiting time, cost attribution, privacy and opt-in, and prices a Bedrock session (geographic, global and unprefixed model ids) against the AWS prices for `eu-west-1`.
 
 Not yet verified on a live Bedrock session: which form of model id Claude Code writes to the transcript there. The pricing handles every form (prefixed id, ARN, bare name plus the recorded environment), but the first real Bedrock report should be checked against its "Cost by price basis" table.
 
 - The remote guard was checked in a real session: with the marker in place, a requested `git push` was refused and the remote stayed empty. `plugins/ai-enabler/tests/test_remote_guard.py` covers 80 commands and tools it blocks and 45 it lets through, including the bypasses an audit found in the first version (newlines, `bash -c`, wrappers, `gh api -XPOST`, GitHub MCP writes, deleting `.enabler`).
-- The pull-request metrics were run against a public repository with the GitHub CLI, and the rendered HTML was inspected. `plugins/ai-enabler-kpi/tests/test_delivery.py` checks all four metrics on fixtures, including the cases an independent audit found wrong in the first version (dismissed and post-merge reviews, look-alike ticket keys, window-dependent follow-ups, sprints closed late, duplicates, moves through Blocked). The Jira REST route and the collector agent have not been run against a real Jira.
-- `/ai-enabler:delivery-run` was run end to end, unattended (`--gates none`), on a small Node.js project from a Markdown requirements file with six acceptance criteria. All eight stages ran: the acceptance tests were written before the code, the implementation made them pass, coverage of the changed code reached 100 % line and branch, four reviewers ran in parallel, and the run held before shipping as the rules require. Each subagent ran on the model its frontmatter names (Opus for planning and review, Sonnet for the rest). The KPI report's cost for the run matched Claude Code's own figure.
+- The pull-request metrics were run against a public repository with the GitHub CLI, and the rendered HTML was inspected. `plugins/ai-enabler-metrics/tests/test_delivery.py` checks all four metrics on fixtures, including the cases an independent audit found wrong in the first version (dismissed and post-merge reviews, look-alike ticket keys, window-dependent follow-ups, sprints closed late, duplicates, moves through Blocked). The Jira REST route and the collector agent have not been run against a real Jira.
+- `/ai-enabler:delivery-run` was run end to end, unattended (`--gates none`), on a small Node.js project from a Markdown requirements file with six acceptance criteria. All eight stages ran: the acceptance tests were written before the code, the implementation made them pass, coverage of the changed code reached 100 % line and branch, four reviewers ran in parallel, and the run held before shipping as the rules require. Each subagent ran on the model its frontmatter names (Opus for planning and review, Sonnet for the rest). The usage report's cost for the run matched Claude Code's own figure.
 
 Not yet exercised: the delta path (a change of scope after approval) and the round limit at a gate, which are instructions added after that run. Also not yet exercised: a ticket read from a real Jira instance through MCP, the ship stage against a real remote (push, pull request, Jira comment), the fix loop with real blocking findings, the stop below the coverage minimum, and a large codebase. The first runs on a real ticket are where the instructions should be tuned — the plan gate's summary, the fix-loop budget and the review confidence floor are the likely candidates.
 
 ## Possible next steps
 
 - A `SessionStart` hook in `ai-enabler` that reminds the session of an unfinished run for the current branch.
-- A baseline input for the KPI report (estimated or logged hours per ticket from Jira, read through MCP) to turn cost and time into a comparison.
+- A baseline input for the usage report (estimated or logged hours per ticket from Jira, read through MCP) to turn cost and time into a comparison.
 - A SonarQube stage after review, as AI Enablement's `smart-review` has.
-- Export of KPI events to OpenTelemetry for organisation-wide dashboards.
+- Export of usage events to OpenTelemetry for organisation-wide dashboards.

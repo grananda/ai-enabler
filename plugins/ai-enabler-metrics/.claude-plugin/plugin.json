@@ -1,0 +1,22 @@
+{
+  "name": "ai-enabler-metrics",
+  "displayName": "AI Enabler Metrics — AI usage and delivery flow",
+  "version": "1.0.0",
+  "description": "Measures how a team uses AI and how it delivers. Passive, opt-in hooks capture usage metrics: human interaction, AI working time versus human waiting and thinking time, output, and token cost in USD per session, user, ticket, skill and model (Anthropic or Amazon Bedrock prices). Delivery-flow skills measure pull request size, review waiting time, rework and Jira cycle time with bundled scripts, reading GitHub through the GitHub CLI. A delivery metric becomes a KPI only when the team sets a target for it; usage figures are context and never take targets. Reports are self-contained HTML with charts, plus Markdown, JSON and CSV, and a report of skills and agents that have gone unused.",
+  "author": {
+    "name": "Julio Fernández"
+  },
+  "keywords": [
+    "cost",
+    "cycle-time",
+    "dashboard",
+    "delivery",
+    "github",
+    "hooks",
+    "jira",
+    "metrics",
+    "pull-requests",
+    "reporting",
+    "usage"
+  ]
+}

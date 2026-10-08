@@ -2,9 +2,46 @@
 
 Notable changes to the ai-enabler marketplace and its plugins.
 
-Each release is a version of the marketplace (the `VERSION` file). Plugins and their skills and agents carry versions of their own, which move independently; every entry says which plugin it concerns and the version that plugin reached. Versions follow [semantic versioning](https://semver.org): a fix is a patch, new compatible behaviour is a minor, anything that breaks existing use is a major. The rules for bumping are in [AGENTS.md](AGENTS.md).
+Each release is a version of the marketplace (the `VERSION` file). Plugins and their skills and agents carry versions of their own, which move independently; every entry says which plugin it concerns and the version that plugin reached. Plugin, skill and agent versions follow [semantic versioning](https://semver.org): a fix is a patch, new compatible behaviour is a minor, anything that breaks existing use is a major. The marketplace version moves more slowly — a breaking release of one plugin is a minor here, and shows as **Breaking** in the entry. The rules for bumping are in [AGENTS.md](AGENTS.md).
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
+
+## [1.1.0] — 2026-10-08
+
+`ai-enabler` 1.0.1 · `ai-enabler-metrics` 1.0.0 (was `ai-enabler-kpi` 0.2.1)
+
+### Breaking
+
+- **ai-enabler-metrics:** the plugin `ai-enabler-kpi` is renamed `ai-enabler-metrics`, because most of what it measures are metrics, not KPIs, and its skills and agent take area-first names. Install `ai-enabler-metrics` and uninstall `ai-enabler-kpi`.
+
+  | Before | From this release |
+  |---|---|
+  | `/ai-enabler-kpi:kpi-init` | `/ai-enabler-metrics:metrics-usage-init` |
+  | `/ai-enabler-kpi:kpi-report` | `/ai-enabler-metrics:metrics-usage-report` |
+  | `/ai-enabler-kpi:delivery-report` | `/ai-enabler-metrics:metrics-delivery-report` |
+  | `/ai-enabler-kpi:pr-size` | `/ai-enabler-metrics:metrics-pr-size` |
+  | `/ai-enabler-kpi:review-wait` | `/ai-enabler-metrics:metrics-review-wait` |
+  | `/ai-enabler-kpi:rework` | `/ai-enabler-metrics:metrics-rework` |
+  | `/ai-enabler-kpi:cycle-time` | `/ai-enabler-metrics:metrics-cycle-time` |
+  | agent `jira-collector` | `metrics-jira-collector` |
+
+- **ai-enabler-metrics:** the project folder is `.enabler/metrics/` instead of `.enabler/kpi/`, the variables are `ENABLER_METRICS_DIR` and `ENABLER_METRICS_USER`, the usage report writes `usage.json` instead of `kpi.json`, and the script flag is `--metrics-dir`. Nothing recorded is lost and nothing has to be done at once: a project that still has `.enabler/kpi/` keeps being captured and reported from there, the old variables and `--kpi-dir` are still accepted, and `metrics-usage-init` offers to rename the folder. A tool that reads `kpi.json` has to read `usage.json`. `ENABLER_KPI_DEBUG` becomes `ENABLER_METRICS_DEBUG`, also still accepted.
+- **ai-enabler-metrics:** file paths change with the plugin name: the scripts are under `plugins/ai-enabler-metrics/scripts/` and `kpi_report.py` is `usage_report.py`, the hook `kpi_hook.py` is `usage_hook.py`, and `docs/kpi-reference.md` is `docs/metrics-reference.md`. A job that runs the report script by its path has to be updated.
+
+### Added
+
+- **ai-enabler-metrics:** KPIs in the strict sense. A delivery metric becomes a KPI when the team sets a target for it under `delivery.targets` (pull request size, review waiting time, rework rate, cycle time). The dashboard gives a verdict per target — met or not met only when the whole 90 % interval is on one side of it, inconclusive otherwise.
+- **ai-enabler-metrics:** `metrics-stale-assets` lists every installed skill and agent with its owner, version, last use and number of uses, and marks the ones unused for 90 days or without an owner, for the quarterly pruning. The same table closes the usage report, always computed on everything recorded (`--assets-dir` adds another plugin or folder to it).
+- **ai-enabler-metrics:** the dashboard writes its verdicts to `delivery/kpis.json`.
+- **ai-enabler-metrics:** every skill and the agent carry `metadata.owner` and `metadata.version`.
+
+### Changed
+
+- **ai-enabler-metrics:** usage figures — cost, tokens, AI time, prompts, lines written by AI — are presented as context, never as targets. A target written on one of them is ignored and the dashboard says so.
+- **ai-enabler-metrics:** events recorded under the old skill and agent names of this plugin are reported under the new ones.
+- **ai-enabler-metrics:** a project that has both `.enabler/metrics/` and the old `.enabler/kpi/` is reported from both, with a note, so no history disappears.
+- **ai-enabler:** `delivery-doctor` names the metrics plugin and its folder by their new names, and still recognises the old folder.
+- **Marketplace:** both plugins now follow the naming and metadata convention; `tools/check_conventions.py` no longer treats one as pending.
 
 ## [1.0.0] — 2026-10-08
 

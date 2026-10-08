@@ -25,7 +25,7 @@ NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)+$")          # at least "area-thing"
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 OWNER = re.compile(r"^[^<>,;]+\s<[^<>@\s,;]+@[^<>@\s,;]+>$")     # one person: Name <email>
 # Plugins that have not adopted the convention yet.
-PENDING = {"ai-enabler-kpi"}
+PENDING = set()
 
 
 def frontmatter(path):

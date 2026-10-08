@@ -77,7 +77,7 @@ The first use of each MCP tool raises a permission prompt. To avoid being asked 
 { "permissions": { "allow": ["mcp__atlassian__getJiraIssue", "mcp__atlassian__searchJiraIssuesUsingJql"] } }
 ```
 
-Leave the write tools on "ask" unless the team is comfortable with the ship gate being the only confirmation. Permission prompts are counted by `ai-enabler-kpi` as human interactions, so tuning these rules shows up directly in the KPI report.
+Leave the write tools on "ask" unless the team is comfortable with the ship gate being the only confirmation. Permission prompts are counted by `ai-enabler-metrics` as human interactions, so tuning these rules shows up directly in the usage report.
 
 ## No Jira at all
 
