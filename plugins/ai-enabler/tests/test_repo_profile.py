@@ -124,6 +124,9 @@ def basics(p):
     assert ".enabler" not in status.stdout, status.stdout
     assert not os.path.exists(p.path(".gitignore"))
     assert p.read(".enabler/runs/.gitignore").strip().endswith("*")
+    p.write(".enabler/tickets/export-orders.md", "# a ticket written by delivery-ticket-create\n")
+    assert subprocess.run(["git", "status", "--porcelain", "-uall"], cwd=p.root, capture_output=True,
+                          text=True).stdout.count(".enabler") == 0
 
     # Starting again removes the profile and every delta, whatever its name.
     p.write(".enabler/repo-profile/deltas/notes.md", "hand-written")

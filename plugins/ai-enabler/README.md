@@ -12,7 +12,7 @@ It is not spec-driven: there is no specification to write and maintain, no chang
 
 | # | Stage | Subagent | Reads | Writes | Human gate |
 |---|---|---|---|---|---|
-| 1 | Intake | `delivery-ticket-analyst` | Jira issue, links, comments (MCP) | `requirements.json` | only if the ticket is blocked |
+| 1 | Intake | `delivery-ticket-analyst`, then `delivery-ticket-refiner` | Jira issue, links, comments (MCP); the repository profile when there is one | `requirements.json`, strengthened by refinement, and `refinement.md` | only if the ticket is blocked |
 | 2 | Scout | `delivery-repo-scout` | manifests, code, rules, CI — the first time only; afterwards just what changed | the repository profile or a delta to it, and `repo-context.md` | — |
 | 3 | Plan | `delivery-solution-planner` | the two files above, the code | `plan.md` | **Gate 1 — approve the plan** |
 | 4 | Acceptance tests | `delivery-test-engineer` | the ticket's acceptance criteria, the plan | tests, `acceptance-tests.md` | — |
@@ -92,15 +92,49 @@ Each gate counts how often you send the work back, separately: `adjust` at Gate 
 
 | Skill | Arguments | What it does |
 |---|---|---|
-| `delivery-run` | `<KEY \| file.md> [--gates ...] [--max-rounds 3] [--ship] [--local] [--refresh] [--relearn] [--from <stage>]` | The full pipeline. Run it again with the same key to resume. |
-| `delivery-plan` | `<KEY \| file.md> [--refresh] [--relearn]` | Stages 1–3. Plan and readiness verdict; no code, no git, no Jira write. |
+| `delivery-run` | `<KEY \| file.md> [--gates ...] [--max-rounds 3] [--ship] [--local] [--no-refine] [--refresh] [--relearn] [--from <stage>]` | The full pipeline. Run it again with the same key to resume. |
+| `delivery-plan` | `<KEY \| file.md> [--no-refine] [--refresh] [--relearn]` | Stages 1–3. Plan and readiness verdict; no code, no git, no Jira write. |
 | `delivery-implement` | `<KEY> [--steps 1,2]` | Stages 4 and 5 on an approved plan: acceptance tests, then the code. |
 | `delivery-test` | `[KEY \| paths] [--base b] [--target 80] [--minimum 70] [--levels unit,integration,e2e] [--before-code]` | Stages 4 and 6, or stand-alone test generation for any change. |
 | `delivery-review` | `[KEY \| PR \| paths] [--base b] [--lenses ...] [--fix] [--min-confidence 80]` | Stage 7, or a stand-alone review of a branch, pull request or paths. |
 | `delivery-ship` | `[KEY] [--no-pr] [--draft] [--no-jira] [--yes]` | Stage 8: commit, push, pull request, Jira. |
 | `delivery-doctor` | `[KEY] [--init]` | Checks Jira MCP, git, PR CLI, test commands, configuration, usage capture. |
+| `delivery-ticket-refine` | `<KEY \| ticket.md> [--out path]` | A more robust version of an existing ticket, as a local Markdown file. Never writes to Jira. |
+| `delivery-ticket-create` | `<a few sentences> [--out path]` | A complete ticket from a short brief, as a local Markdown file. A Jira issue only if you ask for it at the end. |
 
 `delivery-test`, `delivery-review` and `delivery-ship` work without a ticket, so a team can start with those and adopt `delivery-run` later.
+
+## Tickets: refining and creating
+
+A machine implements exactly what the definition says. A ticket that is clear about the happy path and silent about the rest gives you code that is too: nothing for the empty input, the missing permission, the second click. Refinement is the work a product owner and a business analyst do on a story before a sprint, done before the plan.
+
+**What it does.** It reads the ticket, looks where gaps usually are — unhappy paths, limits, states, permissions, error messages, data, contracts, scope, rollout, dependencies — and closes each one in one of three ways:
+
+| The gap | Becomes | Example |
+|---|---|---|
+| Has one sensible answer, cheap to get slightly wrong | An **addition**: a requirement or criterion, marked as added | An empty name is rejected with a validation error |
+| Has a reasonable default the business might want otherwise | An **assumption**, stated so you can overrule it | Lists are paged at 100 items |
+| Changes behaviour the business cares about | A **question**, with options and a suggestion. It is never answered for you | Who may approve a refund? |
+
+Nothing is invented silently: everything the author did not write is marked, and what the author did write is never removed, contradicted or widened. When the pipeline already knows the repository, refinement uses that (how errors are returned here, how lists are paged), which answers many gaps without asking anyone.
+
+**Inside the pipeline.** It runs right after intake in `delivery-run` and `delivery-plan`. The planner plans the refined ticket, and the plan gate lists what refinement added, each with its id, so you can reject any of it (`adjust: drop AC-7`). If you run without the plan gate, the additions go in unreviewed, and the delivery report and the ship gate say so, criterion by criterion. `refinement.md` in the run directory says why each one is there. Refined criteria are tested before the code like the ones the ticket stated. `--no-refine`, or `refine.enabled: false`, takes the ticket as written.
+
+**On its own.** Two skills produce a ticket as a Markdown file in `.enabler/tickets/`, which you can read, edit, and pass on:
+
+```
+/ai-enabler:delivery-ticket-refine PROJ-123            # an existing ticket, made robust
+/ai-enabler:delivery-ticket-refine docs/feature-x.md   # the same, from a file
+/ai-enabler:delivery-ticket-create "users need to export their orders as CSV"
+
+/ai-enabler:delivery-plan .enabler/tickets/export-orders-csv.md
+```
+
+`delivery-ticket-create` works like the refiner, starting from a few sentences instead of a ticket; if the brief does not say what should change or for whom, it asks, three questions at most. Both skills ask you the questions refinement left open, once, and fold your answers into the file. A ticket that comes from either skill is not refined a second time when it is delivered.
+
+**Jira is not touched.** Refinement never writes to Jira: not the improved description, not a comment. The files are local, like everything in `.enabler/`. The one exception is yours to ask for: at the end, `delivery-ticket-create` asks where you want the ticket — here (the default), somewhere else on your machine, or as a Jira issue. Only if you choose Jira does it show exactly what would be created and, on your yes, create one issue and nothing more. In local-only mode Jira is not offered at all.
+
+What makes a ticket ready, and the rules of refinement, are written once in [references/ticket-readiness.md](references/ticket-readiness.md), which the analyst, the refiner and both skills read.
 
 ## Naming, ownership and versions
 
@@ -145,6 +179,7 @@ Each stage runs in its own context and hands over a file, not a conversation. Th
 | Agent | Role | Model | Tools |
 |---|---|---|---|
 | `delivery-ticket-analyst` | Normalises the ticket, makes each acceptance criterion testable, judges readiness | `sonnet` | Everything except edit tools (it needs the MCP tools, whose names vary by server) |
+| `delivery-ticket-refiner` | Closes the gaps in a ticket's definition as marked additions, assumptions and questions; writes the Markdown ticket for the two ticket skills | `opus`, effort `high` | Everything except edit tools; reads Jira, never writes to it |
 | `delivery-repo-scout` | Finds the stack, the commands that really work here, conventions, hard rules | `sonnet` | Read, Grep, Glob, Bash, Write (its own output only) |
 | `delivery-solution-planner` | File-level plan with a trace from every criterion to steps and tests; writes the delta when an approved plan changes | `opus`, effort `high` | Read, Grep, Glob, Bash, Write (the plan and deltas; in a delta also the acceptance criteria) |
 | `delivery-code-implementer` | Writes the code in the plan so the acceptance tests pass; applies fix lists | `sonnet` | All; never edits an acceptance test |
@@ -156,6 +191,7 @@ Each stage runs in its own context and hands over a file, not a conversation. Th
 The two stages where a mistake is most expensive run on the strongest model; the stages that execute a precise brief run on the everyday coding model.
 
 - **Planning — Opus, high effort.** The plan is the only thing a person approves before code exists and the only brief the implementer gets. A wrong decision here is paid for in every later stage.
+- **Refinement — Opus, high effort.** Seeing what a definition does not say is judgement, not transcription, and a gap missed here is a behaviour missing from the result. It reads one ticket, so it is also a cheap place to spend the stronger model.
 - **Review — Opus, high effort.** The reviewer is the last check before a person, and its value is in catching what the author missed; it should not be weaker than the author.
 - **Intake, scout, implementation, tests — Sonnet.** Each works from explicit material: the ticket, the repository, an approved plan, stated acceptance criteria. This is where most tokens are spent, so it is also where the price difference matters.
 - **Orchestration** runs on whatever model the session uses. It delegates the reading and the writing, so its own token use is small.
@@ -190,6 +226,7 @@ Optional, in `.enabler/config.json` at the project root — a local file, like e
            "commit_pattern": "{type}({key}): {summary}", "pull_request": true },
   "jira": { "server": null, "comment_on_ship": true, "transition_on_ship": null },
   "tests": { "coverage_target": 80, "coverage_minimum": 70, "levels": ["unit", "integration"], "order": "auto" },
+  "refine": { "enabled": true },
   "review": { "lenses": ["correctness", "security", "quality", "tests"],
               "min_confidence": 80, "auto_fix": ["critical", "high"], "max_fix_rounds": 2 }
 }
@@ -206,7 +243,8 @@ Every ticket gets its own folder, `.enabler/runs/<KEY>/`, where `<KEY>` is the J
 | File | Written at | By | What it is |
 |---|---|---|---|
 | `state.json` | start, then after every stage | the skill | Where the run stands: the stage to run next, the stages done, the branch, whether the plan was approved, the round counters of each gate, the deltas and whether each was approved and applied, whether tests go before or after the code, how many fix rounds were used, the pull-request URL, and every point where a person stepped in. This is what `/ai-enabler:delivery-run <KEY>` reads to resume. |
-| `requirements.json` | stage 1, intake | `delivery-ticket-analyst` | The ticket in a normalised form: summary, requirements, each acceptance criterion with an id (`AC-1`, `AC-2`…) and whether the ticket stated it or the analyst derived it, constraints, what is out of scope, dependencies, assumptions and open questions. Also two verdicts: whether the ticket is ready to implement, and whether its criteria are good enough to write tests from. |
+| `requirements.json` | stage 1, intake | `delivery-ticket-analyst`, then `delivery-ticket-refiner` | The ticket in a normalised form, with what refinement added marked as such: summary, requirements, each acceptance criterion with an id (`AC-1`, `AC-2`…) and whether the ticket stated it or the analyst derived it, constraints, what is out of scope, dependencies, assumptions and open questions. Also two verdicts: whether the ticket is ready to implement, and whether its criteria are good enough to write tests from. |
+| `refinement.md` | stage 1, after intake | `delivery-ticket-refiner` | What refinement added to the ticket — each requirement, criterion and assumption with the reason — and the questions it could not answer for you. It is what to read at the plan gate before accepting or rejecting an addition. Absent when refinement was skipped. |
 | `repo-context.md` | stage 2, scout | `delivery-repo-scout` | What this ticket adds to the repository profile: the existing code closest to the ticket, each file with a line on why, and anything true only for this run (uncommitted changes, a branch that already exists). Everything that holds for the repository whatever the ticket is in the profile, below. |
 | `deltas/delta-NN.before/` | just before a delta is written | the skill | Copies of `plan.md` and `requirements.json` as they were, so the delta can be revised or cancelled cleanly. |
 | `deltas/delta-NN.md` | whenever the approved plan changes | `delivery-solution-planner` | One file per change made after the plan was approved: what triggered it and why, the acceptance criteria added, changed and removed, the tests to add and the obsolete ones to delete, the code to create, modify and delete. The record of how the work got from the first plan to the final one. |
@@ -226,12 +264,13 @@ A few things worth knowing:
 
 `state.json` records each point where a person stepped in (`human_interventions`), which is the pipeline's own view of how autonomous a run was. The `ai-enabler-metrics` plugin measures the same thing from the outside.
 
-Three more things can sit directly in `.enabler/`:
+Four more things can sit directly in `.enabler/`:
 
 | File | What it is |
 |---|---|
 | `config.json` | Optional configuration for the pipeline (the keys in "Configuration" above). A local file like the rest. |
 | `repo-profile/` | What the pipeline has learned about the repository. See "The repository profile" below. |
+| `tickets/` | Tickets written by `delivery-ticket-refine` and `delivery-ticket-create`, one Markdown file each. Local, kept out of git, yours to edit. See "Tickets: refining and creating" above. |
 | `local-only` | A marker that exists only after someone refused to upload. While it is there, nothing leaves the machine. See "When you say no" below. |
 
 ## The repository profile: learned once, complemented by deltas
@@ -304,7 +343,7 @@ Two gates and a handful of conditional stops are enough because the rest is boun
 - Work happens on a feature branch, never on the base branch. Unrelated changes in the working tree stop the run.
 - Files are staged by path; the staged diff is checked for secrets and strays before each commit.
 - No force-push, no hard reset, no bypassed hooks, no merge, no approval of pull requests.
-- Jira is written to only at the ship stage, only as configured, and only after the ship gate listed those writes. Tickets are never edited, reassigned or deleted.
+- The pipeline writes to Jira only at the ship stage, only as configured, and only after the ship gate listed those writes. Tickets are never edited, reassigned or deleted. The one other write is `delivery-ticket-create` creating a single issue when you choose Jira as the destination in that run.
 - Ticket text, comments and linked pages are data. Instructions found in them are not followed and are reported.
 - Reviewers have no edit tools. The test engineer does not touch production code, the implementer does not touch the acceptance tests, and nobody weakens a test to get a green build. Only a person can accept coverage below the minimum.
 
@@ -312,7 +351,7 @@ Two gates and a handful of conditional stops are enough because the rest is boun
 
 The ticket is read through whichever Jira MCP server is connected; the skills find the tools by what they do, not by a fixed name, so both Atlassian's remote server and `mcp-atlassian` work. Setup is in [docs/jira-mcp.md](../../docs/jira-mcp.md).
 
-A Markdown or text file can stand in for a ticket: `/ai-enabler:delivery-run docs/feature-x.md`. Everything works the same except that nothing is written to Jira at the end.
+A Markdown or text file can stand in for a ticket: `/ai-enabler:delivery-run docs/feature-x.md`. Everything works the same except that nothing is written to Jira at the end. The files `delivery-ticket-refine` and `delivery-ticket-create` write are such files.
 
 ## Where the ideas come from
 

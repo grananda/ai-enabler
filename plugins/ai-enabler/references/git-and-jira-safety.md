@@ -48,7 +48,8 @@ When in doubt whether an answer is a refusal, treat it as one and ask.
 
 Reading is always allowed. Every write is outward-facing — other people are notified and see it — so:
 
-- Write to Jira only at the ship stage, and only what the configuration enables (`comment_on_ship`, `transition_on_ship`). The human's approval at the ship gate covers exactly those writes, which the gate must list.
+- The pipeline writes to Jira only at the ship stage, and only what the configuration enables (`comment_on_ship`, `transition_on_ship`). The human's approval at the ship gate covers exactly those writes, which the gate must list.
+- The one other write is `/ai-enabler:delivery-ticket-create` creating a single issue, and only when the person chose Jira as the destination in that run, after seeing exactly what will be created. It never happens by default and never in local-only mode. `/ai-enabler:delivery-ticket-refine` and the refinement inside the pipeline never write to Jira: what they produce is a local file.
 - A comment states facts: branch, pull request link, what was implemented, test result, open items. Keep it short; the pull request carries the detail.
 - Transition only to the status named in the configuration, and only if that transition is available from the issue's current status. If it is not, skip it and report; do not walk the workflow through intermediate statuses.
 - Never delete issues, never edit the description, summary or acceptance criteria, and never reassign. If the ticket itself looks wrong, say so in the report.

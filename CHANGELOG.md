@@ -6,6 +6,29 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.3.0] — 2026-10-09
+
+`ai-enabler` 1.2.0 · `ai-enabler-metrics` 1.0.0
+
+Refinement is on by default, so the same ticket now yields a fuller plan than before and one more model call. Nothing has to be changed to keep using the plugin; `refine.enabled: false` restores the previous behaviour.
+
+### Added
+
+- **ai-enabler:** tickets are refined before they are planned. After intake, a new agent, `delivery-ticket-refiner`, looks for what the definition leaves unsaid — unhappy paths, limits, permissions, data, scope — and closes each gap as a marked addition, an assumption or a question it does not answer for you. The planner plans the refined ticket, and the plan gate lists what was added so any of it can be rejected (`adjust: drop AC-7`). `refinement.md` in the run directory says why each addition is there. `--no-refine` on `delivery-run` and `delivery-plan`, or `refine.enabled: false`, takes the ticket as written.
+- **ai-enabler:** `delivery-ticket-refine <KEY | file>` writes a more robust version of an existing ticket as a local Markdown file in `.enabler/tickets/`. It never writes to Jira.
+- **ai-enabler:** `delivery-ticket-create <a few sentences>` writes a complete ticket from a short brief, also as a local Markdown file. At the end it asks where you want it; a Jira issue is created only if you choose that, after seeing what would be created, and never in local-only mode.
+- **ai-enabler:** the files both skills write are sources `delivery-plan` and `delivery-run` accept, and are not refined a second time.
+- **ai-enabler:** what makes a ticket ready, and how a gap is closed, is defined once, in `references/ticket-readiness.md`, read by the analyst, the refiner and both skills.
+
+### Changed
+
+- **ai-enabler:** the delivery report says where each acceptance criterion comes from (the ticket, derived, or refinement) and lists what refinement added. In a run without the plan gate, the report and the ship gate state that those additions were not reviewed by anyone.
+- **ai-enabler:** a ticket can stop as blocked where it did not before: refinement may find a question only the business can answer. It comes with options and a suggestion.
+- **ai-enabler:** `delivery-ship` finds the run by its branch before reading a key out of the branch name, so a run delivered from a local ticket file never writes to Jira, even when the file's name contains a Jira key.
+- **ai-enabler:** the test order is decided after refinement. Criteria added by refinement count as stated, so their tests are written before the code; the verdicts on the ticket as it arrived are kept in `requirements.json` under `as_received`.
+- **ai-enabler:** `delivery-run` and `delivery-plan` now make one more model call per ticket (the refiner, on Opus). Turn it off with `refine.enabled: false` if you do not want it.
+- **ai-enabler:** the acceptance-criteria trace in `plan.md` says where each criterion comes from: the ticket, derived, or refinement.
+
 ## [1.2.0] — 2026-10-09
 
 `ai-enabler` 1.1.0 · `ai-enabler-metrics` 1.0.0

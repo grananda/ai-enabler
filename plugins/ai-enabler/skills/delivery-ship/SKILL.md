@@ -4,7 +4,7 @@ description: Ships a finished change — commits it on its feature branch, pushe
 argument-hint: [JIRA-KEY] [--local] [--no-pr] [--draft] [--no-jira] [--yes]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # ai-enabler:delivery-ship — commit, push, pull request, Jira
@@ -27,7 +27,7 @@ If the person answers the confirmation below with a refusal to upload — "no", 
 ## Flow
 
 1. **Establish what is being shipped.**
-   - Key from `$ARGUMENTS`, else from the current branch name, else none (a plain commit, push and pull request with no Jira step).
+   - Key from `$ARGUMENTS`; else the run under `.enabler/runs/` whose `state.json` names the current branch; else from the current branch name; else none (a plain commit, push and pull request with no Jira step). The run found by its branch decides: when its `source` is `file` — a requirements file, or a ticket written by `delivery-ticket-refine` or `delivery-ticket-create`, whose name may well contain a Jira key — there is no Jira step, whatever the branch is called.
    - The current branch must be a feature branch, not the base branch and not a detached `HEAD`. If it is the base branch, stop: create the branch first.
    - Collect the changes: `git status --porcelain`, `git diff --stat` against the base branch. If there is nothing to commit and nothing unpushed, say so and stop.
 2. **Check readiness, and say what you find.** If the run directory has `test-report.md` and `review.md`, read their verdicts. Failing tests or open defects, coverage of the changed code below the configured minimum without a `coverage_accepted` record in `state.json`, an open `critical` finding, or no test and review stage having run at all, make the change **not ready**: state it at the top of the confirmation, with a recommendation to hold or to open the pull request as a draft. Coverage that was not measured is stated too. None of this silently blocks, and none of it is silently ignored.

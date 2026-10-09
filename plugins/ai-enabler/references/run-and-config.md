@@ -9,7 +9,8 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
 | File | Written by | Content |
 |---|---|---|
 | `state.json` | the orchestrating skill | Where the run is (see below) |
-| `requirements.json` | `delivery-ticket-analyst`; the planner updates its acceptance criteria when a delta changes them | Normalised ticket and readiness verdict |
+| `requirements.json` | `delivery-ticket-analyst`, then `delivery-ticket-refiner`; the planner updates its acceptance criteria when a delta changes them | Normalised ticket and readiness verdict. What refinement added is marked `"refined": true`; the verdicts on the ticket as it arrived are kept under `as_received` |
+| `refinement.md` | `delivery-ticket-refiner` | What refinement added to the ticket and why, and its questions. Absent when refinement was skipped |
 | `repo-context.md` | `delivery-repo-scout` | Only what this ticket adds to the repository profile: the existing code closest to it |
 | `plan.md` | `delivery-solution-planner` | The implementation plan as it stands now: the approved plan with every approved delta folded in |
 | `deltas/delta-NN.md` | `delivery-solution-planner` (delta mode) | One file per change made after the plan was approved: why, what is added, what is removed |
@@ -30,6 +31,7 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
   "branch": "feature/PROJ-123-short-slug",
   "stage": "intake | scout | plan | acceptance-tests | implement | coverage | review | ship | done",
   "status": "active | held | stopped",
+  "refined": true,
   "test_order": "before | mixed | after",
   "stages_done": ["intake", "scout"],
   "plan_approved": false,
@@ -43,11 +45,11 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
 }
 ```
 
-`gate_rounds` and `deltas` are explained under "Rounds at a gate" and "Changing course after approval"; `profile_notes` (absent or empty most of the time) under "Repository profile". `stage` is the stage to run next, using exactly the names above; they are also the values `--from` accepts. `status` is `held` when the run waits at the ship gate, `stopped` when a person cancelled or stopped it (the note of the last intervention says where and why), `active` otherwise.
+`gate_rounds` and `deltas` are explained under "Rounds at a gate" and "Changing course after approval"; `profile_notes` (absent or empty most of the time) under "Repository profile". `refined` says whether the ticket went through refinement in this run; a run started before refinement existed has no such key and is resumed as it is. `stage` is the stage to run next, using exactly the names above; they are also the values `--from` accepts. `status` is `held` when the run waits at the ship gate, `stopped` when a person cancelled or stopped it (the note of the last intervention says where and why), `active` otherwise.
 
 Update `state.json` whenever a stage completes and whenever the human steps in. `human_interventions` is the pipeline's own record of where a person had to act; keep each note to one line.
 
-`.enabler/runs/` and `.enabler/repo-profile/` hold working files and stay out of commits. `repo_profile.py check` sees to it without touching any file of the project: it puts a `.gitignore` containing `*` inside each of the two folders. Do not add lines to the project's own `.gitignore` for them. A skill that writes a run directory without going through the scout stage runs `check` once for the same reason.
+`.enabler/runs/`, `.enabler/repo-profile/` and `.enabler/tickets/` hold working files and stay out of commits. `repo_profile.py check` sees to it without touching any file of the project: it puts a `.gitignore` containing `*` inside each of them. Do not add lines to the project's own `.gitignore` for them. A skill that writes a run directory without going through the scout stage runs `check` once for the same reason.
 
 ## Repository profile
 
@@ -117,6 +119,9 @@ Optional file `.enabler/config.json`. Like the rest of `.enabler/`, it is a loca
     "levels": ["unit", "integration"],
     "order": "auto"
   },
+  "refine": {
+    "enabled": true
+  },
   "review": {
     "lenses": ["correctness", "security", "quality", "tests"],
     "min_confidence": 80,
@@ -134,6 +139,7 @@ Optional file `.enabler/config.json`. Like the rest of `.enabler/`, it is a loca
 - `jira.transition_on_ship` — the status to move the issue to once the pull request is open (for example `"In Review"`). `null` means do not transition.
 - `tests.coverage_target` and `tests.coverage_minimum` — line and branch coverage of the changed code. The test engineer aims for the target (80); the minimum (70) is the lowest result the pipeline accepts on its own. At or above the target it is `met`. Between the minimum and the target it is `acceptable`: the run continues and the figure is reported. Below the minimum it is `below minimum`, and a person decides whether to proceed. See "Coverage" below.
 - `tests.order` — `auto` writes the tests for the ticket's acceptance criteria before the code whenever the ticket states usable criteria, and falls back to writing tests after the code when it does not (see "Test order" below). `after` always writes them after the code. There is no setting that skips the coverage stage.
+- `refine.enabled` — after intake, the ticket refiner closes the gaps in the definition before anything is planned (see "Ticket refinement" below). `false`, or `--no-refine` for one run, takes the ticket as written.
 - `review.auto_fix` — severities `/ai-enabler:delivery-run` fixes on its own inside its fix loop. Everything else is reported and left for the human. The stand-alone `/ai-enabler:delivery-review` ignores this key: there it fixes only with `--fix` or when the person says so.
 
 Command-line flags on a skill override the file for that run.
@@ -201,9 +207,21 @@ The first `max_gate_rounds` rounds at a gate (3 by default) run normally. When t
 
 The automatic fix loop of the review is a different budget: `review.max_fix_rounds` applies to each review pass. `fix_rounds` in `state.json` counts the rounds of the current pass and goes back to 0 when a new pass starts — after a correction or a delta has changed the code.
 
+## Ticket refinement
+
+A ticket is usually clear about the happy path and silent about the rest. Refinement is the stage-1 step that closes those gaps before planning, the way a product owner and a business analyst would; what makes a ticket ready and how a gap is closed is defined once, in `ticket-readiness.md` next to this file.
+
+- **In the pipeline** it runs right after the analyst, in `delivery-run` and `delivery-plan`. The refiner adds to `requirements.json` — every addition marked `"refined": true`, the verdicts on the ticket as it arrived kept under `as_received` — and writes `refinement.md`. The planner plans the refined ticket, and the plan gate lists what was added so the person can reject any of it.
+- **On its own**, `/ai-enabler:delivery-ticket-refine <KEY | file>` writes the improved ticket as a Markdown file, and `/ai-enabler:delivery-ticket-create <a few sentences>` writes one from a short brief. Both go to `.enabler/tickets/`, a local folder kept out of git like the others, and the file is a source `delivery-plan` and `delivery-run` accept. A run from such a file is not refined a second time.
+- **Nothing here writes to Jira.** The only exception is `delivery-ticket-create` creating one issue when the person chose that in the same run; see the safety rules.
+
+Two things keep this honest. In a run without the plan gate nobody reviews the additions, so the delivery report and the ship gate say which criteria came from refinement. And what a person rejected at the plan gate stays rejected: it is kept in `requirements.json` marked `"removed_by": "plan-gate"`, is not in force for tests or review, and is not added again when intake is re-run with `--refresh`.
+
+Refined criteria count as stated for the test order: once the plan is approved they are part of the definition, and their tests are written before the code.
+
 ## Test order
 
-Tests are written before the code so that they encode what the ticket asks for, not what the code happens to do. What the ticket offers decides how far that can go — `acceptance_criteria_quality` in `requirements.json`:
+Tests are written before the code so that they encode what the ticket asks for, not what the code happens to do. What the ticket offers, once refined, decides how far that can go — `acceptance_criteria_quality` in `requirements.json`:
 
 | Criteria in the ticket | `test_order` | Before the code | After the code |
 |---|---|---|---|

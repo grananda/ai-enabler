@@ -23,7 +23,7 @@ The repository is learned once. Afterwards a run only asks this script whether
 anything the profile was derived from has changed. The comparison is a hash of
 each watched file, so it is exact and costs nothing; no model is involved.
 
-Both folders the pipeline writes to get a .gitignore of their own that ignores
+The folders the pipeline writes to (repo-profile, runs, tickets) get a .gitignore of their own that ignores
 everything in them, so nothing is committed and no file of the project is touched.
 
 Watched: build manifests, CI and lint configuration, the root README, and the
@@ -155,7 +155,7 @@ def paths(root):
 def keep_local(root):
     """Make sure git never picks these folders up, without touching any file of the project:
     each gets its own .gitignore that ignores everything in it."""
-    for folder in (os.path.join(root, ".enabler", "repo-profile"), os.path.join(root, ".enabler", "runs")):
+    for folder in (os.path.join(root, ".enabler", name) for name in ("repo-profile", "runs", "tickets")):
         os.makedirs(folder, exist_ok=True)
         marker = os.path.join(folder, ".gitignore")
         if not os.path.isfile(marker):

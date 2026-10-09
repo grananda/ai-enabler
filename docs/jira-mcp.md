@@ -1,6 +1,6 @@
 # Connecting Jira through MCP
 
-The `ai-enabler` pipeline reads tickets, and writes its comment and transition at the ship stage, only through an MCP server. It never calls the Jira REST API itself and never handles credentials.
+The `ai-enabler` pipeline reads tickets, and writes its comment and transition at the ship stage, only through an MCP server. The same holds for the one issue `delivery-ticket-create` creates when asked to. It never calls the Jira REST API itself and never handles credentials.
 
 The plugin does not bundle a Jira server on purpose: which one is right depends on whether the team uses Jira Cloud or Data Center, and bundling one would force its login on everyone who installs the plugin. Pick one of the two options below. The skills find the Jira tools by what they do, so either works without further configuration.
 

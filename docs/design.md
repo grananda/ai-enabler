@@ -41,7 +41,7 @@ The goal above is AI Enablement's model — the AI executes — so that is the b
 | Gap in the base | AIAD idea | In ai-enabler |
 |---|---|---|
 | No measurement at all | Passive, opt-in hooks that log activity and turn duration (`aidd-activity-hook`), consumed by a metrics script (`aiba-metrics`) | The `ai-enabler-metrics` plugin |
-| The "agents" of the pipeline are skills sharing one context | A real subagent with an isolated context and no edit tools (`aiad-reviewer`) | All six agents; reviewers are read-only by construction |
+| The "agents" of the pipeline are skills sharing one context | A real subagent with an isolated context and no edit tools (`aiad-reviewer`) | All seven agents; reviewers are read-only by construction |
 | Review checklist is generic | Comprehensive per-layer checklist (backend, API, frontend), evidence with `file:line`, "needs a test" per finding, acceptance-criteria coverage | `references/review-checklist.md` and the reviewer's output format |
 | Tests are written only after the code, from the code | Tests first, derived from acceptance criteria (`aiad-tdd`); end-to-end level (`aiad-test e2e`) | Stage 4: `delivery-test-engineer` writes the acceptance tests before the code, and the implementer has to make them pass; `e2e` level optional |
 | Push is a bare `git commit && git push` | Non-destructive rules: never force, never hard-reset, abort a conflicting rebase, stop and report (`aiad-save`) | `references/git-and-jira-safety.md` |
@@ -113,9 +113,21 @@ It all stays local. The plugin is used by one person on one machine for now, so 
 
 A machine-driven flow fails quietly when the ticket is vague: it produces plausible code for the wrong behaviour. The analyst therefore returns a verdict — ready, ready with assumptions, or blocked — grades the acceptance criteria, and rewrites every acceptance criterion as an observable behaviour with an id. Those ids are traced through the plan, the tests, the review and the pull-request body.
 
+### A ticket is refined before it is planned
+
+Judging a ticket is not enough. A verdict of "ready" says an engineer could start; it does not say the definition covers the empty input, the missing permission or the second click, and a machine builds exactly what the definition says. A person fills those gaps while coding without noticing; an agent leaves them out, or guesses.
+
+So after the analyst a second agent refines the ticket, the way a product owner and a business analyst would before a sprint. The two are kept apart on purpose: the analyst records what the ticket says and judges it, the refiner adds to it, and the verdicts on the ticket as it arrived are kept, so it stays visible what the author wrote and what refinement supplied.
+
+The risk of this step is an agent inventing requirements. Three rules contain it. Every gap is closed in one of three ways, chosen by what a wrong answer would cost: an addition when there is one sensible answer, an assumption when the business might want otherwise, a question — never answered by the agent — when the answer changes behaviour the business cares about. Everything added is marked, and listed at the plan gate where the person can reject it; in a run without that gate, the delivery report and the ship gate say which criteria came from refinement and that nobody reviewed them. And nothing the author stated is removed, contradicted or widened.
+
+The same agent writes a ticket as a Markdown file when asked on its own — from an existing ticket, or from a few sentences — and that file is a source the pipeline accepts. One definition of "ready" serves the judge and the writer, in one reference file.
+
+None of it writes to Jira. The plugin is a one-person tool for now and what it produces is for the person using it; an improved description pushed into a shared ticket would be a change other people see, made by a machine. The single exception is creating one issue from a ticket the person just wrote, when they ask for it in that run.
+
 ### Jira through MCP, by capability, with no bundled server
 
-AI Enablement hard-codes one server's tool names (`mcp__jira-*__jira_get_issue`). Tool names differ between Atlassian's remote server and `mcp-atlassian`, so the agents look for a tool that fetches an issue by key rather than for a name. No server is bundled, since the right one depends on Cloud versus Data Center. Jira writes are limited to a comment and an optional transition at the ship stage; ticket creation, editing and deletion stay with AI Enablement's dedicated plugins.
+AI Enablement hard-codes one server's tool names (`mcp__jira-*__jira_get_issue`). Tool names differ between Atlassian's remote server and `mcp-atlassian`, so the agents look for a tool that fetches an issue by key rather than for a name. No server is bundled, since the right one depends on Cloud versus Data Center. Jira writes are limited to a comment and an optional transition at the ship stage; editing and deletion of tickets stay with AI Enablement's dedicated plugins, and the only issue ever created is the one `delivery-ticket-create` creates when the person asks for it.
 
 ### Usage metrics by hook, cost from the transcript
 
@@ -179,7 +191,9 @@ Not yet verified on a live Bedrock session: which form of model id Claude Code w
 
 - The repository profile was exercised in two real runs of `delivery-plan` on a test project. The first found no profile, wrote one of 41 lines and recorded its fingerprints; the planner then found a rule the profile attributed to the wrong file, and that became a first delta at the plan gate. After a build manifest and `CLAUDE.md` were changed, the second run found the profile stale, wrote one delta naming what was replaced (including a statement of the first delta), recorded it, and left the profile byte-for-byte unchanged. In both, nothing under `.enabler/` was visible to git and the project's `.gitignore` was not touched. `plugins/ai-enabler/tests/test_repo_profile.py` covers the bookkeeping.
 
-Not yet exercised: plan deltas (a change of scope after approval) and the round limit at a gate, which are instructions added after that run. For the repository profile: a change that needs no delta, a hand-written profile being adopted, `--relearn`, the suggestion to relearn, a session opened in one module of a monorepo, and `delivery-test` without a ticket. Also not yet exercised: a ticket read from a real Jira instance through MCP, the ship stage against a real remote (push, pull request, Jira comment), the fix loop with real blocking findings, the stop below the coverage minimum, and a large codebase. The first runs on a real ticket are where the instructions should be tuned — the plan gate's summary, the fix-loop budget and the review confidence floor are the likely candidates.
+- Ticket refinement was exercised in two real runs on the same test project. `delivery-ticket-create`, given one sentence asking for a `divide(a, b)` function, wrote a ticket with the stated requirement unmarked, one requirement and five criteria marked as added, three assumptions, and one blocking question it did not answer (what happens when the divisor is zero), and offered nothing beyond the local file, as asked. `delivery-plan` on a ticket with a single acceptance criterion refined it after intake — one requirement and six criteria added, the verdicts as received kept — and the plan traced each criterion to its origin and listed the additions at the gate with the way to reject them.
+
+Not yet exercised: plan deltas (a change of scope after approval) and the round limit at a gate, which are instructions added after that run. For the repository profile: a change that needs no delta, a hand-written profile being adopted, `--relearn`, the suggestion to relearn, a session opened in one module of a monorepo, and `delivery-test` without a ticket. For tickets: `delivery-ticket-refine` on a Jira issue or a file, answering the open questions in an interactive session, rejecting an addition at the plan gate, a refined file being recognised and not refined again, and creating a Jira issue on request. Also not yet exercised: a ticket read from a real Jira instance through MCP, the ship stage against a real remote (push, pull request, Jira comment), the fix loop with real blocking findings, the stop below the coverage minimum, and a large codebase. The first runs on a real ticket are where the instructions should be tuned — the plan gate's summary, the fix-loop budget and the review confidence floor are the likely candidates.
 
 ## Possible next steps
 

@@ -1,10 +1,10 @@
 ---
 name: delivery-run
 description: Machine-driven delivery of a Jira ticket, end to end. Reads the ticket through the Jira MCP server, analyses the repository, plans, implements, tests, reviews and fixes with dedicated subagents, then opens a pull request and updates Jira. The human decides at two gates — the plan and the ship — and is asked again only when a decision is theirs to make: a ticket that cannot be implemented as written, a change to the approved plan, coverage below the minimum. Use when the user says "deliver PROJ-123", "implement this ticket", "take this Jira issue to a PR", "from Jira to code", "work on PROJ-123", or passes a Jira key or a requirements Markdown file and wants the work done rather than advice. Also resumes an interrupted run for the same key.
-argument-hint: <JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--max-rounds 3] [--ship] [--local] [--refresh] [--relearn] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]
+argument-hint: <JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--max-rounds 3] [--ship] [--local] [--no-refine] [--refresh] [--relearn] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # ai-enabler:delivery-run — from a Jira ticket to a pull request
@@ -20,7 +20,7 @@ Before anything else, read these two files and follow them throughout:
 
 | # | Stage | Who | Produces | Gate |
 |---|---|---|---|---|
-| 1 | intake | `ai-enabler:delivery-ticket-analyst` | `requirements.json` | only if the ticket is blocked |
+| 1 | intake | `ai-enabler:delivery-ticket-analyst`, then `ai-enabler:delivery-ticket-refiner` | `requirements.json`, strengthened by refinement, and `refinement.md` | only if the ticket is blocked |
 | 2 | scout | `ai-enabler:delivery-repo-scout` | the repository profile (once) or a delta to it, and `repo-context.md` for this ticket | — |
 | 3 | plan | `ai-enabler:delivery-solution-planner` | `plan.md` | **plan** |
 | 4 | acceptance-tests | `ai-enabler:delivery-test-engineer` (`acceptance`) | tests for the ticket's criteria, `acceptance-tests.md` | — |
@@ -51,11 +51,21 @@ Print one line per stage as you go (`[2/8] scout — analysing repository conven
 
 Launch `ai-enabler:delivery-ticket-analyst` with the source and the run directory. For a Jira key, tell it which Jira MCP server to use (the one found in preflight).
 
-On return, read `requirements.json`. Set `test_order` in `state.json` from `acceptance_criteria_quality`, as the "Test order" table in the reference says (`sufficient` → `before`, `scarce` → `mixed`, `missing` → `after`; `tests.order: after` forces `after`). Then act on `readiness`:
+**Refine.** A ticket is usually clear about the happy path and silent about the rest, and the machine implements exactly what the definition says. So, once the analyst has written `requirements.json`, launch `ai-enabler:delivery-ticket-refiner` with `mode: pipeline` and the run directory. It closes the gaps in the definition — each as a marked addition, an assumption or a question — updates `requirements.json` and writes `refinement.md`. Record `"refined": true` in `state.json`. Skip this step, and record `"refined": false`, when:
+
+- `--no-refine` was passed or `refine.enabled` is false;
+- the source is a file that was already refined (`source.refined` is true in `requirements.json`: it came from `/ai-enabler:delivery-ticket-refine` or `/ai-enabler:delivery-ticket-create`);
+- the run is resumed and intake was already done: `requirements.json` is reused as it is, with whatever refinement and plan-gate rejections it holds.
+
+When intake is run again on purpose (`--refresh`, or `--from intake`), the analyst rewrites `requirements.json` from the source, so refinement runs again too. Before the analyst starts, note the text of every item marked `"removed_by": "plan-gate"` and delete `refinement.md`; pass those texts to the refiner as `rejected`, so that what the person turned down does not come back.
+
+If the refiner fails, go on with the analyst's `requirements.json` and say so in the final report: refinement improves a ticket, it is not a condition for delivering it.
+
+Then read `requirements.json`. Set `test_order` in `state.json` from `acceptance_criteria_quality` — the verdict after refinement — as the "Test order" table in the reference says (`sufficient` → `before`, `scarce` → `mixed`, `missing` → `after`; `tests.order: after` forces `after`). Then act on `readiness`:
 
 - `ready` — continue.
 - `ready_with_assumptions` — continue; the assumptions will be shown at the plan gate.
-- `blocked` — stop the pipeline here. Show the blocking questions and ask the human to answer them, or to confirm you should proceed on stated assumptions. Record the intervention in `state.json`. If they answer, add the answers to `requirements.json` (as requirements or assumptions) and continue. Offer to post the questions as a Jira comment only if they ask for it.
+- `blocked` — stop the pipeline here. Show the blocking questions, each with the options and the suggestion the refiner gave when there are any, and ask the human to answer them, or to confirm you should proceed on stated assumptions. Record the intervention in `state.json`. If they answer, add the answers to `requirements.json` (as requirements or assumptions) and continue. Offer to post the questions as a Jira comment only if they ask for it.
 
 If no Jira MCP server is connected, follow "When there is no Jira MCP server" in the run-and-config reference.
 
@@ -90,18 +100,24 @@ Changes     : <n> steps · <n> files to create · <n> to modify
 Tests       : <n> planned (<levels>) · <n> written before the code, from <n> stated criteria
               <only when test_order is mixed or after: why some or all tests come after the code>
 Decisions   : <each decision in one line>
+Refinement  : <n> requirements and <n> criteria added to the ticket, <n> sharpened — or "ticket taken as written"
+              <each addition in one line, with its id>
 Assumptions : <each assumption in one line, or "none">
 Questions   : <blocking questions, or "none">
 Full plan   : .enabler/runs/<KEY>/plan.md
+<only when refinement.md exists> What was added to the ticket, and why: .enabler/runs/<KEY>/refinement.md
 
 Approve this plan? (approve / adjust: <what to change> / cancel)
 ```
 
 - **approve** — set `plan_approved` and continue.
 - **adjust** — the plan is not approved yet, so it is simply revised. Check "Rounds at a gate" in the reference first (`--max-rounds` overrides the limit for this run); then relaunch the planner with the feedback, record the intervention, add one to `gate_rounds.plan`, and present the new plan.
+- **adjust that rejects something refinement added** ("drop AC-7", "no pagination") — the same round, with one more thing to do first: in `requirements.json`, mark each rejected requirement or criterion `"removed_by": "plan-gate"` (never delete or renumber) — a rejected requirement takes with it the criteria that cover only that requirement — and pass the rejection to the planner as feedback. If no refined criterion is left in force and `as_received` exists, set `acceptance_criteria_quality` and `test_order` again from `as_received.acceptance_criteria_quality`.
 - **cancel** — set `status` to `stopped`, leave the run directory in place, and stop. Nothing was written outside the run directory, so there is nothing to undo.
 
 A plan with a blocking question cannot be auto-approved: even when `plan` is not in `gates`, stop and ask.
+
+When `plan` is not in `gates`, what refinement added goes in unreviewed. That is the choice the person made by removing the gate, but it must stay visible: the delivery report and the ship gate say which criteria came from refinement and that nobody approved them.
 
 ## Step 4 — Acceptance tests, before the code
 
@@ -165,7 +181,12 @@ Write `.enabler/runs/<KEY>/delivery-report.md`. It doubles as the pull-request b
 Three to six bullets on the change and the approach.
 
 ### Acceptance criteria
-| AC | Criterion | Status | Evidence (test or file) |
+| AC | Criterion | From | Status | Evidence (test or file) |
+
+`From` is `ticket`, `derived` or `refinement`. A reviewer must be able to tell what the ticket asked for from what the pipeline added to it.
+
+### What refinement added to the ticket
+Each requirement, criterion and assumption that refinement added, in one line with its reason (from `refinement.md`), and whether a person saw them at the plan gate or the run was unattended. Omit the section when nothing was added.
 
 ### Tests
 Suite result, coverage on changed code versus the target and the minimum — and, if it is below the minimum, that the person decided to proceed and why — and for each acceptance criterion whether its test was written before or after the code. If tests were written after the code, say why.
@@ -188,7 +209,7 @@ Then present the ship gate and wait. List exactly what will happen, because appr
 ```
 READY TO SHIP — <KEY>
 Diff      : <n> files changed, +<added> −<removed>, on <branch>
-Criteria  : <met>/<total> met
+Criteria  : <met>/<total> met · <n> of them added by refinement <"approved at the plan gate" | "NOT REVIEWED: no plan gate in this run">
 Tests     : <passed> passed, <failed> failed · coverage <x>% (target <t>% · minimum <m>%) — met | acceptable | BELOW MINIMUM, accepted by <who> | not measured
             acceptance tests written before the code: <n> of <total criteria>
 Review    : <n> fixed · <n> open (<highest open severity>)
@@ -254,7 +275,7 @@ Three situations send the run backwards. Handle each the same way every time.
    - the review lenses the change touches, as a new review pass (`fix_rounds` back to 0), giving the reviewers the run directory so they read `deltas/`;
    - the delivery report, with the delta under "Changes after the plan was approved", and the ship gate.
 
-Criteria marked `removed_by` are no longer in force: leave them out of "criteria met" at the ship gate and show them in the report only under the delta that removed them.
+Criteria marked `removed_by` are no longer in force: leave them out of "criteria met" at the ship gate and show them in the report only under the delta that removed them, or, for the ones marked `plan-gate`, in one line under "What refinement added to the ticket" as rejected at the plan gate.
 
 When you cannot tell a correction from a delta, ask yourself whether an acceptance criterion or a step of `plan.md` becomes false. If one does, it is a delta. When still in doubt, treat it as a delta: an unneeded approval costs a minute, a silent change of scope costs the trust the plan gate exists for.
 

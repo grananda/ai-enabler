@@ -14,7 +14,8 @@ It ships two plugins:
 ```mermaid
 flowchart TD
     J[(Jira ticket)] -->|MCP| A[delivery-ticket-analyst]
-    A --> S[delivery-repo-scout]
+    A --> RF["delivery-ticket-refiner<br/>closes the gaps in the definition"]
+    RF --> S[delivery-repo-scout]
     S --> P[delivery-solution-planner]
     P --> G1{{"Gate 1 — plan"}}
     G1 -->|adjust| P
@@ -112,11 +113,13 @@ Both plugins keep their files in one folder at the root of the project where you
     profile.md                the stack, the commands that work here, structure, conventions, rules
     deltas/delta-NNN-*.md     one small complement each: what changed, or what was learned
     profile.json              fingerprints of the files the profile was derived from
+  tickets/                    tickets written by delivery-ticket-refine and delivery-ticket-create (Markdown)
   local-only                  present only after someone said "do not upload"; blocks push, PR and Jira writes
   runs/                       one folder per ticket — working files, kept out of git
     <KEY>/
       state.json              where the run stands; lets it be resumed
-      requirements.json       the ticket, normalised, with its acceptance criteria
+      requirements.json       the ticket, normalised, with its acceptance criteria and what refinement added
+      refinement.md           what refinement added to the ticket, and why
       repo-context.md         what this ticket adds to the profile: the existing code closest to it
       plan.md                 the implementation plan as it stands, deltas folded in
       deltas/delta-NN.md      each change made after approval: why, what is added, what is removed
@@ -133,7 +136,7 @@ Both plugins keep their files in one folder at the root of the project where you
 
 Each file of a run is described in [plugins/ai-enabler/README.md](plugins/ai-enabler/README.md#the-run-directory-what-each-file-is), and the metrics files in [plugins/ai-enabler-metrics/README.md](plugins/ai-enabler-metrics/README.md) and [docs/metrics-reference.md](docs/metrics-reference.md).
 
-Nothing in `.enabler/` has to be committed: the plugins are used by one person on one machine for now, and the folder is local. Run folders and the repository profile keep themselves out of git (each holds a `.gitignore` of its own, so yours is not edited for them); usage events and metric snapshots are ignored by default because they name people (`metrics-usage-init --share` changes that deliberately).
+Nothing in `.enabler/` has to be committed: the plugins are used by one person on one machine for now, and the folder is local. Run folders, tickets and the repository profile keep themselves out of git (each holds a `.gitignore` of its own, so yours is not edited for them); usage events and metric snapshots are ignored by default because they name people (`metrics-usage-init --share` changes that deliberately).
 
 ## Documentation
 
@@ -156,10 +159,13 @@ plugins/
   ai-enabler/
     .claude-plugin/plugin.json
     skills/      delivery-run, delivery-plan, delivery-implement, delivery-test,
-                 delivery-review, delivery-ship, delivery-doctor
-    agents/      delivery-ticket-analyst, delivery-repo-scout, delivery-solution-planner,
-                 delivery-code-implementer, delivery-test-engineer, delivery-code-reviewer
-    references/  run directory and configuration, git and Jira safety rules, review checklist
+                 delivery-review, delivery-ship, delivery-doctor,
+                 delivery-ticket-refine, delivery-ticket-create
+    agents/      delivery-ticket-analyst, delivery-ticket-refiner, delivery-repo-scout,
+                 delivery-solution-planner, delivery-code-implementer, delivery-test-engineer,
+                 delivery-code-reviewer
+    references/  run directory and configuration, ticket readiness and refinement,
+                 git and Jira safety rules, review checklist
     scripts/     repo_profile.py (is the repository profile still valid?)
     hooks/       hooks.json, remote_guard.py (blocks uploads when the project is local-only)
     tests/       test_remote_guard.py, test_repo_profile.py
