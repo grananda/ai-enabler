@@ -4,7 +4,7 @@ description: Ships a finished change — commits it on its feature branch, pushe
 argument-hint: [JIRA-KEY] [--local] [--no-pr] [--draft] [--no-jira] [--yes]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # ai-enabler:delivery-ship — commit, push, pull request, Jira
@@ -48,7 +48,7 @@ If the person answers the confirmation below with a refusal to upload — "no", 
    Proceed? (yes / local: commit only, nothing leaves / no / edit: <what to change>)
    ```
 5. **Execute, in order, stopping at the first failure.**
-   1. Stage the run's files by path; verify the staged diff (no secrets, no unrelated files, no `.enabler/runs/`). If there is nothing to stage because the work was already committed — after a `local` commit, for example — skip this step and the next and go on with the commits that exist.
+   1. Stage the run's files by path; verify the staged diff (no secrets, no unrelated files, nothing under `.enabler/`). If there is nothing to stage because the work was already committed — after a `local` commit, for example — skip this step and the next and go on with the commits that exist.
    2. Commit.
    3. Push, setting the upstream if needed. On rejection, one `git pull --rebase`; on conflict, abort the rebase and stop.
    4. Open the pull request (`--draft` if requested or recommended), unless `--no-pr` or `git.pull_request` is false. Without an authenticated `gh` or `glab`, print the compare URL instead.

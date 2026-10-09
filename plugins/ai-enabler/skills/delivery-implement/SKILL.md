@@ -4,7 +4,7 @@ description: Implements an already approved ai-enabler plan — creates the feat
 argument-hint: <JIRA-KEY> [--steps 1,2,3]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # ai-enabler:delivery-implement — execute an approved plan
@@ -31,6 +31,7 @@ Close by naming the next steps: `/ai-enabler:delivery-test <KEY>` (remaining tes
 
 ## Rules
 
+- **What was learned about the repository is kept.** When a subagent reports that the repository profile was wrong or incomplete (a command that does not work here, a convention the code does not follow, a rule nobody had written down), append one line to `profile_notes` in the run's `state.json`; "When something was learned" in the run-and-config reference says how it becomes a delta to the profile. Never edit `profile.md` for it.
 - You do not write the code or the tests; the subagents do. The implementer never edits an acceptance test: a disputed test is settled against the ticket and corrected, if at all, by the test engineer.
 - Nothing is committed or pushed here.
 - Report what the implementer's verification actually showed. "Not verified" is an acceptable result; "builds" without a command behind it is not.

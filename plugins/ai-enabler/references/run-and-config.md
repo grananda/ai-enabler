@@ -10,7 +10,7 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
 |---|---|---|
 | `state.json` | the orchestrating skill | Where the run is (see below) |
 | `requirements.json` | `delivery-ticket-analyst`; the planner updates its acceptance criteria when a delta changes them | Normalised ticket and readiness verdict |
-| `repo-context.md` | `delivery-repo-scout` | Stack, commands, conventions, hard rules |
+| `repo-context.md` | `delivery-repo-scout` | Only what this ticket adds to the repository profile: the existing code closest to it |
 | `plan.md` | `delivery-solution-planner` | The implementation plan as it stands now: the approved plan with every approved delta folded in |
 | `deltas/delta-NN.md` | `delivery-solution-planner` (delta mode) | One file per change made after the plan was approved: why, what is added, what is removed |
 | `deltas/delta-NN.before/` | the orchestrating skill | Copies of `plan.md` and `requirements.json` taken before the planner writes delta NN, so the delta can be revised or cancelled |
@@ -37,20 +37,63 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
   "gate_rounds": { "plan": 0, "ship": 0 },
   "deltas": [{ "id": "delta-01", "at": "", "trigger": "ship gate | plan proved wrong | resumed with changes",
                "summary": "", "approved": false, "applied": false }],
+  "profile_notes": ["the coverage report is in build/reports/jacoco, not target/site"],
   "human_interventions": [{ "at": "", "stage": "plan", "kind": "adjustment | fix | delta | question | takeover | coverage_accepted", "note": "" }],
   "pr_url": ""
 }
 ```
 
-`gate_rounds` and `deltas` are explained under "Rounds at a gate" and "Changing course after approval". `stage` is the stage to run next, using exactly the names above; they are also the values `--from` accepts. `status` is `held` when the run waits at the ship gate, `stopped` when a person cancelled or stopped it (the note of the last intervention says where and why), `active` otherwise.
+`gate_rounds` and `deltas` are explained under "Rounds at a gate" and "Changing course after approval"; `profile_notes` (absent or empty most of the time) under "Repository profile". `stage` is the stage to run next, using exactly the names above; they are also the values `--from` accepts. `status` is `held` when the run waits at the ship gate, `stopped` when a person cancelled or stopped it (the note of the last intervention says where and why), `active` otherwise.
 
 Update `state.json` whenever a stage completes and whenever the human steps in. `human_interventions` is the pipeline's own record of where a person had to act; keep each note to one line.
 
-`.enabler/runs/` holds working files and must stay out of commits. If `.gitignore` does not already exclude it, add the line `.enabler/runs/` before the first commit of a run and say that you did.
+`.enabler/runs/` and `.enabler/repo-profile/` hold working files and stay out of commits. `repo_profile.py check` sees to it without touching any file of the project: it puts a `.gitignore` containing `*` inside each of the two folders. Do not add lines to the project's own `.gitignore` for them. A skill that writes a run directory without going through the scout stage runs `check` once for the same reason.
+
+## Repository profile
+
+A repository is learned once, not once per ticket. What the pipeline knows about it lives outside the runs, in `.enabler/repo-profile/`, and stays on this machine:
+
+| File | Content |
+|---|---|
+| `profile.md` | What the repository is: stack, the commands that work here, structure, conventions, hard rules, git conventions. Written once by the scout, about 150 lines at most, and not rewritten by the pipeline afterwards |
+| `deltas/delta-NNN-<slug>.md` | One small complement each: what changed, or what was learned. About 30 lines at most. A later delta overrides an earlier one and the profile |
+| `profile.json`, `pending.json` | Fingerprints of the files the profile was derived from. Written by the script, never by an agent |
+
+The profile grows by complements, never by rewriting: a document that is extended on every run becomes too long to read, and then it is skimmed and trusted less. The base says what the repository is; each delta says what is different now.
+
+At the scout stage, ask the script whether the profile still holds — it compares a hash of each build manifest, CI and lint configuration file, the root README and the rules files (`CLAUDE.md`, `AGENTS.md`, contribution guides, ADRs) with what it recorded; lock files and source code are not watched:
+
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repo_profile.py" check
+```
+
+It prints JSON. `root` is the folder whose `.enabler/` is in use, and `profile` the absolute path of `profile.md`; the run directories belong under the same `root`. Pass the scout the absolute paths the script prints, never a relative one.
+
+| `status` | Meaning | Scout `tasks` | Then |
+|---|---|---|---|
+| `missing` | The repository has not been learned yet | `profile`, `ticket` | `record --expect <profile path>` |
+| `unrecorded` | There is a `profile.md` but no usable fingerprints: written or restored by hand | `ticket` | `record`. Never overwrite that profile |
+| `fresh` | Nothing the profile was derived from has changed | `ticket` | — |
+| `stale` | Some watched files changed, appeared or disappeared (the script lists them) | `delta`, `ticket` | see below |
+
+**When the profile is stale.** Get the delta's path with `repo_profile.py next-delta "<a few words on what changed>"` (they only become a file name: two or three nouns such as `"test runner"`, not a sentence and not the name of a command) and pass it to the scout with the files the check listed. The scout answers one of two things:
+
+- it wrote the delta — run `repo_profile.py record --expect <delta path>`. The script refuses if that file is not there, so a change is never marked as seen with nothing describing it;
+- nothing the profile or its deltas say is affected (a dependency bump, a reformat) and it wrote no file — run `repo_profile.py record`. No empty delta is kept.
+
+`record` stores the files as they were when `check` saw them, so a watched file edited in the meantime is found by the next check instead of being swallowed.
+
+**When something was learned.** A later stage may report that the profile was wrong or incomplete: a command that does not work here, a convention the code does not follow, a rule nobody had written down. Append it at once to `profile_notes` in `state.json`, one line each, so it survives a resume. At the next pause — a gate, or the end of the run, never the middle of a stage — and for each note: `next-delta`, launch the scout with the task `delta` and the note as its `learned` reason, `record --expect <delta path> --keep`, and remove the note from `state.json`. `--keep` leaves the fingerprints alone: a learned delta says nothing about which files changed.
+
+**Starting again: `--relearn`.** Run `repo_profile.py reset` and treat the profile as `missing`: the repository is studied from scratch and every delta is dropped, learned ones included, so the scout reads the old profile and deltas *before* the reset and carries over what still holds. Never do it unasked. Suggest it, once, when `suggest_relearn` in the check is not empty (the profile has outgrown its size, there are more than ten deltas, or deltas run long), or when the scout says the profile and its deltas no longer fit together. `--refresh` does not touch the profile: it re-runs the stages of one ticket.
+
+The person may correct `profile.md` or add a delta by hand; the pipeline itself never edits what is written. Nothing in `.enabler/repo-profile/` is committed, and none of it is copied into `CLAUDE.md`, `AGENTS.md` or any other project file.
+
+**A run started before the profile existed** has a `repo-context.md` that holds everything, written by an earlier version. On resume, run `check` like any other run (Step 2), but do not ask for the `ticket` task: keep that file as it is. Agents read the profile, the deltas and it together.
 
 ## Project configuration
 
-Optional file `.enabler/config.json`, committed with the project. Every key is optional; the defaults below apply when the file or a key is absent. Never ask the human for a value that has a default.
+Optional file `.enabler/config.json`. Like the rest of `.enabler/`, it is a local file: the plugin is used by one person on one machine for now, and nothing it writes has to be shared. Every key is optional; the defaults below apply when the file or a key is absent. Never ask the human for a value that has a default.
 
 ```json
 {

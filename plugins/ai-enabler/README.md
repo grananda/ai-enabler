@@ -13,7 +13,7 @@ It is not spec-driven: there is no specification to write and maintain, no chang
 | # | Stage | Subagent | Reads | Writes | Human gate |
 |---|---|---|---|---|---|
 | 1 | Intake | `delivery-ticket-analyst` | Jira issue, links, comments (MCP) | `requirements.json` | only if the ticket is blocked |
-| 2 | Scout | `delivery-repo-scout` | manifests, code, rules, CI | `repo-context.md` | — |
+| 2 | Scout | `delivery-repo-scout` | manifests, code, rules, CI — the first time only; afterwards just what changed | the repository profile or a delta to it, and `repo-context.md` | — |
 | 3 | Plan | `delivery-solution-planner` | the two files above, the code | `plan.md` | **Gate 1 — approve the plan** |
 | 4 | Acceptance tests | `delivery-test-engineer` | the ticket's acceptance criteria, the plan | tests, `acceptance-tests.md` | — |
 | 5 | Implement | `delivery-code-implementer` | plan, context, the acceptance tests | code on a feature branch that makes them pass | — |
@@ -92,8 +92,8 @@ Each gate counts how often you send the work back, separately: `adjust` at Gate 
 
 | Skill | Arguments | What it does |
 |---|---|---|
-| `delivery-run` | `<KEY \| file.md> [--gates ...] [--max-rounds 3] [--ship] [--local] [--refresh] [--from <stage>]` | The full pipeline. Run it again with the same key to resume. |
-| `delivery-plan` | `<KEY \| file.md> [--refresh]` | Stages 1–3. Plan and readiness verdict; no code, no git, no Jira write. |
+| `delivery-run` | `<KEY \| file.md> [--gates ...] [--max-rounds 3] [--ship] [--local] [--refresh] [--relearn] [--from <stage>]` | The full pipeline. Run it again with the same key to resume. |
+| `delivery-plan` | `<KEY \| file.md> [--refresh] [--relearn]` | Stages 1–3. Plan and readiness verdict; no code, no git, no Jira write. |
 | `delivery-implement` | `<KEY> [--steps 1,2]` | Stages 4 and 5 on an approved plan: acceptance tests, then the code. |
 | `delivery-test` | `[KEY \| paths] [--base b] [--target 80] [--minimum 70] [--levels unit,integration,e2e] [--before-code]` | Stages 4 and 6, or stand-alone test generation for any change. |
 | `delivery-review` | `[KEY \| PR \| paths] [--base b] [--lenses ...] [--fix] [--min-confidence 80]` | Stage 7, or a stand-alone review of a branch, pull request or paths. |
@@ -180,7 +180,7 @@ The `ai-enabler-metrics` hook reads these same variables to tell global from reg
 
 ## Configuration
 
-Optional, in `.enabler/config.json` at the project root. Every key has a default, so the file is only needed to change one.
+Optional, in `.enabler/config.json` at the project root — a local file, like everything the plugin writes. Every key has a default, so the file is only needed to change one.
 
 ```json
 {
@@ -207,7 +207,7 @@ Every ticket gets its own folder, `.enabler/runs/<KEY>/`, where `<KEY>` is the J
 |---|---|---|---|
 | `state.json` | start, then after every stage | the skill | Where the run stands: the stage to run next, the stages done, the branch, whether the plan was approved, the round counters of each gate, the deltas and whether each was approved and applied, whether tests go before or after the code, how many fix rounds were used, the pull-request URL, and every point where a person stepped in. This is what `/ai-enabler:delivery-run <KEY>` reads to resume. |
 | `requirements.json` | stage 1, intake | `delivery-ticket-analyst` | The ticket in a normalised form: summary, requirements, each acceptance criterion with an id (`AC-1`, `AC-2`…) and whether the ticket stated it or the analyst derived it, constraints, what is out of scope, dependencies, assumptions and open questions. Also two verdicts: whether the ticket is ready to implement, and whether its criteria are good enough to write tests from. |
-| `repo-context.md` | stage 2, scout | `delivery-repo-scout` | How this repository is built and written: stack and versions, the build, test and coverage commands that really work here, the directory structure, the conventions seen in existing code, the hard rules from `CLAUDE.md` and similar files, git conventions, the existing code closest to the ticket, and warnings (no tests, no coverage tool…). |
+| `repo-context.md` | stage 2, scout | `delivery-repo-scout` | What this ticket adds to the repository profile: the existing code closest to the ticket, each file with a line on why, and anything true only for this run (uncommitted changes, a branch that already exists). Everything that holds for the repository whatever the ticket is in the profile, below. |
 | `deltas/delta-NN.before/` | just before a delta is written | the skill | Copies of `plan.md` and `requirements.json` as they were, so the delta can be revised or cancelled cleanly. |
 | `deltas/delta-NN.md` | whenever the approved plan changes | `delivery-solution-planner` | One file per change made after the plan was approved: what triggered it and why, the acceptance criteria added, changed and removed, the tests to add and the obsolete ones to delete, the code to create, modify and delete. The record of how the work got from the first plan to the final one. |
 | `plan.md` | stage 3, plan | `delivery-solution-planner` | The implementation plan you approve at the first gate, kept current: after a delta it describes the work as it now stands, with a change-history table at the top. Contains the approach, the decisions taken and the alternatives rejected, the ordered steps with the files each one creates or modifies, the test plan (which tests are written before the code), a table tracing every acceptance criterion to steps and tests, risks, assumptions and open questions. |
@@ -220,18 +220,60 @@ A few things worth knowing:
 
 - **You can read and edit them.** They are plain Markdown and JSON. Adjusting `plan.md` by hand before approving it is fine; the implementer follows what the file says.
 - **Not every run has every file.** `/ai-enabler:delivery-plan` stops after `plan.md`. A run whose ticket states no acceptance criteria has no `acceptance-tests.md`.
-- **They stay out of git.** `.enabler/runs/` holds working files; the pipeline adds it to `.gitignore` if it is missing and never stages it. What matters ends up in the pull request through `delivery-report.md`.
-- **Stand-alone skills use `.enabler/runs/adhoc/`.** `/ai-enabler:delivery-test` and `/ai-enabler:delivery-review` without a ticket write their `repo-context.md`, `test-report.md` and `review-<date>.md` there.
+- **Everything in `.enabler/` is local.** The plugin is a one-person tool for now, and nothing it writes has to be shared. `.enabler/runs/` holds working files; the folder ignores itself for git (a `.gitignore` inside it) and the pipeline never stages it. What matters ends up in the pull request through `delivery-report.md`.
+- **Stand-alone skills use `.enabler/runs/adhoc/`.** `/ai-enabler:delivery-test` and `/ai-enabler:delivery-review` without a ticket write their `test-report.md` and `review-<date>.md` there.
 - **Deleting a run folder is safe** once the work is merged or abandoned. It only removes the ability to resume that run.
 
 `state.json` records each point where a person stepped in (`human_interventions`), which is the pipeline's own view of how autonomous a run was. The `ai-enabler-metrics` plugin measures the same thing from the outside.
 
-Two more files can sit directly in `.enabler/`:
+Three more things can sit directly in `.enabler/`:
 
 | File | What it is |
 |---|---|
-| `config.json` | Optional project configuration for the pipeline (the keys in "Configuration" above). Meant to be committed. |
-| `local-only` | A marker that exists only after someone refused to upload. While it is there, nothing leaves the machine. See the next section. |
+| `config.json` | Optional configuration for the pipeline (the keys in "Configuration" above). A local file like the rest. |
+| `repo-profile/` | What the pipeline has learned about the repository. See "The repository profile" below. |
+| `local-only` | A marker that exists only after someone refused to upload. While it is there, nothing leaves the machine. See "When you say no" below. |
+
+## The repository profile: learned once, complemented by deltas
+
+The first time the pipeline runs in a repository, the scout studies it and writes what it found. After that it does not study it again: each run only checks that the profile still holds, and looks for the code closest to the ticket.
+
+```
+.enabler/repo-profile/
+  profile.md                 what the repository is — written once, about 150 lines at most
+  deltas/
+    delta-001-<slug>.md      what changed, or what was learned — about 30 lines each
+    delta-002-<slug>.md
+  profile.json               fingerprints of the files the profile was derived from
+  .gitignore                 one line, `*`: the folder keeps itself out of git
+```
+
+| File | What it is |
+|---|---|
+| `profile.md` | The stack and its versions, the build, test and coverage commands that really work here, the directory structure, the conventions seen in existing code, the hard rules from `CLAUDE.md` and similar files, git conventions, and warnings (no tests, no coverage tool…). The pipeline does not rewrite it once it is written. |
+| `deltas/delta-NNN-<slug>.md` | One complement: which statements of the profile no longer hold, and what is true now. Written when a watched file changed in a way that matters, or when a stage found the profile wrong. A later delta overrides an earlier one and the profile. |
+| `profile.json` | A hash of every file the profile depends on. Written by a script, never by an agent. |
+
+**It grows by complements, not by extension.** A document that gets a little longer on every run ends up too long to read, and is then skimmed and trusted less. So the base stays as it was written, and each change is a small file of its own that says only what is different. Every agent reads the profile, then the deltas in order, then the run's `repo-context.md`.
+
+**How a run knows whether the profile still holds.** A script hashes the files the profile was derived from — build manifests, CI and lint configuration, the root README, `CLAUDE.md`, `AGENTS.md`, contribution guides and ADRs, at the root and in the modules of a monorepo — and compares them with what it recorded. No model is involved, so the answer is exact and free. Lock files are not watched: they change with every dependency bump and say nothing new about how the repository is built.
+
+| The check says | The scout does |
+|---|---|
+| missing | Studies the repository and writes the profile |
+| unrecorded: a profile you wrote or restored by hand | Adopts it as it is; it is never overwritten |
+| fresh | Nothing; only looks for the code closest to the ticket |
+| stale, with the files that changed | Reads those files and writes one delta — or none, when nothing the profile says is affected (a dependency bump, a reformat) |
+
+A change is only marked as seen once its delta exists: the script refuses to record otherwise. And it records the files as they were when the change was noticed, so an edit made while the delta was being written is picked up by the next run.
+
+A delta is also written when the pipeline learns something the hard way: a build command that did not work, a coverage report that was somewhere else, a rule a reviewer had to point out. The finding is noted in the run's `state.json` at once and becomes a delta at the next gate, so it survives an interrupted run. The next run starts with that knowledge.
+
+**Starting again.** `--relearn` on `delivery-run` or `delivery-plan` drops the profile and all its deltas and studies the repository from scratch, carrying over what the old ones said that still holds. The pipeline suggests it when the profile has outgrown its size, when there are more than ten deltas, or when they no longer fit together; it never does it unasked. `--refresh` is something else: it re-runs the stages of one ticket and leaves the profile alone.
+
+**It stays on your machine.** The profile is a local working file. It is not committed, and the pipeline does not edit your `.gitignore` to make it so: `.enabler/repo-profile/` and `.enabler/runs/` each hold a `.gitignore` of their own that ignores everything in them. Nothing from the profile is copied into `CLAUDE.md`, `AGENTS.md` or any project file; those remain yours to write. You can read and correct the profile and its deltas by hand, and no `--relearn` is needed afterwards.
+
+**Where it is.** In the `.enabler/` of the folder you opened Claude Code in, next to the runs. If you work in one module of a monorepo, the profile describes that module.
 
 ## When you say no, nothing leaves your machine
 

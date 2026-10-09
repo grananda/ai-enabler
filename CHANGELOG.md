@@ -6,6 +6,26 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.2.0] — 2026-10-09
+
+`ai-enabler` 1.1.0 · `ai-enabler-metrics` 1.0.0
+
+### Added
+
+- **ai-enabler:** the repository is learned once. The scout writes a profile to `.enabler/repo-profile/profile.md` — stack, the commands that work here, structure, conventions, rules — and later runs only check that it still holds, by comparing a hash of the build manifests, CI and lint configuration, the root README and the rules files. Only the code closest to the ticket is searched for on every run.
+- **ai-enabler:** the profile grows by deltas, not by rewriting. When a watched file changes in a way that matters, or a stage finds the profile wrong, a small `deltas/delta-NNN-*.md` says what no longer holds and what is true now; the base is left as written. A change that affects nothing the profile says leaves no file behind.
+- **ai-enabler:** what a run learns about the repository the hard way (a command that did not work, a rule a reviewer had to point out) is noted in `profile_notes` in the run's `state.json` and becomes a delta at the next gate, so it survives an interrupted run.
+- **ai-enabler:** `--relearn` on `delivery-run` and `delivery-plan` studies the repository again from scratch and drops the profile and its deltas. It is only ever suggested: when the profile has outgrown its size, when there are more than ten deltas, or when they no longer fit together. `--refresh` keeps its meaning: it re-runs the stages of one ticket.
+- **ai-enabler:** a profile written or restored by hand is adopted as it is, never overwritten.
+- **ai-enabler:** `delivery-doctor` reports whether the repository has been learned, where the profile is kept, how many deltas it has and whether it is stale.
+
+### Changed
+
+- **ai-enabler:** the run's `repo-context.md` now holds only what the ticket adds to the profile. Planner, implementer, test engineer and reviewers read the profile, its deltas in order, and that file. A run started with an earlier version keeps its full `repo-context.md` and can be resumed.
+- **ai-enabler:** `delivery-test` without a ticket no longer writes a `repo-context.md`; it uses the profile and the scope it is given.
+- **ai-enabler:** everything under `.enabler/` is treated as local. `.enabler/runs/` and `.enabler/repo-profile/` each hold a `.gitignore` of their own, so the pipeline no longer adds a line to the project's `.gitignore`; nothing under `.enabler/` is ever staged (before, only `.enabler/runs/` was named); nothing from the profile is written into `CLAUDE.md` or `AGENTS.md`; and the configuration file is no longer described as something to commit.
+- **Marketplace:** the versioning rules say which changes to files in `.enabler/` are breaking: the ones a person or another tool relies on, and any that would stop a run in progress from being resumed.
+
 ## [1.1.0] — 2026-10-08
 
 `ai-enabler` 1.0.1 · `ai-enabler-metrics` 1.0.0 (was `ai-enabler-kpi` 0.2.1)

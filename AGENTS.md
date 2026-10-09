@@ -18,7 +18,7 @@ How much to bump follows the kind of change:
 
 - **patch** — a fix, a clarification, a correction that does not change what the asset promises;
 - **minor** — new behaviour, a new option, a new stage, a new output, all compatible with existing use;
-- **major** — anything that breaks someone who was using it: a renamed or removed skill, agent, command or flag, a changed file format in `.enabler/`, a changed default that alters results. Say what breaks in the plugin README.
+- **major** — anything that breaks someone who was using it: a renamed or removed skill, agent, command or flag, a changed file format in `.enabler/`, a changed default that alters results. Say what breaks in the plugin README. In `.enabler/`, the formats that count are the ones a person or another tool relies on (`config.json`, the keys of `state.json`, recorded events and snapshots) and any change that would stop a run in progress from being resumed. A file that only hands work from one agent to the next may change its content in a minor, as long as runs started with the previous version still resume.
 
 The marketplace version is a release counter for the collection, and it moves more gently than the plugins do:
 
@@ -72,6 +72,7 @@ Both plugins follow it. A new skill or agent arrives with its name, owner and ve
 python3 tools/check_versions.py
 python3 tools/check_conventions.py
 python3 plugins/ai-enabler/tests/test_remote_guard.py
+python3 plugins/ai-enabler/tests/test_repo_profile.py
 python3 plugins/ai-enabler-metrics/tests/test_usage.py
 python3 plugins/ai-enabler-metrics/tests/test_delivery.py
 claude plugin validate .

@@ -1,10 +1,10 @@
 ---
 name: delivery-run
 description: Machine-driven delivery of a Jira ticket, end to end. Reads the ticket through the Jira MCP server, analyses the repository, plans, implements, tests, reviews and fixes with dedicated subagents, then opens a pull request and updates Jira. The human decides at two gates — the plan and the ship — and is asked again only when a decision is theirs to make: a ticket that cannot be implemented as written, a change to the approved plan, coverage below the minimum. Use when the user says "deliver PROJ-123", "implement this ticket", "take this Jira issue to a PR", "from Jira to code", "work on PROJ-123", or passes a Jira key or a requirements Markdown file and wants the work done rather than advice. Also resumes an interrupted run for the same key.
-argument-hint: <JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--max-rounds 3] [--ship] [--local] [--refresh] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]
+argument-hint: <JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--max-rounds 3] [--ship] [--local] [--refresh] [--relearn] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # ai-enabler:delivery-run — from a Jira ticket to a pull request
@@ -21,7 +21,7 @@ Before anything else, read these two files and follow them throughout:
 | # | Stage | Who | Produces | Gate |
 |---|---|---|---|---|
 | 1 | intake | `ai-enabler:delivery-ticket-analyst` | `requirements.json` | only if the ticket is blocked |
-| 2 | scout | `ai-enabler:delivery-repo-scout` | `repo-context.md` | — |
+| 2 | scout | `ai-enabler:delivery-repo-scout` | the repository profile (once) or a delta to it, and `repo-context.md` for this ticket | — |
 | 3 | plan | `ai-enabler:delivery-solution-planner` | `plan.md` | **plan** |
 | 4 | acceptance-tests | `ai-enabler:delivery-test-engineer` (`acceptance`) | tests for the ticket's criteria, `acceptance-tests.md` | — |
 | 5 | implement | `ai-enabler:delivery-code-implementer` | code on a feature branch that makes those tests pass | — |
@@ -33,7 +33,7 @@ Tests come before the code. A test written from the ticket says what the code mu
 
 The stages run forward, but a person can send the work back at either gate, and the plan can prove wrong on the way. Those loops are part of the pipeline, not exceptions to it — see "Going back: adjustments, fixes and deltas" below.
 
-Why subagents: each stage reads a lot (the ticket and its links, the repository, the full diff) and only its conclusion matters to the next one. Running stages in their own context keeps yours small enough to steer a long run, and makes the reviewer independent of the code's author. Stages exchange files in the run directory, never long pasted text.
+Why subagents: each stage reads a lot (the ticket and its links, the repository, the full diff) and only its conclusion matters to the next one. Running stages in their own context keeps yours small enough to steer a long run, and makes the reviewer independent of the code's author. Stages exchange files in the run directory, never long pasted text. What is true of the repository whatever the ticket is kept apart, in the repository profile, so it is learned once.
 
 ## Step 0 — Preflight
 
@@ -41,7 +41,7 @@ Why subagents: each stage reads a lot (the ticket and its links, the repository,
 2. Load `.enabler/config.json` if present and apply the defaults for everything else. Flags override it.
 3. For a Jira key, find the connected Jira MCP server. With none, follow "When there is no Jira MCP server" in the reference. With several and no `jira.server` configured, ask once which to use.
 4. Confirm you are in a git repository with a clean enough working tree (see the safety rules). A repository is required; a remote is only required at the ship stage.
-5. If `.enabler/runs/<KEY>/state.json` exists, this is a **resume**: report the stage it stopped at and continue from there, reusing the files already written. Look at `deltas` first: one that is written but not approved goes back to its gate, and one that is approved but not applied is carried out before anything else ("Going back", situation 3). A run that `/ai-enabler:delivery-plan` started is resumed the same way; if `test_order` is missing from its state, derive it as the "Test order" section of the reference says. `--from <stage>` restarts from an earlier stage; `--refresh` re-runs intake and scout even if their files exist.
+5. If `.enabler/runs/<KEY>/state.json` exists, this is a **resume**: report the stage it stopped at and continue from there, reusing the files already written. Look at `deltas` first: one that is written but not approved goes back to its gate, and one that is approved but not applied is carried out before anything else ("Going back", situation 3). A run that `/ai-enabler:delivery-plan` started is resumed the same way; if `test_order` is missing from its state, derive it as the "Test order" section of the reference says. `--from <stage>` restarts from an earlier stage; `--refresh` re-runs intake and scout even if their files exist; `--relearn` also studies the repository again from scratch ("Repository profile" in the reference). A run with `profile_notes` left in its state turns them into deltas first. A run whose `repo-context.md` was written before the repository profile existed keeps that file: at Step 2 run the check as usual, without the `ticket` task.
 6. Otherwise create the run directory and `state.json`.
 7. Check for local-only mode ("When the person says no to the remote" in the safety rules): `.enabler/local-only` exists, `git.local_only` is true, or `--local` was passed (then write the marker now). In that mode the run goes all the way to a local result and never further; say so once at the start. If the person says at any later point that nothing should be uploaded, apply the same rule on the spot.
 
@@ -61,9 +61,21 @@ If no Jira MCP server is connected, follow "When there is no Jira MCP server" in
 
 ## Step 2 — Scout
 
-Launch `ai-enabler:delivery-repo-scout` with the run directory and the path to `requirements.json`. Read the warnings it returns: no test command, no coverage tool or a dirty tree change how later stages behave, and belong in the final report.
+The repository is learned once and then only kept up to date; read "Repository profile" in the run-and-config reference and follow it.
+
+1. Ask whether the profile still holds: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repo_profile.py" check`. It prints `root` and the absolute path of the profile; the run directory lives under the same `root`. With `--relearn`, have the scout read the existing profile and deltas, run `repo_profile.py reset`, and go on as `missing`.
+2. Launch `ai-enabler:delivery-repo-scout` once, with the tasks the status calls for and absolute paths:
+   - `missing` — `profile` and `ticket`, then `repo_profile.py record --expect <profile path>`;
+   - `unrecorded` — `ticket`, then `repo_profile.py record`. The profile that is there was written by hand: it is adopted, never overwritten;
+   - `fresh` — `ticket` only;
+   - `stale` — `delta` and `ticket`. Get the delta's path with `repo_profile.py next-delta "<what changed>"` and pass it with the files the check listed. If the scout wrote the delta, `repo_profile.py record --expect <delta path>`; if it reports that nothing in the profile is affected and wrote no file, `repo_profile.py record`.
+
+   The `ticket` task always gets the run directory and the path to `requirements.json`.
+3. Read the warnings the scout returns: no test command, no coverage tool or a dirty tree change how later stages behave, and belong in the final report. If `suggest_relearn` in the check is not empty, or the scout says the profile and its deltas no longer fit together, mention once that `--relearn` would rebuild it; do not do it unasked.
 
 Stages 1 and 2 need nothing from the human. When the source is a file, or the ticket is plainly ready, you may start the scout as soon as intake has written `requirements.json`.
+
+When a later stage reports that the profile was wrong or incomplete — the implementer's build command failed because the profile named the wrong one, the test engineer found the coverage report elsewhere, a reviewer cited a rule the profile did not have — append one line to `profile_notes` in `state.json` straight away. At the next gate, or at the end of the run, turn each note into a delta: `repo_profile.py next-delta "<a few words>"`, the scout with the task `delta` and the note as its `learned` reason, `repo_profile.py record --expect <delta path> --keep`, and remove the note. The profile is never edited; it is complemented.
 
 ## Step 3 — Plan, and the plan gate
 

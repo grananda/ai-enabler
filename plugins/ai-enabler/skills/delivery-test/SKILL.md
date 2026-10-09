@@ -4,7 +4,7 @@ description: Generates and runs the tests for a change and checks coverage of th
 argument-hint: [JIRA-KEY | path ...] [--base <branch>] [--target 80] [--minimum 70] [--levels unit,integration,e2e] [--before-code]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # ai-enabler:delivery-test — tests and coverage for a change
@@ -19,7 +19,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` for the run directory 
    - a Jira key with an existing run directory — pipeline mode: the scope is the run's changes, and the acceptance criteria come from `requirements.json`;
    - paths — those files;
    - nothing — the changes on the current branch against the base branch (`--base`, else the remote's default branch), plus the working tree. If there are no changes at all, say so and ask which paths to cover.
-2. **Context.** The test engineer needs the repository's framework and commands. In pipeline mode `repo-context.md` already exists. Otherwise the run directory is `.enabler/runs/adhoc/`: launch `ai-enabler:delivery-repo-scout` into it once, without `requirements` (reuse its output on later calls unless the manifests changed).
+2. **Context.** The test engineer needs the repository's framework and commands, which are in the repository profile. Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repo_profile.py" check` in both modes — a pipeline run may be resumed days after its scout stage — and act on the status as "Repository profile" in the run-and-config reference describes: launch `ai-enabler:delivery-repo-scout` with `profile` when it is `missing` or `delta` when it is `stale`, then `record` the way the reference says. When it is `fresh`, nothing is scanned. Without a ticket the run directory is `.enabler/runs/adhoc/` and the scout gets no `ticket` task: there is no `repo-context.md` in that mode, and the scope you pass the test engineer takes its place.
 3. **Generate and run.** Launch `ai-enabler:delivery-test-engineer` with the run directory (the pipeline run's, or `.enabler/runs/adhoc/`), the `scope` when there is no ticket, the levels, and the mode: `acceptance` with `--before-code` (pipeline mode only — it needs the ticket's criteria and the plan, and the run's feature branch must be checked out: never write tests on the base branch), otherwise `coverage` with the coverage target and minimum. The target and the minimum are `--target` and `--minimum`, else `tests.coverage_target` and `tests.coverage_minimum` (80 and 70).
 4. **Act on the verdict.**
    - `green` — report, then apply the coverage rule in "Rules" below.
@@ -29,6 +29,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` for the run directory 
 
 ## Rules
 
+- **What was learned about the repository is kept.** When a subagent reports that the repository profile was wrong or incomplete (a command that does not work here, a convention the code does not follow, a rule nobody had written down), append one line to `profile_notes` in the run's `state.json` in pipeline mode, or turn it into a delta at the end without a ticket; "When something was learned" in the run-and-config reference says how it becomes a delta to the profile. Never edit `profile.md` for it.
 - You do not write the tests yourself; the test engineer does, in its own context.
 - Production code is never changed to make a test pass, and existing tests are never weakened or skipped.
 - Coverage is `met` at the target or more, `acceptable` from the minimum up to the target, and `below minimum` under it (line and branch, changed code; 80 and 70 unless configured or passed). Report the verdict as it is, with the files and lines that fall short. Below the minimum, ask the person whether to proceed as it is, write more tests, or stop — "Coverage" in the run-and-config reference — and do what they choose, recording a `coverage_accepted` intervention when they proceed in a pipeline run; never round the figure up or decide for them.

@@ -7,7 +7,7 @@ Given to each `delivery-code-reviewer` instance alongside its lens. It is a list
 - Does the change do what the ticket asks, and only that? Flag out-of-scope edits.
 - Does it affect code outside the diff — shared modules, public contracts, configuration, build or deployment?
 - Is it backwards compatible for existing callers, stored data and API clients?
-- Does it follow the hard rules listed in `repo-context.md`?
+- Does it follow the hard rules listed in the repository profile and its deltas?
 
 ## Correctness
 

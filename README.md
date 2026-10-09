@@ -103,17 +103,21 @@ Requirements:
 
 ## What appears in your project: the `.enabler/` folder
 
-Both plugins keep their files in one folder at the root of the project where you use them. Nothing is written anywhere else in your repository apart from the code, the tests and the `.gitignore` rule.
+Both plugins keep their files in one folder at the root of the project where you use them. Nothing is written anywhere else in your repository apart from the code, the tests and, when usage capture is turned on, one `.gitignore` rule for its events.
 
 ```
 .enabler/
-  config.json                 pipeline settings for this project (optional, commit it)
+  config.json                 pipeline settings for this project (optional)
+  repo-profile/               what the pipeline learned about the repository — once, then complemented
+    profile.md                the stack, the commands that work here, structure, conventions, rules
+    deltas/delta-NNN-*.md     one small complement each: what changed, or what was learned
+    profile.json              fingerprints of the files the profile was derived from
   local-only                  present only after someone said "do not upload"; blocks push, PR and Jira writes
   runs/                       one folder per ticket — working files, kept out of git
     <KEY>/
       state.json              where the run stands; lets it be resumed
       requirements.json       the ticket, normalised, with its acceptance criteria
-      repo-context.md         how this repository is built and written
+      repo-context.md         what this ticket adds to the profile: the existing code closest to it
       plan.md                 the implementation plan as it stands, deltas folded in
       deltas/delta-NN.md      each change made after approval: why, what is added, what is removed
       acceptance-tests.md     the tests written from the ticket before the code
@@ -129,7 +133,7 @@ Both plugins keep their files in one folder at the root of the project where you
 
 Each file of a run is described in [plugins/ai-enabler/README.md](plugins/ai-enabler/README.md#the-run-directory-what-each-file-is), and the metrics files in [plugins/ai-enabler-metrics/README.md](plugins/ai-enabler-metrics/README.md) and [docs/metrics-reference.md](docs/metrics-reference.md).
 
-What to commit: `.enabler/config.json`, and `.enabler/metrics/config.json` if the team shares its metrics settings. Everything else is ignored by default — run folders because they are working files, usage events and snapshots because they name people (see `metrics-usage-init --share` to change that deliberately).
+Nothing in `.enabler/` has to be committed: the plugins are used by one person on one machine for now, and the folder is local. Run folders and the repository profile keep themselves out of git (each holds a `.gitignore` of its own, so yours is not edited for them); usage events and metric snapshots are ignored by default because they name people (`metrics-usage-init --share` changes that deliberately).
 
 ## Documentation
 
@@ -156,8 +160,9 @@ plugins/
     agents/      delivery-ticket-analyst, delivery-repo-scout, delivery-solution-planner,
                  delivery-code-implementer, delivery-test-engineer, delivery-code-reviewer
     references/  run directory and configuration, git and Jira safety rules, review checklist
+    scripts/     repo_profile.py (is the repository profile still valid?)
     hooks/       hooks.json, remote_guard.py (blocks uploads when the project is local-only)
-    tests/       test_remote_guard.py
+    tests/       test_remote_guard.py, test_repo_profile.py
   ai-enabler-metrics/
     .claude-plugin/plugin.json
     hooks/       hooks.json, usage_hook.py
@@ -184,6 +189,7 @@ python3 plugins/ai-enabler-metrics/tests/test_usage.py  # hook and report, end t
 python3 plugins/ai-enabler-metrics/tests/test_delivery.py   # delivery metrics on fixtures
 python3 tools/check_versions.py                         # every change carries its version bump and changelog entry
 python3 tools/check_conventions.py                      # naming, owner and version of every skill and agent
+python3 plugins/ai-enabler/tests/test_repo_profile.py   # the repository-profile bookkeeping
 python3 plugins/ai-enabler/tests/test_remote_guard.py  # what local-only mode blocks and allows
 ```
 

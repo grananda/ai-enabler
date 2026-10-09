@@ -4,7 +4,7 @@ description: Independent multi-lens code review with a severity-ranked report an
 argument-hint: [JIRA-KEY | PR number or URL | path ...] [--base <branch>] [--lenses correctness,security,quality,tests] [--fix] [--min-confidence 80]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # ai-enabler:delivery-review — independent review, optional fix
@@ -50,6 +50,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` for the run directory 
 
 ## Rules
 
+- **What was learned about the repository is kept.** When a subagent reports that the repository profile was wrong or incomplete (a command that does not work here, a convention the code does not follow, a rule nobody had written down), append one line to `profile_notes` in the run's `state.json` in pipeline mode, or turn it into a delta at the end in stand-alone mode; "When something was learned" in the run-and-config reference says how it becomes a delta to the profile. Never edit `profile.md` for it.
 - You do not review the diff in your own context and you do not edit code yourself; reviewers review, the implementer fixes. Your part is consolidation and verification of blockers.
 - Never post review comments to a pull request, approve it, or request changes on it unless the human asks for exactly that.
 - Do not pad the report. No findings is a valid result; say what was checked.
