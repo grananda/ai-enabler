@@ -6,6 +6,20 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.4.0] — 2026-10-09
+
+`ai-enabler` 1.3.0 · `ai-enabler-metrics` 1.0.0
+
+### Added
+
+- **ai-enabler:** a pull-request template ships with the plugin (`templates/pull-request.md`). At the ship stage the pipeline asks which template to use — the repository's own, when it has one, or the plugin's — and offers to remember the answer in `git.pr_template` (`"ask"`, `"plugin"`, `"repo"` or a path). The ship gate names the one that will be used, and the body that was sent is kept as `pull-request.md` in the run folder.
+- **ai-enabler:** the plan gate lists every file the plan will create or modify, by path, so the change can be reviewed before any code exists.
+
+### Changed
+
+- **ai-enabler:** where tests run and what happens when one fails is now written down in one place ("Tests: where they run, and when they fail" in the run-and-config reference, and in the plugin README): they run locally with the repository's own commands, each failure is first given a cause, fixing is bounded, and a result with failing tests is marked not ready and never shipped unattended. The behaviour is the one the stages already followed; the root README's diagram now shows these loops.
+- **ai-enabler:** with a repository template, the pull-request body keeps that template's headings and checklists; failing tests, open findings and the criteria table are added at the end when the template has no place for them.
+
 ## [1.3.0] — 2026-10-09
 
 `ai-enabler` 1.2.0 · `ai-enabler-metrics` 1.0.0

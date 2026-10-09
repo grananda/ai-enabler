@@ -4,7 +4,7 @@ description: Ships a finished change — commits it on its feature branch, pushe
 argument-hint: [JIRA-KEY] [--local] [--no-pr] [--draft] [--no-jira] [--yes]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.2"
+  version: "1.1.0"
 ---
 
 # ai-enabler:delivery-ship — commit, push, pull request, Jira
@@ -33,7 +33,7 @@ If the person answers the confirmation below with a refusal to upload — "no", 
 2. **Check readiness, and say what you find.** If the run directory has `test-report.md` and `review.md`, read their verdicts. Failing tests or open defects, coverage of the changed code below the configured minimum without a `coverage_accepted` record in `state.json`, an open `critical` finding, or no test and review stage having run at all, make the change **not ready**: state it at the top of the confirmation, with a recommendation to hold or to open the pull request as a draft. Coverage that was not measured is stated too. None of this silently blocks, and none of it is silently ignored.
 3. **Prepare.**
    - The commit message, following the repository's convention or `git.commit_pattern`, with the key, and the "clean history" rule of the safety reference: one commit for the finished change, its body listing the deltas recorded in `state.json`; if the run already has a commit, this is one further commit that says what this delta or correction does, what it adds and what it removes.
-   - The pull-request title and body. The body is `delivery-report.md` when it exists; otherwise write one from the diff: what changed, why, how to verify.
+   - The pull-request title and body, as "The pull-request body" below says.
    - The Jira comment (branch, pull-request link, what was implemented, test result, open items) and the transition target, as configured.
 4. **Confirm once.** Unless this skill is being followed from the ship gate of `/ai-enabler:delivery-run` (which already obtained approval for this exact list) or `--yes` was passed, show the list and wait:
 
@@ -43,6 +43,7 @@ If the person answers the confirmation below with a refusal to upload — "no", 
    Commit  : <message>
    Push    : <branch> → origin
    PR      : "<title>" against <base> [draft]
+   PR body : <the plugin's template | the repository's template (<path>)>
    Jira    : comment on <KEY> [· transition to "<status>"]
 
    Proceed? (yes / local: commit only, nothing leaves / no / edit: <what to change>)
@@ -54,6 +55,26 @@ If the person answers the confirmation below with a refusal to upload — "no", 
    4. Open the pull request (`--draft` if requested or recommended), unless `--no-pr` or `git.pull_request` is false. Without an authenticated `gh` or `glab`, print the compare URL instead.
    5. Jira, unless `--no-jira`, there is no key, or the run's `source` is `file`: add the comment; perform the transition only if it is configured and available from the current status.
 6. **Report** what actually happened, step by step: commit hash, branch, pull-request URL, Jira comment and transition (done, skipped and why, or failed and why). Update `state.json` with `pr_url` and the stage.
+
+## The pull-request body
+
+The body follows a template: a real file, so that every pull request the pipeline opens has the same shape and a reviewer knows where to look.
+
+1. **The plugin's template** is `${CLAUDE_PLUGIN_ROOT}/templates/pull-request.md`.
+2. **The repository may have its own.** Look for it, case-insensitively: `pull_request_template.md` in `.github/`, in the root or in `docs/`; any file in `.github/PULL_REQUEST_TEMPLATE/`; on GitLab, any file in `.gitlab/merge_request_templates/`.
+3. **Which one to use** is the person's choice, not yours. Read `git.pr_template` in `.enabler/config.json`:
+   - `"plugin"` or `"repo"` — use that one. If it says `"repo"` and the repository no longer has one, say so and ask.
+   - a path — use that file.
+   - `"ask"`, or absent — ask, once:
+     - the repository has its own: "This repository has a pull-request template (`<path>`). Use it, or the ai-enabler one?" — the repository's first, since it is what the team's reviewers expect. With several templates in the repository, list them.
+     - it has none: "This repository has no pull-request template. May I use the ai-enabler one?" — with the alternatives of giving a path to another file, or a plain body with no template.
+
+     Then offer to remember the answer for this project, and on a yes write it to `git.pr_template`. Do not ask again in the same run.
+   - When nobody can be asked (`--yes`, or an unattended run) and the setting is `"ask"`: the repository's own template if there is one, otherwise the plugin's. Say which was used.
+4. **Fill it** from `delivery-report.md`, or from the diff when there is no run: what changed, why, how to verify.
+   - The plugin's template: the report already has its sections; remove the guidance comments and the sections that do not apply.
+   - Another template: keep its headings, their order and its checklists exactly; put each part of the report under the heading where a reviewer of this repository would look for it; tick a checkbox only when the run's files prove it, and leave the rest unticked instead of deleting them. What the template has no place for and a reviewer needs — the acceptance-criteria table, failing tests, open findings, what refinement added — goes at the end under "Delivery details". Never drop a failing test or an open finding because the template did not ask.
+5. Save the body as `pull-request.md` in the run directory (or `.enabler/runs/adhoc/` without a run) and pass that file to `gh pr create --body-file` or `glab mr create`. Nothing local is referenced in it: no `.enabler/` path means anything to a reviewer.
 
 ## Rules
 

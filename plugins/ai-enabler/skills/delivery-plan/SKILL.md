@@ -4,7 +4,7 @@ description: Turns a Jira ticket (read through the Jira MCP server) or a require
 argument-hint: <JIRA-KEY | requirements.md> [--no-refine] [--refresh] [--relearn]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.2.0"
+  version: "1.2.1"
 ---
 
 # ai-enabler:delivery-plan — ticket to implementation plan
@@ -19,7 +19,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` first; it defines the 
 2. **Intake.** Skip this step when `requirements.json` is being reused. Otherwise launch `ai-enabler:delivery-ticket-analyst` with the source and the run directory, then refine the ticket exactly as Step 1 of `${CLAUDE_PLUGIN_ROOT}/skills/delivery-run/SKILL.md` says under "Refine", with the same cases in which it is skipped and the same handling of `--refresh`: `ai-enabler:delivery-ticket-refiner` in `mode: pipeline`, and `refined` recorded in `state.json`. If the verdict after that is `blocked`, show the blocking questions with their options, and ask whether to stop or to plan on stated assumptions. Set `test_order` in `state.json` from `acceptance_criteria_quality`, as the "Test order" section of the reference says. With no Jira MCP server connected, follow "When there is no Jira MCP server" in the reference.
 3. **Scout.** Follow Step 2 of `${CLAUDE_PLUGIN_ROOT}/skills/delivery-run/SKILL.md`: ask `repo_profile.py check`, launch `ai-enabler:delivery-repo-scout` with the tasks the status calls for (`profile`, `delta`, `ticket`) and the absolute paths the script prints, and `record` as that step says for each status. A `repo-context.md` reused from an earlier run is not rewritten, but the check still runs: the profile may have gone stale since.
 4. **Plan.** Launch `ai-enabler:delivery-solution-planner` with the run directory and `test_order`.
-5. **Present.** Read `plan.md` and show the same compact summary the delivery pipeline uses at its plan gate: approach, number of steps and files, planned tests and how many of them will be written before the code (with the reason when the ticket's criteria are scarce or missing), what refinement added to the ticket, decisions, assumptions, blocking questions, and the path to the full plan.
+5. **Present.** Read `plan.md` and show the same compact summary the delivery pipeline uses at its plan gate: approach, number of steps, the files to create and to modify by path, planned tests and how many of them will be written before the code (with the reason when the ticket's criteria are scarce or missing), what refinement added to the ticket, decisions, assumptions, blocking questions, and the path to the full plan.
 6. **Iterate on request.** If the human asks for changes, that is a round at the plan gate: check "Rounds at a gate" in the reference, add one to `gate_rounds.plan`, relaunch the planner with their feedback and present the result again (when the feedback rejects something refinement added, mark it in `requirements.json` first, as the plan gate of `delivery-run` says). When they approve, set `plan_approved` in `state.json`, with `stage` at `acceptance-tests` and the three stages done.
 
 Close by naming the next step: `/ai-enabler:delivery-run <KEY>` continues from the approved plan (it resumes the run at the acceptance tests, then the implementation and the rest), or `/ai-enabler:delivery-implement <KEY>` runs only the acceptance tests and the implementation.

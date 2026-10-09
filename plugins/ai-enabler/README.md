@@ -45,10 +45,38 @@ Whatever the order, stage 6 always runs and measures line and branch coverage of
 
 Both numbers are configurable (`tests.coverage_target`, `tests.coverage_minimum`). A decision to proceed below the minimum is recorded and stated in the pull request. When tests had to be written after the code, the plan gate and the pull request say so and why.
 
+### Where tests run, and what happens when they fail
+
+Tests run **on your machine**, in the working tree, on the feature branch, with the commands your repository uses (the ones in the repository profile). The pipeline does not run anything in CI and does not wait for it: what CI says after the push is for you and the reviewers.
+
+| Stage | Who | What is run | What is expected |
+|---|---|---|---|
+| 4 | test engineer | The new acceptance tests | Red: they fail because the code is not there yet |
+| 5 | implementer | Build, linter, the acceptance tests | The acceptance tests go green, unedited |
+| 6 | test engineer | The whole suite, with coverage | Green; coverage at the target or at least the minimum |
+| 7 | test engineer | The tests of whatever a review fix touched | Still green |
+| 8 | — | Nothing is re-run; the ship gate reports the last result | — |
+
+When a test runs and does not pass, the first step is to say why, because the answer decides who acts:
+
+| Why it fails | What happens |
+|---|---|
+| The test itself is wrong (setup, a mistake) | The test engineer fixes its own test |
+| The test contradicts the ticket or the plan | The orchestrator settles it against the ticket and the plan, never against the code; the test is corrected and the change is reported |
+| The code is wrong | The test stays. The implementer fixes the code, and the test is run again |
+| It was already failing before this change | Reported as pre-existing; not fixed, not skipped, not held against the change |
+| The tests could not be run at all | Reported as such; the change is stated to be untested, never presented as passing |
+
+No test is edited to agree with the code, and none is weakened, skipped or deleted to get a green run.
+
+Fixing is bounded so that a run cannot loop: one extra pass at stage 5, and two fix rounds (`review.max_fix_rounds`) shared by the coverage stage and the review. If tests still fail after that, the run goes on to the review and the result is marked **not ready**: the failures are listed with their cause in the report and in the pull request, and the ship gate says so first and recommends holding or a draft pull request. You can still ship it, knowingly. An unattended run never does: it holds.
+
 What the human sees at each gate:
 
-- **Plan gate** — the approach in three sentences, the number of steps and files, the planned tests, the technical decisions taken, the assumptions made about the ticket. Answer `approve`, `adjust: ...` or `cancel`.
+- **Plan gate** — this is where you review the change before it exists. The approach in three sentences, the steps, every file that will be created or modified by path, the planned tests, the technical decisions taken, the assumptions made about the ticket. Answer `approve`, `adjust: ...` or `cancel`.
 - **Ship gate** — the diff size, acceptance criteria met, test results and coverage against the 80 % target and the 70 % minimum, how many criteria had their test written before the code, findings fixed and still open, and the exact list of outward actions (push, pull request, Jira comment, transition). Answer `ship`, `local` (commit on your machine only; nothing leaves it), `hold` or `fix: ...`.
+
+At the plan gate nothing has been written outside the run folder, so reviewing is cheap: ask about any step, read `plan.md` in full, edit it by hand, or send it back with `adjust`. Once approved, the plan only changes through a delta.
 
 A delta is shown at Gate 1 like a plan. The pipeline also stops when the ticket is not implementable as written (the analyst returns the questions that unblock it), when the plan turns out to be wrong in a way that changes scope, and when coverage of the changed code ends up under the minimum. Apart from those, it asks only what it cannot work out — which Jira server to use when several are connected — and stops where the safety rules require it, such as unrelated changes in the working tree.
 
@@ -135,6 +163,17 @@ Nothing is invented silently: everything the author did not write is marked, and
 **Jira is not touched.** Refinement never writes to Jira: not the improved description, not a comment. The files are local, like everything in `.enabler/`. The one exception is yours to ask for: at the end, `delivery-ticket-create` asks where you want the ticket — here (the default), somewhere else on your machine, or as a Jira issue. Only if you choose Jira does it show exactly what would be created and, on your yes, create one issue and nothing more. In local-only mode Jira is not offered at all.
 
 What makes a ticket ready, and the rules of refinement, are written once in [references/ticket-readiness.md](references/ticket-readiness.md), which the analyst, the refiner and both skills read.
+
+## The pull-request template
+
+The pull requests the pipeline opens follow a template, a real file you can read: [templates/pull-request.md](templates/pull-request.md). It has the sections a reviewer needs — what changed, the acceptance criteria with where each one comes from, tests and coverage, review findings, changes made after the plan was approved, deviations, how to verify.
+
+Your repository may already have its own (`.github/pull_request_template.md` and the other usual places, or GitLab's merge-request templates). The pipeline does not decide for you. At the ship stage it asks, once:
+
+- **the repository has a template** — use that one, or the plugin's?
+- **it has none** — may the plugin's be used, or do you prefer another file, or a plain body?
+
+It then offers to remember the answer for the project (`git.pr_template`: `"ask"`, `"plugin"`, `"repo"` or a path), and the ship gate names the template that will be used. With your repository's template, its headings and checklists are kept as they are, a checkbox is ticked only when the run proves it, and what the template has no place for — failing tests, open findings, the criteria table — is added at the end rather than dropped. The body that was sent is kept as `pull-request.md` in the run folder.
 
 ## Naming, ownership and versions
 
@@ -223,7 +262,7 @@ Optional, in `.enabler/config.json` at the project root — a local file, like e
   "gates": ["plan", "ship"],
   "max_gate_rounds": 3,
   "git": { "base_branch": null, "branch_pattern": "feature/{key}-{slug}",
-           "commit_pattern": "{type}({key}): {summary}", "pull_request": true },
+           "commit_pattern": "{type}({key}): {summary}", "pull_request": true, "pr_template": "ask" },
   "jira": { "server": null, "comment_on_ship": true, "transition_on_ship": null },
   "tests": { "coverage_target": 80, "coverage_minimum": 70, "levels": ["unit", "integration"], "order": "auto" },
   "refine": { "enabled": true },
@@ -253,6 +292,7 @@ Every ticket gets its own folder, `.enabler/runs/<KEY>/`, where `<KEY>` is the J
 | `test-report.md` | stage 6, coverage | `delivery-test-engineer` | The test results after the code: commands run, tests passed and failed, coverage of the changed code per file against the target and the minimum, the acceptance-criteria table (which test covers each, written before or after the code, passing or not), defects found, failures that existed before the change, and the test files added. |
 | `review.md` | stage 7, review | the skill, from the reviewers' reports | The consolidated code review: the verdict, the findings numbered by severity with file and line, why each matters and how to fix it, the acceptance-criteria check, the findings still to validate, what was checked and found sound, and one section per fix round saying what was fixed, disputed or left open. |
 | `delivery-report.md` | stage 8, before the ship gate | the skill | The summary for whoever reviews the pull request: what changed, the changes made after the plan was approved (one entry per delta), the acceptance criteria with their status and evidence, tests and coverage, the review outcome and open findings, deviations from the plan and assumptions, and how to verify. It is used as the pull-request body. |
+| `pull-request.md` | stage 8, on shipping | the skill | The pull-request body exactly as it was sent: the delivery report, in the template you chose. |
 
 A few things worth knowing:
 

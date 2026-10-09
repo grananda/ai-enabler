@@ -22,7 +22,11 @@ flowchart TD
     G1 -->|cancel| X([run stopped])
     G1 -->|approve| AT["delivery-test-engineer<br/>acceptance tests first"]
     AT --> I[delivery-code-implementer]
-    I --> T["delivery-test-engineer<br/>coverage 70–80 %"]
+    I -->|"acceptance tests still red:<br/>one more pass"| I
+    I --> T["delivery-test-engineer<br/>whole suite · coverage 70–80 %"]
+    T -->|"a test fails because the code is wrong:<br/>fix, then run again (max 2 rounds)"| I
+    T -->|"coverage under 70 %"| CV{{"the person decides"}}
+    CV -->|"proceed / more tests"| T
     T --> R["delivery-code-reviewer × 4<br/>in parallel"]
     R -->|blocking findings| I
     R --> G2{{"Gate 2 — ship"}}
@@ -49,6 +53,7 @@ Reading the loops in the diagram:
 - **Gate 1, `adjust`** — the plan goes back to the planner and returns to the gate. **`cancel`** stops the run; nothing was written outside its folder.
 - **Gate 2, `fix`** — a correction goes to the implementer and comes back through coverage and review. A change to *what* is being built becomes a **delta**: a written, approved change to the plan that lists what is added and what is removed, and is carried out acceptance tests first — new tests written and obsolete ones deleted, then code written and dead code deleted.
 - **Gate 2, `local` / `hold` / `no`** — nothing is uploaded: a local commit, or the work left as it is.
+- **Tests that fail while building** — acceptance tests still failing after the implementation get one more implementer pass. A test that fails because the code is wrong goes back to the implementer and is run again, two rounds at most; a test is never edited to agree with the code. Coverage under 70 % stops for your decision. See "Where tests run, and what happens when they fail" in the plugin README.
 - After three rounds at the same gate the pipeline offers to hand over instead of trying a fourth time on its own.
 
 The pipeline has two gates: one to show the plan before any code is written, one to show the result before anything leaves the machine. It asks at a few other moments only when the decision is yours: a ticket that cannot be implemented as written, a change to the approved plan (a delta), coverage below the minimum, and a fourth round at the same gate. Everything in between runs unattended: reading the ticket, learning the repository's conventions, writing the tests for the acceptance criteria, writing the code that makes them pass, completing the tests up to the coverage target (80 %, with 70 % as the minimum), reviewing and fixing. If coverage ends up under the minimum, it stops once more and asks whether to proceed. Each stage is also a skill of its own, for teams that want to adopt it piece by piece.
@@ -126,7 +131,8 @@ Both plugins keep their files in one folder at the root of the project where you
       acceptance-tests.md     the tests written from the ticket before the code
       test-report.md          test results and coverage after the code
       review.md               the consolidated code review and its fix rounds
-      delivery-report.md      the summary that becomes the pull-request body
+      delivery-report.md      the summary shown at the ship gate
+      pull-request.md         the pull-request body as sent, in the template you chose
   metrics/                    exists only after /ai-enabler-metrics:metrics-usage-init; its presence switches capture on
     config.json               capture, pricing and delivery-metric settings
     events/<user>/<session>.jsonl   what the hooks recorded, one line per event
@@ -166,6 +172,7 @@ plugins/
                  delivery-code-reviewer
     references/  run directory and configuration, ticket readiness and refinement,
                  git and Jira safety rules, review checklist
+    templates/   pull-request.md (the pull-request template, unless the repository has its own)
     scripts/     repo_profile.py (is the repository profile still valid?)
     hooks/       hooks.json, remote_guard.py (blocks uploads when the project is local-only)
     tests/       test_remote_guard.py, test_repo_profile.py

@@ -41,7 +41,7 @@ When in doubt whether an answer is a refusal, treat it as one and ask.
 ## Pull requests
 
 - Open the pull request against the base branch with `gh pr create` (or `glab mr create` on GitLab). If neither CLI is available or authenticated, push the branch and give the human the compare URL instead.
-- The body is `delivery-report.md`: what changed and why, the acceptance-criteria table, test and coverage results, review outcome, open items, and how to verify. Link the Jira issue.
+- The body follows a template: the repository's own when it has one and the person chose it, otherwise the plugin's (`templates/pull-request.md`). Which one is the person's choice, asked once and kept in `git.pr_template`; see "The pull-request body" in the `delivery-ship` skill. Whatever the template, the body is made from `delivery-report.md` and never leaves out failing tests or open findings. Link the Jira issue.
 - Never merge, approve or auto-merge a pull request. Delivery ends at "ready for human review".
 
 ## Jira

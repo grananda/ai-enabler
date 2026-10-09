@@ -4,7 +4,7 @@ description: Machine-driven delivery of a Jira ticket, end to end. Reads the tic
 argument-hint: <JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--max-rounds 3] [--ship] [--local] [--no-refine] [--refresh] [--relearn] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # ai-enabler:delivery-run — from a Jira ticket to a pull request
@@ -97,6 +97,8 @@ If `plan` is in `gates`, present this — compact, because the human should be a
 PLAN — <KEY>: <title>
 Approach    : <the plan's summary, two or three sentences>
 Changes     : <n> steps · <n> files to create · <n> to modify
+              CREATE <path>          <one line per file, from the plan's steps;
+              MODIFY <path> (<what>)  beyond fifteen, the first fifteen and a count>
 Tests       : <n> planned (<levels>) · <n> written before the code, from <n> stated criteria
               <only when test_order is mixed or after: why some or all tests come after the code>
 Decisions   : <each decision in one line>
@@ -110,6 +112,8 @@ Full plan   : .enabler/runs/<KEY>/plan.md
 Approve this plan? (approve / adjust: <what to change> / cancel)
 ```
 
+This gate is the review of the change before it exists: what will be built, in which files, with which tests. The person can ask about any step, read or edit `plan.md` directly, and adjust as often as the round limit allows; nothing has been written outside the run directory yet. After approval the plan only changes through a delta.
+
 - **approve** — set `plan_approved` and continue.
 - **adjust** — the plan is not approved yet, so it is simply revised. Check "Rounds at a gate" in the reference first (`--max-rounds` overrides the limit for this run); then relaunch the planner with the feedback, record the intervention, add one to `gate_rounds.plan`, and present the new plan.
 - **adjust that rejects something refinement added** ("drop AC-7", "no pagination") — the same round, with one more thing to do first: in `requirements.json`, mark each rejected requirement or criterion `"removed_by": "plan-gate"` (never delete or renumber) — a rejected requirement takes with it the criteria that cover only that requirement — and pass the rejection to the planner as feedback. If no refined criterion is left in force and `as_received` exists, set `acceptance_criteria_quality` and `test_order` again from `as_received.acceptance_criteria_quality`.
@@ -120,6 +124,8 @@ A plan with a blocking question cannot be auto-approved: even when `plan` is not
 When `plan` is not in `gates`, what refinement added goes in unreviewed. That is the choice the person made by removing the gate, but it must stay visible: the delivery report and the ship gate say which criteria came from refinement and that nobody approved them.
 
 ## Step 4 — Acceptance tests, before the code
+
+Stages 4 to 7 all run tests. Where they run, and what is done with a test that runs and does not pass, is one protocol for all of them: "Tests: where they run, and when they fail" in the run-and-config reference. The steps below apply it.
 
 1. Create the feature branch from the base branch, per the safety rules and `git.branch_pattern`. Record it in `state.json`.
 2. If `test_order` is `before` or `mixed`, launch `ai-enabler:delivery-test-engineer` with `mode: acceptance` and the run directory. It writes the tests for the criteria the ticket states and `acceptance-tests.md`; no production code exists yet, so the tests are expected to fail or not to build.
@@ -171,38 +177,9 @@ Launch `ai-enabler:delivery-test-engineer` with `mode: coverage`, the run direct
 
 ## Step 8 — Delivery report, and the ship gate
 
-Write `.enabler/runs/<KEY>/delivery-report.md`. It doubles as the pull-request body, so write it for a reviewer who has not seen this session:
+Write `.enabler/runs/<KEY>/delivery-report.md`, following `${CLAUDE_PLUGIN_ROOT}/templates/pull-request.md` section by section. It is what the person reads at the ship gate, and the material the pull-request body is made from, so write it for a reviewer who has not seen this session. In it, `From` in the criteria table is `ticket`, `derived` or `refinement`: a reviewer must be able to tell what the ticket asked for from what the pipeline added to it.
 
-```markdown
-## <KEY> — <title>
-<link to the Jira issue, or the path of the requirements file>
-
-### What changed
-Three to six bullets on the change and the approach.
-
-### Acceptance criteria
-| AC | Criterion | From | Status | Evidence (test or file) |
-
-`From` is `ticket`, `derived` or `refinement`. A reviewer must be able to tell what the ticket asked for from what the pipeline added to it.
-
-### What refinement added to the ticket
-Each requirement, criterion and assumption that refinement added, in one line with its reason (from `refinement.md`), and whether a person saw them at the plan gate or the run was unattended. Omit the section when nothing was added.
-
-### Tests
-Suite result, coverage on changed code versus the target and the minimum — and, if it is below the minimum, that the person decided to proceed and why — and for each acceptance criterion whether its test was written before or after the code. If tests were written after the code, say why.
-
-### Review
-Lenses run, findings fixed, findings left open (severity, location, one line each).
-
-### Changes after the plan was approved
-One entry per delta, in order: what changed and why, what was added, what was removed (criteria, tests, code). Omit the section when there was none.
-
-### Deviations and assumptions
-Where the implementation departed from the plan without a delta; assumptions made about the ticket.
-
-### How to verify
-The commands or steps a reviewer can run.
-```
+Then settle which pull-request template the body will follow — "The pull-request body" in `${CLAUDE_PLUGIN_ROOT}/skills/delivery-ship/SKILL.md` — so that the gate can name it. Skip this when no pull request will be opened (local-only mode, `git.pull_request` false).
 
 Then present the ship gate and wait. List exactly what will happen, because approval covers exactly this list:
 
@@ -216,6 +193,7 @@ Review    : <n> fixed · <n> open (<highest open severity>)
 Deltas    : <n> since the plan was approved (<one line each>, or "none")
 Will do   : commit → push <branch> → open PR against <base> [→ comment on <KEY>] [→ transition to "<status>"]
             <the Jira steps appear only when the source is a Jira issue>
+PR body   : <the plugin's template | the repository's template (<path>)>
 Report    : .enabler/runs/<KEY>/delivery-report.md
 
 Ship it? (ship / local / hold / fix: <what to change>)
