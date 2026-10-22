@@ -6,6 +6,16 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.4.1] — 2026-10-22
+
+`ai-enabler` 1.3.1 · `ai-enabler-metrics` 1.0.0
+
+### Fixed
+
+- **Marketplace:** the root README's list of skills now includes `delivery-ticket-refine` and `delivery-ticket-create`, says that `delivery-run` and `delivery-plan` accept a Markdown file as well as a key, and its quick start shows how to start without a ticket. The plugin descriptions in the README and in the marketplace catalogue mention ticket refinement.
+- **Marketplace:** the `ai-enabler-metrics` README has a table of all its skills, including `metrics-usage-init`, `metrics-usage-report` and `metrics-stale-assets`, which were only mentioned in passing.
+- **ai-enabler:** the description of `delivery-ship` says the pull-request body follows the template the person chose, instead of "the delivery report as its body".
+
 ## [1.4.0] — 2026-10-09
 
 `ai-enabler` 1.3.0 · `ai-enabler-metrics` 1.0.0

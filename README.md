@@ -6,7 +6,7 @@ It ships two plugins:
 
 | Plugin | What it does |
 |---|---|
-| [`ai-enabler`](plugins/ai-enabler/README.md) | Takes a Jira ticket to a pull request. Dedicated subagents read the ticket through the Jira MCP server, analyse the repository, plan, implement, test and review; the human decides at two gates, the plan and the ship. |
+| [`ai-enabler`](plugins/ai-enabler/README.md) | Takes a Jira ticket to a pull request. Dedicated subagents read the ticket through the Jira MCP server, refine its definition, analyse the repository, plan, implement, test and review; the human decides at two gates, the plan and the ship. Also turns a thin ticket, or a few sentences, into a robust ticket as a local Markdown file. |
 | [`ai-enabler-metrics`](plugins/ai-enabler-metrics/README.md) | Measures AI usage with opt-in hooks (human interaction, AI working time, token cost in USD per session, user, ticket, skill and model) and delivery flow with scripts (pull request size, review waiting time, rework, Jira cycle time), and reports both as HTML dashboards with charts. A delivery metric becomes a KPI only when the team sets a target for it; usage figures are context and never take one. Works with any workflow, not only `ai-enabler`. |
 
 ## How it works
@@ -87,6 +87,9 @@ Requirements:
 
 /ai-enabler:delivery-run PROJ-123             # ticket -> plan gate -> tests, code, coverage, review -> ship gate -> PR
 
+/ai-enabler:delivery-ticket-create "users need to export their orders as CSV"
+                                              # no ticket yet? write one, then pass the file to delivery-plan or delivery-run
+
 /ai-enabler-metrics:metrics-usage-report      # what it took: interactions, time, cost — and the delivery dashboard
 ```
 
@@ -94,13 +97,15 @@ Requirements:
 
 | Skill | Use it to |
 |---|---|
-| `/ai-enabler:delivery-run <KEY>` | Run the full pipeline from a ticket to a pull request, or resume a run |
-| `/ai-enabler:delivery-plan <KEY>` | Get an implementation plan and a readiness verdict, without writing code |
+| `/ai-enabler:delivery-run <KEY \| file.md>` | Run the full pipeline from a ticket to a pull request, or resume a run |
+| `/ai-enabler:delivery-plan <KEY \| file.md>` | Get an implementation plan and a readiness verdict, without writing code |
 | `/ai-enabler:delivery-implement <KEY>` | Execute an approved plan |
 | `/ai-enabler:delivery-test [KEY \| paths]` | Generate and run tests for a change, against a coverage target of 80 % and a minimum of 70 % |
 | `/ai-enabler:delivery-review [KEY \| PR \| paths]` | Independent multi-lens review, with optional auto-fix |
 | `/ai-enabler:delivery-ship [KEY]` | Commit, push, open the pull request, update Jira |
 | `/ai-enabler:delivery-doctor` | Check or initialise the project setup |
+| `/ai-enabler:delivery-ticket-refine <KEY \| file.md>` | Make an existing ticket robust — gaps closed, additions marked — as a local Markdown file. Never writes to Jira |
+| `/ai-enabler:delivery-ticket-create "<a few sentences>"` | Write a complete ticket from a short brief, as a local Markdown file; a Jira issue only if you ask for it |
 | `/ai-enabler-metrics:metrics-usage-init` | Switch usage capture on for a project |
 | `/ai-enabler-metrics:metrics-usage-report` | Produce the usage report: AI usage and delivery flow, as HTML dashboards with charts |
 | `/ai-enabler-metrics:metrics-delivery-report` | Delivery-flow dashboard: PR size, review waiting time, rework, Jira cycle time, per developer |

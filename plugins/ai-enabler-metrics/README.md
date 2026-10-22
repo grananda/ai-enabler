@@ -5,6 +5,21 @@
 - **Usage metrics** — how AI is being used: how much a person interacts with the machine, where the time goes, what it costs. Captured by hooks, so nothing is self-reported.
 - **Delivery-flow metrics** — how the team delivers: pull request size, review waiting time, rework, cycle time. Read from GitHub and Jira, for everyone's work, with or without AI.
 
+## Skills
+
+| Skill | What it does |
+|---|---|
+| `/ai-enabler-metrics:metrics-usage-init` | Switches usage capture on for a project (creates `.enabler/metrics/`), reports whether it is on (`--status`), or explains how to switch it off (`--off`) |
+| `/ai-enabler-metrics:metrics-usage-report` | The usage report from what the hooks recorded — interaction, time, cost per session, user, ticket, skill, agent and model — followed by the delivery-flow dashboard |
+| `/ai-enabler-metrics:metrics-stale-assets` | Skills and agents with their owner, version and last use; the ones unused for 90 days or without an owner |
+| `/ai-enabler-metrics:metrics-delivery-report` | The four delivery metrics on one dashboard, with the KPI verdicts when targets are set |
+| `/ai-enabler-metrics:metrics-pr-size` | Pull request size |
+| `/ai-enabler-metrics:metrics-review-wait` | Waiting time until the first human review |
+| `/ai-enabler-metrics:metrics-rework` | Reverts and follow-up fixes |
+| `/ai-enabler-metrics:metrics-cycle-time` | Jira cycle time, tickets that move backward, time blocked |
+
+The hooks need no setup beyond `metrics-usage-init`: they come with the plugin and stay silent in projects that have not opted in.
+
 ## Metrics, and when one is a KPI
 
 None of these is a KPI by default. A metric becomes a **KPI** only when the team sets a target for it, and only the four delivery metrics can take one:
