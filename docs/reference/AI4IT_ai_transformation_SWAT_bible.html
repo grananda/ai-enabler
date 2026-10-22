@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Working With AI, As A Team: a manual for team leads</title>
+<style>
+  :root{
+    --ink:#121a26;
+    --ink-2:#3c4657;
+    --ink-3:#6b7585;
+    --bg:#f8f6f3;
+    --card:#ffffff;
+    --line:#e2ddd6;
+    --accent:#0e6b84;
+    --accent-soft:#e3f0f3;
+    --warn:#9a4a1f;
+    --warn-soft:#fbeee5;
+    --ok:#2f6b3d;
+    --ok-soft:#e8f1ea;
+    --radius:10px;
+    --gate:#9a4a1f;  --gate-soft:#fbeee5;
+    --l1:#0e6b84;    --l1-soft:#e3f0f3;
+    --l2:#2f6b3d;    --l2-soft:#e8f1ea;
+    --l3:#5b3f8c;    --l3-soft:#efe9f7;
+    --navh:50px;
+    --pad:clamp(28px,4.5vw,76px);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:clamp(15px,0.52vw + 12px,20px);
+    line-height:1.5;
+    color:var(--ink);
+    background:var(--bg);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- deck shell ---------- */
+  .deck{height:100%}
+  .slide{
+    display:none;
+    height:100vh;
+    padding:var(--pad);
+    padding-top:calc(var(--pad) * .6 + var(--navh));
+    padding-bottom:calc(var(--pad) * .6 + 40px);
+    overflow-y:auto;
+    flex-direction:column;
+  }
+  .slide.active{display:flex}
+  .slide-inner{width:100%;max-width:1080px;margin:auto}
+
+  /* ---------- typography ---------- */
+  h1{font-size:clamp(2.1rem,4.4vw,3.5rem);line-height:1.08;margin:0 0 .5em;letter-spacing:-.02em}
+  h2{font-size:clamp(1.5rem,2.6vw,2.3rem);line-height:1.15;margin:0 0 .15em;letter-spacing:-.015em}
+  h3{font-size:1.02rem;margin:1.4em 0 .4em;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);font-weight:650}
+  .deck h3:first-of-type{margin-top:1em}
+  p{margin:0 0 .8em;max-width:62ch}
+  .lede{font-size:1.12rem;color:var(--ink-2);max-width:60ch;margin-bottom:1.6em}
+  .sub{color:var(--ink-3);font-size:1.05rem;margin:0 0 2em;max-width:56ch}
+  strong{font-weight:650}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;background:#eeeae4;padding:.12em .38em;border-radius:4px}
+
+  ul,ol{margin:0 0 1em;padding-left:1.25em;max-width:70ch}
+  li{margin-bottom:.5em}
+  li>ul,li>ol{margin-top:.5em;margin-bottom:0}
+  ul.tight li{margin-bottom:.28em}
+  ul.plain{list-style:none;padding-left:0}
+  ul.plain>li{padding-left:1.3em;position:relative}
+  ul.plain>li::before{content:"•";position:absolute;left:0;color:var(--accent);font-weight:700}
+
+  .badge{
+    display:inline-block;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
+    font-weight:700;color:var(--accent);background:var(--accent-soft);
+    padding:.35em .7em;border-radius:999px;margin-bottom:1.1em;
+  }
+  .badge.b2{color:var(--warn);background:var(--warn-soft)}
+  .badge.b3{color:var(--ok);background:var(--ok-soft)}
+  .badge.b4{color:var(--l3);background:var(--l3-soft)}
+
+  /* ---------- model nav bar (on every slide) ---------- */
+  .modelnav{
+    position:fixed;top:3px;left:0;right:0;z-index:45;height:var(--navh);
+    display:flex;align-items:center;gap:6px;padding:0 clamp(12px,2vw,24px);
+    background:rgba(248,246,243,.94);backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap;
+    font-size:.8rem;
+  }
+  .modelnav button{
+    font:inherit;cursor:pointer;border:1px solid transparent;background:none;color:var(--ink-3);
+    padding:.35em .8em;border-radius:999px;display:inline-flex;align-items:center;gap:.45em;font-weight:600;
+  }
+  .modelnav button:hover{color:var(--ink);border-color:var(--line)}
+  .modelnav button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .modelnav .dot{width:.62em;height:.62em;border-radius:50%;background:var(--c,var(--ink-3));flex:none}
+  .modelnav .model{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;background:var(--card)}
+  .modelnav .sep{color:var(--ink-3);font-size:.75rem}
+  .modelnav button.on{color:var(--c,var(--ink));background:var(--cs,#eeeae4);border-color:var(--c,var(--ink-3))}
+  .modelnav .pos{margin-left:auto;color:var(--ink-3);font-size:.75rem;padding-left:1em}
+  .modelnav [data-go="gate"]{--c:var(--gate);--cs:var(--gate-soft)}
+  .modelnav [data-go="l1"]{--c:var(--l1);--cs:var(--l1-soft)}
+  .modelnav [data-go="l2"]{--c:var(--l2);--cs:var(--l2-soft)}
+  .modelnav [data-go="l3"]{--c:var(--l3);--cs:var(--l3-soft)}
+  .modelnav [data-go="start"],.modelnav [data-go="stick"]{--c:var(--ink);--cs:#eeeae4}
+  .modelnav .model button{padding:.3em .75em}
+
+  /* ---------- model slide (vertical) ---------- */
+  .model-v{display:flex;flex-direction:column;gap:.7em;margin:0 0 1.2em}
+  .mrow{
+    display:grid;grid-template-columns:minmax(190px,15em) 1fr;gap:0;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+  }
+  .mrow .mstep{
+    background:var(--cs);border-right:4px solid var(--c);padding:.9em 1.1em;
+    display:flex;flex-direction:column;justify-content:center;
+  }
+  .mrow .mstep small{color:var(--c);font-weight:700;font-size:.78rem;letter-spacing:.04em}
+  .mrow .mstep strong{font-size:1.28rem;line-height:1.2;color:var(--ink)}
+  .mrow .mstep em{font-style:normal;color:var(--c);font-weight:650;font-size:.92rem;margin-top:.25em}
+  .mrow .mdesc{padding:.85em 1.2em;display:flex;flex-direction:column;justify-content:center;gap:.35em}
+  .mrow .mdesc p{margin:0;max-width:none;color:var(--ink-2);font-size:.97rem}
+  .mrow .mdesc .risk{font-size:.9rem;color:var(--warn)}
+  .mrow.gate{--c:var(--gate);--cs:var(--gate-soft)}
+  .mrow.l1{--c:var(--l1);--cs:var(--l1-soft)}
+  .mrow.l2{--c:var(--l2);--cs:var(--l2-soft)}
+  .mrow.l3{--c:var(--l3);--cs:var(--l3-soft)}
+  @media (max-width:640px){.mrow{grid-template-columns:1fr}.mrow .mstep{border-right:0;border-bottom:4px solid var(--c)}}
+
+  .split{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:clamp(18px,2.4vw,36px);align-items:start}
+  .split ul,.split ol{max-width:none;margin-bottom:0}
+  .split pre{margin:0;font-size:.8rem;white-space:pre-wrap}
+  @media (max-width:900px){.split{grid-template-columns:1fr}}
+  .rule.full p{max-width:none}
+  /* ---------- v0.3 review ---------- */
+  :root{--rev:#8a6d1a;--rev-soft:#f7f0dc}
+  .badge.brev{color:var(--rev);background:var(--rev-soft)}
+  .new{display:inline-block;margin-left:.45em;font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--rev);background:var(--rev-soft);border:1px solid #e6d7a8;border-radius:999px;padding:.12em .55em;vertical-align:.12em;white-space:nowrap}
+  .modelnav [data-go="review"]{--c:var(--rev);--cs:var(--rev-soft)}
+  .gaps td{vertical-align:top;font-size:.86rem}
+  .gaps td:first-child{font-weight:650;width:27%}
+  .gaps td:last-child{color:var(--ink);font-weight:600}
+  .src{color:var(--ink-3);font-size:.74rem;margin:.2em 0 0;max-width:none}
+  .aligned{background:var(--ok-soft);border-radius:var(--radius);padding:.55em .9em;font-size:.9rem;margin:0 0 1em;max-width:none}
+  .steps4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.8em;margin:0 0 1em}
+  @media (max-width:900px){.steps4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:560px){.steps4{grid-template-columns:1fr}}
+  .scol{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--c);border-radius:var(--radius);padding:.7em .8em}
+  .scol h4{margin:0 0 .5em;font-size:.9rem;color:var(--c)}
+  .scol ul{list-style:none;padding:0;margin:0}
+  .scol li{font-size:.8rem;line-height:1.35;margin:0 0 .55em;padding-bottom:.5em;border-bottom:1px dashed var(--line)}
+  .scol li:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}
+  .scol.gate{--c:var(--gate)} .scol.l1{--c:var(--l1)} .scol.l2{--c:var(--l2)} .scol.l3{--c:var(--l3)}
+  .chip{display:inline-block;font-size:.64rem;font-weight:700;border-radius:4px;padding:.05em .4em;margin-right:.25em;letter-spacing:.03em}
+  .chip.must{background:#1f3b4d;color:#fff} .chip.should{background:#cfe0e6;color:#1f3b4d} .chip.good{background:#eeeae4;color:var(--ink-2)}
+  .chip.eff{background:none;border:1px solid var(--line);color:var(--ink-3);font-weight:600}
+  /* ---------- cheatsheet ---------- */
+  .modelnav [data-go="cheat"]{--c:var(--ink);--cs:#eeeae4}
+  .cs .slide-inner{max-width:1240px}
+  .cs-head{display:flex;justify-content:space-between;align-items:center;gap:1.2em;flex-wrap:wrap;
+    background:linear-gradient(120deg,#13212c 0%,#173847 70%,#0e6b84 100%);color:#fff;border-radius:14px;padding:1em 1.3em;margin-bottom:1em}
+  .cs-head .k{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:#7fc4d6;font-weight:700;margin:0}
+  .cs-head h2{color:#fff;margin:.1em 0 .15em;font-size:clamp(1.5rem,2.4vw,2.2rem)}
+  .cs-head p.sub2{margin:0;color:#c9d8de;font-size:.88rem;max-width:none}
+  .cs-roles{display:flex;gap:.45em;flex-wrap:wrap}
+  .cs-roles div{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);border-radius:10px;padding:.35em .7em;font-size:.78rem;line-height:1.25}
+  .cs-roles b{display:block;color:#fff} .cs-roles span{color:#a9c3cc}
+  .cs-flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr auto 1fr;gap:.5em;align-items:stretch;margin-bottom:1em}
+  .cs-arrow{align-self:center;color:#c2b9ab;font-size:1.3rem;font-weight:700}
+  .cs-card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(21,33,43,.07);display:flex;flex-direction:column}
+  .cs-card .top{background:var(--c);color:#fff;display:flex;align-items:center;gap:.6em;padding:.65em .8em}
+  .cs-card .top svg{width:1.6em;height:1.6em;flex:none}
+  .cs-card .top small{display:block;font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;opacity:.85;font-weight:700}
+  .cs-card .top strong{display:block;font-size:1.08rem;line-height:1.1}
+  .cs-card .who{background:var(--cs);color:var(--c);font-weight:650;font-size:.78rem;padding:.35em .8em;margin:0;max-width:none}
+  .cs-card ul{margin:0;padding:.55em .8em .7em 1.9em;font-size:.8rem;max-width:none}
+  .cs-card li{margin-bottom:.22em}
+  .cs-card.gate{--c:var(--gate);--cs:var(--gate-soft)} .cs-card.l1{--c:var(--l1);--cs:var(--l1-soft)}
+  .cs-card.l2{--c:var(--l2);--cs:var(--l2-soft)} .cs-card.l3{--c:var(--l3);--cs:var(--l3-soft)}
+  .cs-bottom{display:grid;grid-template-columns:1.15fr 1fr .8fr;gap:.8em}
+  .cs-panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:.75em .9em;box-shadow:0 4px 14px rgba(21,33,43,.07)}
+  .cs-panel h4{margin:0 0 .5em;font-size:.98rem;display:flex;justify-content:space-between;gap:.5em;align-items:baseline}
+  .cs-panel h4 em{font-style:normal;color:var(--warn);font-size:.74rem;font-weight:650}
+  .cs-rung{display:flex;justify-content:space-between;gap:.5em;border-radius:8px;padding:.3em .6em;font-size:.78rem;margin-bottom:.35em;background:#e9e4dc}
+  .cs-rung b{white-space:nowrap} .cs-rung span{white-space:nowrap}
+  .cs-rung.r4{margin-left:36%;margin-right:0;background:#dfe9ec} .cs-rung.r3{margin-left:24%;margin-right:12%;background:#bcd6dd}
+  .cs-rung.r2{margin-left:12%;margin-right:24%;background:var(--l1);color:#fff} .cs-rung.r1{margin-right:36%}
+  .cs-rung.r2 i{font-style:normal;color:#bfe3ec;font-weight:600}
+  .cs-note{color:var(--ink-3);font-size:.72rem;margin:.3em 0 0;max-width:none}
+  .cs-grid{display:grid;grid-template-columns:1fr 1fr;gap:.4em}
+  .cs-step{display:flex;align-items:center;gap:.5em;background:var(--l1-soft);border-radius:9px;padding:.35em .5em;font-size:.76rem;line-height:1.2}
+  .cs-step b{flex:none;width:1.7em;height:1.7em;border-radius:50%;background:var(--l1);color:#fff;display:grid;place-items:center;font-size:.8rem}
+  .cs-tile{display:flex;align-items:center;gap:.45em;background:#f7efe7;border-radius:9px;padding:.45em .55em;font-size:.78rem;font-weight:650}
+  .cs-tile svg{width:1.3em;height:1.3em;color:var(--gate);flex:none}
+  @media (max-width:900px){.cs-flow{grid-template-columns:1fr}.cs-arrow{transform:rotate(90deg);justify-self:center}.cs-bottom{grid-template-columns:1fr}}
+  .map{display:inline-block;margin-left:.5em;font-size:.72rem;font-weight:700;color:var(--ink-2);background:#eeeae4;border-radius:999px;padding:.15em .6em;white-space:nowrap}
+  .kicker{color:var(--ink-3);font-size:.95rem;margin:0 0 1.3em;max-width:none}
+
+  .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:clamp(16px,2.4vw,40px)}
+  .cols.two{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .cols ul{max-width:none}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:1.1em 1.3em}
+  .card h4{margin:0 0 .4em;font-size:1rem}
+  .card p{margin:0;color:var(--ink-2);font-size:.95rem}
+
+  .rule{
+    border-left:3px solid var(--accent);background:var(--accent-soft);
+    padding:.85em 1.1em;border-radius:0 var(--radius) var(--radius) 0;margin:1.4em 0 0;
+  }
+  .rule p{margin:0;max-width:66ch}
+  .rule.warn{border-color:var(--warn);background:var(--warn-soft)}
+
+  .check{list-style:none;padding-left:0;max-width:72ch}
+  .check li{padding-left:1.9em;position:relative}
+  .check li::before{
+    content:"";position:absolute;left:0;top:.28em;width:1.05em;height:1.05em;
+    border:2px solid var(--accent);border-radius:3px;
+  }
+
+  pre{
+    background:#11202a;color:#dfeaef;border-radius:var(--radius);
+    padding:1em 1.2em;overflow-x:auto;font-size:.86rem;line-height:1.6;margin:0 0 1em;
+  }
+  pre b{color:#7fd3e8;font-weight:600}
+  pre i{color:#98a8b0;font-style:normal}
+
+  table{border-collapse:collapse;width:100%;font-size:.88rem;margin:0 0 1em}
+  th,td{text-align:left;padding:.55em .7em;border-bottom:1px solid var(--line)}
+  th{color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;font-size:.72rem}
+
+  /* flow diagram */
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:.45em;margin:0 0 1.6em}
+  .flow span{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:.4em .95em;font-size:.9rem;font-weight:600}
+  .flow i{color:var(--ink-3);font-style:normal}
+
+  /* ladder */
+  .ladder{display:flex;flex-direction:column;gap:.5em;margin:0 0 1em}
+  .step{display:flex;gap:1em;align-items:baseline;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:var(--radius);padding:.6em 1.1em}
+  .step b{color:var(--accent);flex:0 0 1.4em}
+  .step.now{border-left-color:var(--accent);background:var(--accent-soft)}
+  .step.target{border-left-color:var(--ok);background:var(--ok-soft)}
+  .step small{display:block;color:var(--ink-3);font-size:.85rem}
+
+  .numlist{counter-reset:n;list-style:none;padding-left:0;max-width:72ch}
+  .numlist li{counter-increment:n;padding-left:2.2em;position:relative;margin-bottom:.7em}
+  .numlist li::before{
+    content:counter(n);position:absolute;left:0;top:.05em;
+    width:1.55em;height:1.55em;border-radius:50%;background:var(--accent);color:#fff;
+    font-size:.8rem;font-weight:700;display:grid;place-items:center;
+  }
+
+  /* ---------- title slide ---------- */
+  .title-slide{background:linear-gradient(160deg,#0f2530 0%,#14404f 60%,#0e6b84 100%);color:#f4f1ec}
+  .title-slide h1{max-width:22ch}
+  .title-slide .sub{color:#b9cdd4;font-size:1.15rem}
+  .title-slide .meta{color:#8fb0ba;font-size:.85rem;letter-spacing:.06em;text-transform:uppercase}
+  .title-slide .badge{background:rgba(255,255,255,.12);color:#cfe6ec}
+
+  /* ---------- chrome ---------- */
+  .progress{position:fixed;top:0;left:0;height:3px;background:var(--accent);z-index:40;transition:width .2s ease}
+  .chrome{
+    position:fixed;bottom:14px;right:18px;z-index:40;display:flex;align-items:center;gap:8px;
+    font-size:.8rem;color:var(--ink-3);
+  }
+  .chrome button{
+    font:inherit;background:var(--card);border:1px solid var(--line);color:var(--ink-2);
+    width:30px;height:30px;border-radius:6px;cursor:pointer;line-height:1;
+  }
+  .chrome button:hover{border-color:var(--accent);color:var(--accent)}
+  .chrome .count{font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
+  .hint{position:fixed;bottom:16px;left:18px;z-index:40;font-size:.78rem;color:var(--ink-3);background:rgba(248,246,243,.9);padding:.2em .5em;border-radius:6px}
+  .title-slide ~ .hint{color:#8fb0ba}
+
+  /* ---------- overview ---------- */
+  .overview{
+    position:fixed;inset:0;background:rgba(18,26,38,.96);color:#f4f1ec;z-index:60;
+    display:none;padding:clamp(24px,5vw,64px);overflow-y:auto;
+  }
+  .overview.open{display:block}
+  .overview h2{color:#fff;margin-bottom:1em}
+  .overview ol{columns:2;column-gap:3em;max-width:1000px;padding-left:1.2em}
+  .overview li{margin-bottom:.45em;cursor:pointer;color:#cfe6ec}
+  .overview li:hover{color:#fff;text-decoration:underline}
+
+  @media (max-width:640px){
+    .slide{height:auto;min-height:100vh}
+    .overview ol{columns:1}
+  }
+  @media print{
+    .slide{display:flex!important;height:auto;min-height:0;page-break-after:always;padding:36px}
+    .chrome,.hint,.progress,.overview,.modelnav{display:none!important}
+    body{font-size:11pt;background:#fff}
+    .title-slide{background:#14404f!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<nav class="modelnav" id="modelnav" aria-label="Sections">
+  <button data-go="start">Start</button>
+  <span class="model" aria-label="The model">
+    <button data-go="gate"><span class="dot"></span>Prerequisites</button><span class="sep">›</span>
+    <button data-go="l1"><span class="dot"></span>Standards</button><span class="sep">›</span>
+    <button data-go="l2"><span class="dot"></span>Templates</button><span class="sep">›</span>
+    <button data-go="l3"><span class="dot"></span>Your setup</button>
+  </span>
+  <button data-go="stick">Making it stick</button>
+  <button data-go="cheat">Cheatsheet</button>
+  <span class="pos" id="navpos"></span>
+</nav>
+
+<main class="deck" id="deck">
+
+  <!-- 1 -->
+  <section data-section="start" class="slide title-slide">
+    <div class="slide-inner">
+      <span class="badge">AI for IT · SWAT framework</span>
+      <h1>Working with AI, as a team</h1>
+      <p class="sub">A manual for team leads: what is standard, what you adapt, and what we build together with you.</p>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section data-section="start" class="slide">
+    <div class="slide-inner">
+      <h2>Read this first</h2>
+      <p class="kicker">Five minutes that save you six weeks.</p>
+      <ul class="plain">
+        <li><strong>You own this.</strong> AI adoption is not a tool rollout that arrives finished. It lands in your repository, your review process, your definition of done.</li>
+        <li><strong>Three kinds of work are kept separate on purpose:</strong> what you follow, what you adapt, and what we build with you. Mixing them is what stalls teams; the next slide shows why.</li>
+        <li><strong>Nothing here is a side project.</strong> Every step is done on a real ticket, in a real repo.</li>
+      </ul>
+      <div class="rule">
+        <p>Realistic pace: <strong>2 weeks to the floor, 6 weeks to a working shared setup, 12 weeks to AI having a defined place in your delivery flow.</strong> Teams that try to do it in two weeks get a demo, not a practice.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section data-section="start" class="slide">
+    <div class="slide-inner">
+      <h2>The whole model on one slide</h2>
+      <p class="kicker">Read top to bottom. You cannot skip the gate. The bar at the top of every page shows where you are.</p>
+      <div class="model-v">
+        <div class="mrow gate">
+          <div class="mstep"><small>Gate</small><strong>Prerequisites</strong><em>You fix this yourself</em></div>
+          <div class="mdesc"><p>Team hygiene. Not AI transformation, but AI does nothing without it.</p></div>
+        </div>
+        <div class="mrow l1">
+          <div class="mstep"><small>Layer 1</small><strong>Standards</strong><em>You follow it</em></div>
+          <div class="mdesc"><p>Identical for every team. Non-negotiable. Independent of your stack.</p>
+          <p class="risk">Treated as adaptable: every team waters it down.</p></div>
+        </div>
+        <div class="mrow l2">
+          <div class="mstep"><small>Layer 2</small><strong>Templates</strong><em>You adapt it</em></div>
+          <div class="mdesc"><p>Starting points with intent attached. Change the content, keep the intent.</p>
+          <p class="risk">Treated as a standard: teams with a different stack reject the whole framework.</p></div>
+        </div>
+        <div class="mrow l3">
+          <div class="mstep"><small>Layer 3</small><strong>Your setup</strong><em>SWAT builds it with you</em></div>
+          <div class="mdesc"><p>Your repos, tooling, permissions, deployment. Built with you, not for you.</p>
+          <p class="risk">Treated as something SWAT delivers: the team never owns it.</p></div>
+        </div>
+      </div>
+      <div class="rule">
+        <p><strong>The test that sorts any rule into the right layer:</strong> if it cannot survive a different repo structure, a different stack and a different deployment model, it is not a standard. It is a template.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section data-section="gate" class="slide">
+    <div class="slide-inner">
+      <span class="badge b2">Gate · you do this</span>
+      <h2>Prerequisites: the floor</h2>
+      <p class="kicker">Honest framing: none of this is AI-specific. All of it blocks AI.</p>
+      <ul class="check">
+        <li><strong>One shared repository per product</strong>, with write access for the whole team, not one engineer's fork.</li>
+        <li><strong>Named owners</strong> for the repo, the pipeline and the documentation. A name, not a team alias.</li>
+        <li><strong>One known place where team documentation lives</strong>, preferably a docs folder in the repository, and it is current enough to trust.</li>
+        <li><strong>An onboarding path a new joiner can follow alone</strong> and reach a first merged change in two days.</li>
+        <li><strong>Licences and access granted.</strong> See the next slide.</li>
+        <li><strong>A four-number baseline</strong>, taken from tools you already have: cycle time, review waiting time, pull request size, rework or reverts.</li>
+      </ul>
+      <div class="rule">
+        <p>Why it is a gate: <strong>AI amplifies what is written down.</strong> With no shared repo, no owners and no docs, it amplifies nothing, and every engineer re-explains the same system to the same assistant, privately, forever.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section data-section="gate" class="slide">
+    <div class="slide-inner">
+      <span class="badge b2">Gate · you request, organisation delivers</span>
+      <h2>Access &amp; licence checklist</h2>
+      <p class="kicker">Ask once, as a team. Not per person, not per sprint.</p>
+      <div class="cols two">
+        <ul class="tight">
+          <li><strong>Assistant licences for every engineer</strong>, not a pilot subset. Split teams produce split practice.</li>
+          <li><strong>Approved models and endpoints</strong>: which models, which endpoint and data region, and which data may go into a prompt.</li>
+          <li><strong>Repository access for the assistant</strong>: read, plus permission to open pull requests.</li>
+        </ul>
+        <ul class="tight">
+          <li><strong>MCP connections you actually use</strong>: issue tracker, wiki, CI, observability. List yours by name.</li>
+          <li><strong>A sanctioned source for skills and plugins</strong>: the internal marketplace, not random downloads.</li>
+          <li><strong>A named approver and an SLA</strong> for each of the above.</li>
+        </ul>
+      </div>
+      <div class="rule warn">
+        <p>If a request sits longer than <strong>two weeks</strong>, escalate it to the SWAT team. Do not build a workaround; workarounds become the setup nobody can support.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section data-section="l1" class="slide">
+    <div class="slide-inner">
+      <span class="badge">Layer 1</span>
+      <h2>The standards</h2>
+      <p class="kicker">Six rules. Same for every team, whatever you build.</p>
+      <ol class="numlist">
+        <li><strong>Context lives with the code</strong>: instruction files in the repo, reviewed in pull requests.</li>
+        <li><strong>Skills, agents and plugins have a name, an owner and a version</strong>, so they outlive their author.</li>
+        <li><strong>AI-assisted output passes a defined review gate</strong>, with a human who is accountable for it.</li>
+        <li><strong>AI's place in the delivery flow is written down</strong>: one page, per team.</li>
+        <li><strong>Tests are the contract</strong>: derived from testable acceptance criteria, never from generated code.</li>
+        <li><strong>Known issues are logged, not remembered</strong>, and reviewed every sprint.</li>
+      </ol>
+      <div class="rule"><p>One slide each, next. Nothing in this list depends on your stack, your repo layout or your deployment model. That is exactly why these are the standards.</p></div>
+    </div>
+  </section>
+
+  <!-- 7 -->
+  <section data-section="l1" class="slide">
+    <div class="slide-inner">
+      <span class="badge">Layer 1 · Standard 1</span>
+      <h2>Context lives with the code</h2>
+      <p class="kicker">Instructions for the assistant are source code. Treat them that way.</p>
+      <pre>repo/
+  <b>CLAUDE.md</b>            <i>how this repo works: build, test, conventions, constraints</i>
+  <b>.claude/</b>
+    skills/            <i>your team's repeatable procedures</i>
+    agents/            <i>specialist reviewers</i>
+    settings.json      <i>permissions and tool access</i>
+  <b>docs/adr/</b>            <i>decisions and the reasoning: why, not just what</i></pre>
+      <h3>The rules</h3>
+      <ul class="tight">
+        <li><strong>In the repo, in version control, changed by pull request.</strong> Never in a personal notes app, never only in the wiki.</li>
+        <li><strong>One file at the repo root.</strong> In a monorepo, one more per application or library, and only where that module genuinely differs.</li>
+        <li><strong>Written for an agent, not for a human reader.</strong> Concrete commands, real paths, hard constraints. No mission statements.</li>
+        <li><strong>Stale context is worse than no context.</strong> A change to the build or a convention updates the file <em>in the same pull request</em>.</li>
+        <li><strong>Keep the root file to about a page.</strong> Link out for the rest; an agent that reads everything learns nothing.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 8 -->
+  <section data-section="l1" class="slide">
+    <div class="slide-inner">
+      <span class="badge">Layer 1 · Standard 2</span>
+      <h2>Skills, agents and plugins</h2>
+      <p class="kicker">Start from the marketplace. Do not rewrite what already exists.</p>
+      <h3>The starter set most software teams need</h3>
+      <div class="cols two">
+        <ul class="tight">
+          <li>Explain this codebase / onboard to a repo</li>
+          <li>Test-first implementation</li>
+          <li>Pull request review agent: comments first, a human always reviews</li>
+        </ul>
+        <ul class="tight">
+          <li>Pull request description and changelog</li>
+          <li>Debugging and incident triage</li>
+          <li>Dependency upgrades and migrations</li>
+          <li>Spec → plan → build, for changes too big for one sitting</li>
+        </ul>
+      </div>
+      <div class="rule">
+        <p><strong>Write your own only when</strong> the procedure is specific to your product <em>and</em> you have done it by hand at least three times. Anything else is a marketplace item you have not found yet.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 -->
+  <section data-section="l1" class="slide">
+    <div class="slide-inner">
+      <span class="badge">Layer 1 · Standard 2 (cont.)</span>
+      <h2>Conventions, so assets outlive their author</h2>
+      <p class="kicker">The failure is predictable: the person who wrote it moves on, nobody dares delete it, nobody trusts it.</p>
+      <div class="split">
+        <ul class="plain">
+        <li><strong>Name:</strong> area first, then what it does: <code>api-add-endpoint</code>, <code>release-prepare</code>. Readable in a list of forty, grouped by area when sorted. Lowercase letters, numbers and hyphens only, and it must match the folder name; the skill does not load otherwise.</li>
+        <li><strong>Own:</strong> one named owner under <code>metadata</code> in the frontmatter. No owner means it is deleted at the next review.</li>
+        <li><strong>Version:</strong> semantic version under <code>metadata</code>. A breaking change bumps the major and says so.</li>
+        <li><strong>Review:</strong> assets live in the repo and change by pull request, like any other code.</li>
+        <li><strong>Prune:</strong> quarterly. Unused for 90 days means archived, not kept "just in case".</li>
+      </ul>
+        <pre><i>.claude/skills/api-add-endpoint/SKILL.md</i>
+---
+<b>name:</b> api-add-endpoint
+<b>description:</b> Adds a REST endpoint following this repo's conventions. Use when a ticket asks for a new endpoint.
+<b>metadata:</b>
+  <b>owner:</b> a.owner
+  <b>version:</b> "1.2.0"
+---</pre>
+      </div>
+      <div class="rule warn full">
+        <p><strong>Ten trusted skills beat forty orphans.</strong> A folder nobody trusts is worse than an empty one: it teaches the team to ignore shared tooling.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 -->
+  <section data-section="l1" class="slide">
+    <div class="slide-inner">
+      <span class="badge">Layer 1 · Standard 3</span>
+      <h2>The review gate for AI-assisted output</h2>
+      <p class="kicker">The one rule with no exceptions: a human is accountable for every merged line.</p>
+      <ol class="numlist">
+        <li><strong>The author declares it.</strong> A checkbox in the pull request template. No ceremony, no stigma, no approval workflow.</li>
+        <li><strong>The author has read every line</strong> and can explain why it is there.</li>
+        <li><strong>Tests exist, and they fail without the change.</strong> The author saw them fail before the change was written, and ticks that in the template too.</li>
+        <li><strong>No new dependency, schema change, public API change or secret handling</strong> without explicit human design first.</li>
+        <li><strong>The reviewer reviews the code, not the prompt.</strong> How it was produced does not change the bar.</li>
+      </ol>
+      <div class="rule warn">
+        <p><strong>Cap the size.</strong> AI makes a 2,000-line pull request easy to produce and impossible to review. Split it to what a reviewer can actually hold in their head. Size is about readability; the total load is handled on the next page.<br>
+        <strong>Escalate by risk, not by size:</strong> security-sensitive, data-model and public-contract changes go to a named reviewer, not to whoever is free.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10b -->
+  <section data-section="l1" class="slide">
+    <div class="slide-inner">
+      <span class="badge">Layer 1 · Standard 3 (cont.)</span>
+      <h2>Keep review within capacity</h2>
+      <p class="kicker">AI writes code faster than people can review it. Smaller pull requests make each review easier; they do not reduce the total a team must review.</p>
+      <ol class="numlist">
+        <li><strong>Machines before humans.</strong> A pull request reaches a human only when build, tests and static analysis are green. People never spend time checking what a machine can.</li>
+        <li><strong>A limit on open pull requests.</strong> The team agrees a maximum. At the limit, nobody starts new work: review or finish first. Produce only as fast as you can review.</li>
+        <li><strong>Risk paths have named reviewers.</strong> Sensitive folders, such as authentication, payments, migrations and public interfaces, are listed in a code-owners file, so changes there go to the named expert automatically.</li>
+        <li><strong>Judgement moves upstream.</strong> For non-trivial work the tests are approved before the code is written (Standard 5), so the diff review checks the code matches what was agreed.</li>
+      </ol>
+      <div class="rule full">
+        <p><strong>Review is now the constraint.</strong> A permanent reviewer only moves the queue. What shrinks it is less to read: machines check first, people agree the tests first, and new work waits for review to catch up.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 -->
+  <section data-section="l1" class="slide">
+    <div class="slide-inner">
+      <span class="badge">Layer 1 · Standard 4</span>
+      <h2>Where AI enters the delivery flow</h2>
+      <div class="flow">
+        <span>Intake</span><i>→</i><span>Shape</span><i>→</i><span>Build</span><i>→</i><span>Review</span><i>→</i><span>Ship</span><i>→</i><span>Operate</span>
+      </div>
+      <ul class="plain">
+        <li><strong>Intake:</strong> AI drafts and enriches tickets. A human decides what enters the backlog. No autonomously created work.</li>
+        <li><strong>Shape:</strong> AI drafts the spec and the plan. The team owns the acceptance criteria.</li>
+        <li><strong>Build:</strong> AI writes code and tests. An engineer drives, and stops it when it drifts.</li>
+        <li><strong>Review:</strong> AI takes the first pass on mechanics. Humans judge intent, design and risk, and have the final word.</li>
+        <li><strong>Ship:</strong> AI drafts release notes. The pipeline itself does not change.</li>
+        <li><strong>Operate:</strong> AI triages logs and helps with incidents. It takes no autonomous action in production.</li>
+      </ul>
+      <div class="rule">
+        <p>Write <strong>your own one-page version</strong> of this slide, with your stage names. It is the single most useful artifact your team will produce in the first 12 weeks. It turns "we use AI" into something a new joiner can follow.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12 -->
+  <section data-section="l1" class="slide">
+    <div class="slide-inner">
+      <span class="badge">Layer 1 · Standard 5</span>
+      <h2>Tests are the contract</h2>
+      <p class="kicker">This is where AI-assisted teams quietly lose quality. On this page, "spec" means the ticket's acceptance criteria, not the full spec-driven development described later.</p>
+      <ul class="plain">
+        <li><strong>Stories carry acceptance criteria clear enough to write tests from, before any code.</strong> Vague criteria produce output that is plausible and wrong, and plausible is far more expensive than broken. Agree this with your product owner early: it is a habit the team builds during the transformation, not one it is expected to have on day one.</li>
+        <li><strong>Test first for anything non-trivial.</strong> Red, green, refactor. The assistant is very good at this loop.</li>
+        <li><strong>A test the assistant wrote to pass its own code is not evidence.</strong> Derive tests from the acceptance criteria first: the assistant may draft them, the engineer checks each one against a criterion, then the implementation is generated against them.</li>
+        <li><strong>Review the tests before the code.</strong> For non-trivial work, the tests are approved before implementation starts; the diff review then only checks the code matches them.</li>
+        <li><strong>Coverage is not the goal.</strong> Failing on the right thing is.</li>
+        <li><strong>Never let a test be weakened to make a build pass.</strong> Watch for it explicitly in review; it is the most common silent regression.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 13 -->
+  <section data-section="l1" class="slide">
+    <div class="slide-inner">
+      <span class="badge">Layer 1 · Standard 6</span>
+      <h2>Log known issues</h2>
+      <p class="kicker">A file in the repo or a board column. Anything except memory.</p>
+      <table>
+        <thead><tr><th>Date</th><th>What happened</th><th>Where / trigger</th><th>Impact</th><th>Workaround</th><th>Owner</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>21 Sep</td><td>Invented a config key that does not exist</td><td>Kotlin service, Quarkus config</td><td>30 min lost, caught in review</td><td>Added the real keys to CLAUDE.md</td><td>A. Owner</td><td>Closed</td></tr>
+          <tr><td>21 Sep</td><td>Issue-tracker connection times out after ~10 min</td><td>MCP, ticket lookup</td><td>Blocks the triage skill</td><td>Reconnect manually</td><td>A. Owner</td><td>Sent to SWAT</td></tr>
+        </tbody>
+      </table>
+      <h3>Log these four things</h3>
+      <ul class="tight">
+        <li>An area where the assistant is confidently wrong, so it can be fixed in the context files.</li>
+        <li>A tool or connection that fails in a repeatable way, so it can be fixed centrally.</li>
+        <li>A skill that misfired or drifted, so its owner can fix or retire it.</li>
+        <li>A defect caused by AI-assisted code, linked to its pull request, so the pattern is visible and the context or checks can be fixed.</li>
+      </ul>
+      <div class="rule"><p><strong>Ten minutes per sprint.</strong> Unlogged pain is pain that every other team will feel again, and it is the raw material the SWAT team uses to improve the standards.</p></div>
+    </div>
+  </section>
+
+  <!-- 14 -->
+  <section data-section="l2" class="slide">
+    <div class="slide-inner">
+      <span class="badge b3">Layer 2</span>
+      <h2>Templates you will be given</h2>
+      <p class="kicker">Starting points, not prescriptions. Adapt the content; keep the intent.</p>
+      <div class="cols two">
+        <ul class="tight">
+          <li><strong>Context file template</strong>, one variant per stack: Angular, Spring, Quarkus, Next.js, monorepo</li>
+          <li><strong>Pull request template</strong> carrying the AI declaration, the review gate and the spec-updated check</li>
+          <li><strong>Workflow one-pager:</strong> "where AI enters our flow"</li>
+          <li><strong>Known-issues log</strong></li>
+        </ul>
+        <ul class="tight">
+          <li><strong>Skill and agent frontmatter</strong>: name and description, owner and version under metadata</li>
+          <li><strong>Access and licence request pack</strong></li>
+          <li><strong>New-joiner onboarding path</strong>, AI-aware</li>
+          <li><strong>Quarterly pruning checklist</strong></li>
+        </ul>
+      </div>
+      <h3>Also provided</h3>
+      <ul class="tight">
+        <li><strong>Hook templates</strong> for rules that must always run, per stack: lint after every edit, tests before a commit. Context files advise; hooks enforce.</li>
+        <li><strong>Stacked pull request how-to:</strong> a big change as a sequence of small, reviewable steps.</li>
+        <li><strong>Property, mutation and contract test templates</strong>, for high-risk modules only, and later.</li>
+      </ul>
+      <div class="rule">
+        <p>If you delete a section of a template, <strong>write one line in your repo docs saying why.</strong> That line is how the SWAT team learns which parts of the framework do not survive contact with real teams.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 15 -->
+  <section data-section="l3" class="slide">
+    <div class="slide-inner">
+      <span class="badge b4">Layer 3</span>
+      <h2>What the SWAT team builds with you</h2>
+      <p class="kicker">Only your team knows your repo layout, build system, integrations, permissions and deployment model. So this is a working session, not a hand-over.</p>
+      <div class="cols two">
+        <div>
+          <h3>In the session</h3>
+          <ul class="tight">
+            <li>Map your repositories and decide where context files go</li>
+            <li>Wire the MCP connections your team actually uses</li>
+            <li>Tailor the starter skill set to your stack</li>
+            <li>Fit the review gate into your existing pipeline and code owners, including named reviewers for risk paths</li>
+            <li>Set up the language server, so the agent navigates code precisely instead of searching text</li>
+            <li>Tune the AI first-pass reviewer to your conventions; it is never the agent that wrote the code</li>
+            <li>Take one real ticket and run it end to end, together</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Come prepared with</h3>
+          <ul class="tight">
+            <li>A 15-minute walkthrough of your main repository</li>
+            <li>Your pipeline, as it is, not as it should be</li>
+            <li>One representative ticket, already refined</li>
+            <li>Your top three frustrations from the last sprint</li>
+          </ul>
+        </div>
+      </div>
+      <p class="src" style="margin:0 0 .6em">Later, when the baseline shows the need: code health tracking, a spec and plan review pilot, auto-approval of low-risk pull requests.</p>
+      <div class="rule"><p><strong>The output is committed code</strong>: context files, skills and templates merged into your repo. Not slides, not a report.</p></div>
+    </div>
+  </section>
+
+  <!-- 16 -->
+  <section data-section="stick" class="slide">
+    <div class="slide-inner">
+      <h2>Spec-driven development: the direction, not the start</h2>
+      <p class="kicker">Four rungs. Skipping rungs is the most expensive mistake on this page. Rungs are shorthand for the Engineering Practices dimension of the AI-DLC maturity matrix, not a separate scale.</p>
+      <div class="ladder">
+        <div class="step now"><b>1</b><div><strong>Assisted edits:</strong> individual use, in the editor, nothing shared.<span class="map">≈ Maturity L2</span> <small>Where most teams are today. Real gains, but they leave with the person.</small></div></div>
+        <div class="step target"><b>2</b><div><strong>Shared setup:</strong> context files in the repo, agreed skills, a review gate.<span class="map">≈ Maturity L3</span> <small>The target for this quarter. This is where team-level gains start.</small></div></div>
+        <div class="step"><b>3</b><div><strong>Workflow integration:</strong> AI has a written place from intake to operate.<span class="map">≈ Maturity L3–L4</span> <small>Next quarter.</small></div></div>
+        <div class="step"><b>4</b><div><strong>Spec-driven development:</strong> specs and plans are the source of truth; tests come from acceptance criteria; code is generated against them.<span class="map">≈ Maturity L5</span> <small>The direction of travel.</small></div></div>
+      </div>
+      <div class="rule warn full">
+        <p><strong>Do not start at rung 4.</strong> Teams that skip 2 and 3 produce beautiful specifications nobody maintains, and deliver exactly as before.<br>
+        <strong>You are ready for rung 4 when</strong> your specs and acceptance criteria are kept current without anyone chasing it. A checkable sign: most pull requests that changed behaviour last month also touched the spec. Rung 4 itself is when changes start from the spec.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 16b -->
+  <section data-section="stick" class="slide">
+    <div class="slide-inner">
+      <h2>Keeping specs current, in practice</h2>
+      <p class="kicker">A habit, not an automation. Four mechanisms, usually adopted in this order.</p>
+      <div class="split">
+        <ol class="numlist">
+        <li><strong>The spec lives in the repo, next to the code</strong>, so both change in the same pull request.</li>
+        <li><strong>A team rule, carried in the pull request template:</strong> a change in behaviour also updates the spec, and reviewers reject it otherwise. One checkbox: "spec updated, or not affected".</li>
+        <li><strong>The context file tells the agent to do it.</strong> The assistant edits the spec as part of the task; the engineer checks the edit in review.</li>
+        <li><strong>Spec-driven tooling makes it the only path</strong>, for example OpenSpec or Spec Kit: a change starts as a proposed spec update, the agent plans and implements against it, and on merge the update becomes part of the living spec.</li>
+      </ol>
+        <pre><i># CLAUDE.md, excerpt</i>
+<b>## Specs</b>
+- Specs live in docs/specs/, one file per capability.
+- Any task that changes behaviour updates the matching spec in the same change.
+- If no spec covers the behaviour, stop and ask before creating one.</pre>
+      </div>
+      <div class="rule full">
+        <p><strong>Direction matters.</strong> At rungs 2 and 3 the spec follows the code: documentation keeping up. At rung 4 the code follows the spec.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 17 -->
+  <section data-section="stick" class="slide">
+    <div class="slide-inner">
+      <h2>Who does what</h2>
+      <div class="cols two">
+        <div class="card"><h4>Team lead (you)</h4><p>Own the outcome. Unblock licences and access. Protect the review gate when the sprint is late. Send honest feedback to SWAT.</p></div>
+        <div class="card"><h4>AI Ambassador: one named engineer</h4><p>Roughly 20% of their time. Owns the context files and the team's skills. Runs the known-issues review. Not a side duty for whoever is enthusiastic this month.</p></div>
+        <div class="card"><h4>Every engineer</h4><p>Reads the context files. Declares AI-assisted work. Logs known issues. Fixes the context file instead of re-prompting around it.</p></div>
+        <div class="card"><h4>SWAT team</h4><p>Owns the standards, the templates and central tooling. Escalates organisational blockers. Runs the implementation sessions.</p></div>
+      </div>
+      <div class="rule warn">
+        <p><strong>What SWAT does not do:</strong> decide your repo structure, own your context files, or act as your reviewer. Consistency at the methodology level, never a one-size-fits-all technical setup.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 19 -->
+  <section data-section="stick" class="slide">
+    <div class="slide-inner">
+      <h2>How you know it is working</h2>
+      <div class="cols two">
+        <div>
+          <h3>Trust these signals</h3>
+          <ul class="tight">
+            <li>A new joiner reaches their first merged change faster than the last one did</li>
+            <li>Review comments move from "what does this do" to "is this the right design"</li>
+            <li>The context files are edited by more than one person</li>
+            <li>The known-issues log has entries, and they get closed</li>
+            <li>Private prompt tricks are replaced by shared skills</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Context, never targets</h3>
+          <ul class="tight">
+            <li>Lines of AI-generated code</li>
+            <li>Assistant usage or session counts</li>
+            <li>Percentage of pull requests "touched by AI"</li>
+            <li>Number of skills in the folder</li>
+          </ul>
+          <p style="margin-top:.9em;color:var(--ink-3);font-size:.95rem">They measure activity, which is useful to see whether adoption is happening. None of them measures delivery, and teams optimise whatever becomes a target.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 20 -->
+  <section data-section="stick" class="slide">
+    <div class="slide-inner">
+      <h2>Failure modes, in order of likelihood</h2>
+      <ul class="plain">
+        <li><strong>Tools without practice change</strong>: licences are bought, everyone is enthusiastic, nothing about delivery changes.</li>
+        <li><strong>Context files written once</strong>: six months later the agent is confidently describing a system that no longer exists.</li>
+        <li><strong>The review gate skipped for "small" changes</strong>: the first AI-related incident is often a one-liner.</li>
+        <li><strong>Forty skills, one author, no owners</strong>: the team learns to distrust shared tooling.</li>
+        <li><strong>Starting with spec-driven development</strong>: elegant specs, unchanged delivery.</li>
+        <li><strong>Every team solving the same problem privately</strong>: nothing logged, nothing shared, the same 20 minutes lost in every team.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 21 -->
+  <section data-section="stick" class="slide">
+    <div class="slide-inner">
+      <h2>Your checklist</h2>
+      <p class="kicker">All of this should be true 12 weeks from your first session.</p>
+      <div class="cols two">
+        <ul class="check">
+          <li>Prerequisites met; licences and access granted</li>
+          <li>AI Ambassador named, with time protected</li>
+          <li>Context file at the root of every active repo, changed by pull request</li>
+          <li>Starter skills installed; every team addition has an owner and a version</li>
+          <li>Pull request template carries the AI declaration and the review gate</li>
+          <li>Open pull request limit agreed; checks green before any human review</li>
+        </ul>
+        <ul class="check">
+          <li>Workflow one-pager written, and followed</li>
+          <li>Tests derived from acceptance criteria, not from generated code</li>
+          <li>Known-issues log live and reviewed each sprint</li>
+          <li>One real feature delivered end to end with the SWAT team</li>
+          <li>Honest 12-week review done, and needs sent back to SWAT</li>
+        </ul>
+      </div>
+      <div class="rule"><p><strong>Stuck on any line?</strong> That is what the SWAT team is for. Bring the blocker, the repo and one real ticket.</p></div>
+    </div>
+  </section>
+
+  <!-- CS -->
+  <section data-section="cheat" class="slide cs">
+    <div class="slide-inner">
+      <div class="cs-head">
+        <div><p class="k">AI4IT · SWAT framework · cheatsheet</p><h2>Working with AI, as a team</h2>
+        <p class="sub2">Pass the gate, follow the standards, adapt the templates, build your setup with SWAT.</p></div>
+        <div class="cs-roles"><div><b>Team lead</b><span>owns it</span></div><div><b>AI Ambassador</b><span>runs it, ~20%</span></div><div><b>Engineers</b><span>apply it</span></div><div><b>SWAT</b><span>builds it with you</span></div></div>
+      </div>
+      <div class="cs-flow"><div class="cs-card gate"><div class="top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><div><small>Gate</small><strong>Prerequisites</strong></div></div><p class="who">You fix this yourself</p><ul><li>Shared repo per product</li><li>Named owners, not aliases</li><li>Docs in one known place</li><li>Licences, named approver</li><li>Four-number baseline</li></ul></div><span class="cs-arrow" aria-hidden="true">→</span><div class="cs-card l1"><div class="top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l2.4 2.1 3.2-.3.7 3.1 2.8 1.6-1.2 3 1.2 3-2.8 1.6-.7 3.1-3.2-.3L12 22l-2.4-2.1-3.2.3-.7-3.1-2.8-1.6 1.2-3-1.2-3 2.8-1.6.7-3.1 3.2.3z"/><path d="M8.5 12l2.3 2.3 4.7-4.7"/></svg><div><small>Layer 1</small><strong>Standards</strong></div></div><p class="who">Same for every team</p><ul><li>Context lives with code</li><li>Skills: name, owner, version</li><li>Review gate, within capacity</li><li>AI's place in the flow</li><li>Testable stories, tests first</li><li>Known issues logged</li></ul></div><span class="cs-arrow" aria-hidden="true">→</span><div class="cs-card l2"><div class="top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg><div><small>Layer 2</small><strong>Templates</strong></div></div><p class="who">You adapt them</p><ul><li>Context file per stack</li><li>PR template with the gate</li><li>Workflow one-pager</li><li>Known-issues log</li><li>Frontmatter and pruning</li><li>Hooks, stacked PRs</li></ul></div><span class="cs-arrow" aria-hidden="true">→</span><div class="cs-card l3"><div class="top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg><div><small>Layer 3</small><strong>Your setup</strong></div></div><p class="who">SWAT builds it with you</p><ul><li>Map repos, place context</li><li>Wire MCP connections</li><li>Tailor starter skills</li><li>Gate in your pipeline</li><li>Language server, AI reviewer</li><li>One real ticket, end to end</li></ul></div></div>
+      <div class="cs-bottom">
+        <div class="cs-panel"><h4>The ladder <em>Do not start at rung 4</em></h4>
+          <div class="cs-rung r4"><b>4 · Spec-driven development</b><span>≈ L5</span></div>
+          <div class="cs-rung r3"><b>3 · Workflow integration</b><span>≈ L3–L4</span></div>
+          <div class="cs-rung r2"><b>2 · Shared setup</b><i>this quarter</i><span>≈ L3</span></div>
+          <div class="cs-rung r1"><b>1 · Assisted edits</b><span>≈ L2</span></div>
+          <p class="cs-note">Rungs = Engineering Practices maturity</p></div>
+        <div class="cs-panel"><h4>Review gate</h4><div class="cs-grid"><div class="cs-step"><b>1</b>AI use declared</div><div class="cs-step"><b>2</b>Every line read</div><div class="cs-step"><b>3</b>New tests fail first</div><div class="cs-step"><b>4</b>Risky changes designed first</div><div class="cs-step"><b>5</b>Checks green before review</div><div class="cs-step"><b>6</b>Open-PR limit respected</div></div></div>
+        <div class="cs-panel"><h4>Baseline first</h4><div class="cs-grid">
+          <div class="cs-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Cycle time</div><div class="cs-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14a6.5 6.5 0 0 1 3.5 6"/></svg>Review wait</div>
+          <div class="cs-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6l-6 6 6 6"/><path d="M16 6l6 6-6 6"/></svg>PR size</div><div class="cs-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Rework</div></div>
+          <p class="cs-note">AI task rate: context, never a target</p></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="overview" id="overview">
+  <h2>Contents</h2>
+  <ol id="overview-list"></ol>
+</div>
+
+<div class="hint" id="hint">← → to navigate · <strong>O</strong> contents · <strong>F</strong> fullscreen · <strong>P</strong> print</div>
+<div class="chrome">
+  <button id="prev" title="Previous (←)">‹</button>
+  <button id="next" title="Next (→)">›</button>
+  <span class="count" id="count"></span>
+</div>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var overview = document.getElementById('overview');
+  var list = document.getElementById('overview-list');
+  var count = document.getElementById('count');
+  var progress = document.getElementById('progress');
+  var i = 0;
+
+  slides.forEach(function(s, n){
+    var h = s.querySelector('h1, h2');
+    var li = document.createElement('li');
+    li.textContent = (h ? h.textContent : 'Slide ' + (n+1));
+    li.addEventListener('click', function(){ go(n); overview.classList.remove('open'); });
+    list.appendChild(li);
+  });
+
+  var navBtns = Array.prototype.slice.call(document.querySelectorAll('#modelnav [data-go]'));
+  var navpos = document.getElementById('navpos');
+  navBtns.forEach(function(b){
+    b.addEventListener('click', function(){
+      var t = b.getAttribute('data-go');
+      for (var k = 0; k < slides.length; k++){ if (slides[k].getAttribute('data-section') === t){ go(k); break; } }
+    });
+  });
+  function markNav(){
+    var cur = slides[i].getAttribute('data-section');
+    var inSec = slides.filter(function(s){ return s.getAttribute('data-section') === cur; });
+    navBtns.forEach(function(b){
+      var on = b.getAttribute('data-go') === cur;
+      b.classList.toggle('on', on);
+      if (on) b.setAttribute('aria-current','true'); else b.removeAttribute('aria-current');
+    });
+    navpos.textContent = inSec.length > 1 ? (inSec.indexOf(slides[i]) + 1) + ' of ' + inSec.length + ' in this section' : '';
+  }
+
+  // Fit the active slide to the window: shrink content (never below 75%) instead of scrolling
+  function fit(){
+    var s = slides[i], inner = s.querySelector('.slide-inner');
+    if (!inner || window.matchMedia('(max-width:640px)').matches) { if (inner) inner.style.zoom = ''; return; }
+    inner.style.zoom = 1;
+    var cs = getComputedStyle(s);
+    var avail = s.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    var need = inner.scrollHeight;
+    inner.style.zoom = need > avail - 2 ? Math.max(0.75, (avail - 6) / need) : 1;
+  }
+  window.addEventListener('resize', function(){ fit(); });
+
+  function go(n){
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function(s, n2){ s.classList.toggle('active', n2 === i); });
+    count.textContent = (i + 1) + ' / ' + slides.length;
+    progress.style.width = ((i + 1) / slides.length * 100) + '%';
+    if (location.hash !== '#' + (i + 1)) history.replaceState(null, '', '#' + (i + 1));
+    slides[i].scrollTop = 0;
+    markNav();
+    fit();
+  }
+
+  document.addEventListener('keydown', function(e){
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var k = e.key;
+    if (overview.classList.contains('open') && (k === 'Escape' || k === 'o' || k === 'O')) { overview.classList.remove('open'); return; }
+    if (k === 'ArrowRight' || k === 'PageDown' || k === ' ' || k === 'Enter') { go(i + 1); e.preventDefault(); }
+    else if (k === 'ArrowLeft' || k === 'PageUp' || k === 'Backspace') { go(i - 1); e.preventDefault(); }
+    else if (k === 'Home') { go(0); }
+    else if (k === 'End') { go(slides.length - 1); }
+    else if (k === 'o' || k === 'O') { overview.classList.add('open'); }
+    else if (k === 'f' || k === 'F') {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+    }
+    else if (k === 'p' || k === 'P') { window.print(); }
+  });
+
+  document.getElementById('next').addEventListener('click', function(){ go(i + 1); });
+  document.getElementById('prev').addEventListener('click', function(){ go(i - 1); });
+  overview.addEventListener('click', function(e){ if (e.target === overview) overview.classList.remove('open'); });
+
+  var start = parseInt((location.hash || '').slice(1), 10);
+  go(isNaN(start) ? 0 : start - 1);
+})();
+</script>
+</body>
+</html>
