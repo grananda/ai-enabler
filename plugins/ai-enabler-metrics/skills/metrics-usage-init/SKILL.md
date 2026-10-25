@@ -1,10 +1,10 @@
 ---
 name: metrics-usage-init
 description: Switches on AI usage capture for the current project by creating the `.enabler/metrics/` directory the ai-enabler-metrics hooks look for, with its configuration and git-ignore rules, and explains what will and will not be recorded. Also reports whether capture is already active, moves a project from the old `.enabler/kpi/` folder, sets targets for the delivery metrics, or switches capture off. Use when the user says "enable usage capture", "start measuring AI usage", "turn on metrics for this repo", "set up ai-enabler-metrics", "is capture on", "set a target for review time", or "stop collecting metrics".
-argument-hint: [--status | --off] [--share] [--anonymize] [--ticket-pattern <regex>]
+argument-hint: "[--status | --off] [--share] [--anonymize] [--ticket-pattern <regex>]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # ai-enabler-metrics:metrics-usage-init — switch capture on for this project

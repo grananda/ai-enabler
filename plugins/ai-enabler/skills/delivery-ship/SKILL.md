@@ -1,10 +1,10 @@
 ---
 name: delivery-ship
-description: Ships a finished change — commits it on its feature branch, pushes, opens a pull request whose body is the delivery report in the pull-request template the person chose (the repository's own or the plugin's), and updates the Jira issue (comment and optional transition) through the Jira MCP server. Shows exactly what it will do and waits for one confirmation; never forces, never merges, never pushes to the base branch. Use when the user says "ship PROJ-123", "open the PR", "commit and push this ticket", "publish the changes", "create the pull request and update Jira", or after holding at the ship gate of `/ai-enabler:delivery-run`.
-argument-hint: [JIRA-KEY] [--local] [--no-pr] [--draft] [--no-jira] [--yes]
+description: "Ships a finished change — commits it on its feature branch, pushes, opens a pull request whose body is the delivery report in the pull-request template the person chose (the repository's own or the plugin's), and updates the Jira issue (comment and optional transition) through the Jira MCP server. Shows exactly what it will do and waits for one confirmation; never forces, never merges, never pushes to the base branch. Use when the user says \"ship PROJ-123\", \"open the PR\", \"commit and push this ticket\", \"publish the changes\", \"create the pull request and update Jira\", or after holding at the ship gate of `/ai-enabler:delivery-run`."
+argument-hint: "[JIRA-KEY] [--local] [--no-pr] [--draft] [--no-jira] [--yes]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.1.1"
+  version: "1.1.2"
 ---
 
 # ai-enabler:delivery-ship — commit, push, pull request, Jira

@@ -1,10 +1,10 @@
 ---
 name: delivery-run
-description: Machine-driven delivery of a Jira ticket, end to end. Reads the ticket through the Jira MCP server, analyses the repository, plans, implements, tests, reviews and fixes with dedicated subagents, then opens a pull request and updates Jira. The human decides at two gates — the plan and the ship — and is asked again only when a decision is theirs to make: a ticket that cannot be implemented as written, a change to the approved plan, coverage below the minimum. Use when the user says "deliver PROJ-123", "implement this ticket", "take this Jira issue to a PR", "from Jira to code", "work on PROJ-123", or passes a Jira key or a requirements Markdown file and wants the work done rather than advice. Also resumes an interrupted run for the same key.
-argument-hint: <JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--max-rounds 3] [--ship] [--local] [--no-refine] [--refresh] [--relearn] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]
+description: "Machine-driven delivery of a Jira ticket, end to end. Reads the ticket through the Jira MCP server, analyses the repository, plans, implements, tests, reviews and fixes with dedicated subagents, then opens a pull request and updates Jira. The human decides at two gates — the plan and the ship — and is asked again only when a decision is theirs to make: a ticket that cannot be implemented as written, a change to the approved plan, coverage below the minimum. Use when the user says \"deliver PROJ-123\", \"implement this ticket\", \"take this Jira issue to a PR\", \"from Jira to code\", \"work on PROJ-123\", or passes a Jira key or a requirements Markdown file and wants the work done rather than advice. Also resumes an interrupted run for the same key."
+argument-hint: "<JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--max-rounds 3] [--ship] [--local] [--no-refine] [--refresh] [--relearn] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # ai-enabler:delivery-run — from a Jira ticket to a pull request
@@ -125,7 +125,7 @@ When `plan` is not in `gates`, what refinement added goes in unreviewed. That is
 
 ## Step 4 — Acceptance tests, before the code
 
-Stages 4 to 7 all run tests. Where they run, and what is done with a test that runs and does not pass, is one protocol for all of them: "Tests: where they run, and when they fail" in the run-and-config reference. The steps below apply it.
+Stages 4 to 7 all run tests. Where they run, what a brief to the test engineer may contain, and what is done with a test that runs and does not pass, is one protocol for all of them: "Tests: where they run, and when they fail" in the run-and-config reference. The steps below apply it. A brief to the test engineer carries the configuration values and the scope only.
 
 1. Create the feature branch from the base branch, per the safety rules and `git.branch_pattern`. Record it in `state.json`.
 2. If `test_order` is `before` or `mixed`, launch `ai-enabler:delivery-test-engineer` with `mode: acceptance` and the run directory. It writes the tests for the criteria the ticket states and `acceptance-tests.md`; no production code exists yet, so the tests are expected to fail or not to build.
@@ -141,7 +141,7 @@ Stages 4 to 7 all run tests. Where they run, and what is done with a test that r
 
 ## Step 6 — Coverage, after the code
 
-Launch `ai-enabler:delivery-test-engineer` with `mode: coverage`, the run directory, `tests.coverage_target`, `tests.coverage_minimum` and `tests.levels`. It runs the acceptance tests and the whole suite, writes the tests still missing — for derived criteria, for requirements that had no criterion, and for uncovered lines and branches — and measures coverage of the changed code.
+Launch `ai-enabler:delivery-test-engineer` with `mode: coverage`, the run directory, `tests.coverage_target`, `tests.coverage_minimum`, `tests.levels`, `tests.full_suite_runs` and `tests.mutation` — those values and nothing else: no extra verification of your own ("What a brief may ask for" in the reference). It runs the acceptance tests and the whole suite (at most `tests.full_suite_runs` times), writes the tests still missing — for derived criteria, for requirements that had no criterion, and for uncovered lines and branches — measures coverage of the changed code, and, unless `tests.mutation.enabled` is false, runs mutation testing on the changed code that decides something, adding tests for the mutants that survive.
 
 - `defects found` — each defect is a failing test that exposes wrong production code. Send the list to `ai-enabler:delivery-code-implementer` in `fix` mode, then launch the test engineer in `verify` mode on the affected tests. This shares the `review.max_fix_rounds` budget. Settle defects before looking at coverage. Defects still failing when the budget is spent are not hidden and do not stop the run: continue to the review, list them as open in the delivery report, and treat the result as not ready to ship.
 - coverage `met` (at or above the target) — continue.
@@ -158,7 +158,7 @@ Launch `ai-enabler:delivery-test-engineer` with `mode: coverage`, the run direct
   ```
 
   - **proceed** — continue to the review. Record a `coverage_accepted` intervention with the reason the person gives; the ship gate and the pull request will state that the change goes out below the minimum by their decision.
-  - **more-tests** — relaunch the test engineer in `coverage` mode with the uncovered files as `scope` and what the person said as `guidance`, then come back to this same check.
+  - **more-tests** — relaunch the test engineer in `coverage` mode with the uncovered files as `scope` and what the person said as `guidance`, then come back to this same check. It is a new coverage stage with its own budget of whole-suite runs; it runs mutation testing only on decision code it had not mutated yet, unless the person asks for more.
   - **stop** — set `status` to `stopped` and stop, leaving the branch and the run directory in place.
 - coverage `not measured` (the project has no coverage tool) — continue, and say so at the ship gate: no coverage figure can be claimed.
 - `could not run` — continue to review, and state clearly in the report that the change is untested and why.
@@ -189,6 +189,7 @@ Diff      : <n> files changed, +<added> −<removed>, on <branch>
 Criteria  : <met>/<total> met · <n> of them added by refinement <"approved at the plan gate" | "NOT REVIEWED: no plan gate in this run">
 Tests     : <passed> passed, <failed> failed · coverage <x>% (target <t>% · minimum <m>%) — met | acceptable | BELOW MINIMUM, accepted by <who> | not measured
             acceptance tests written before the code: <n> of <total criteria>
+            mutants: <killed> of <n> killed · <surviving> surviving, each with its reason — or "mutation testing off"
 Review    : <n> fixed · <n> open (<highest open severity>)
 Deltas    : <n> since the plan was approved (<one line each>, or "none")
 Will do   : commit → push <branch> → open PR against <base> [→ comment on <KEY>] [→ transition to "<status>"]
@@ -223,7 +224,7 @@ Three situations send the run backwards. Handle each the same way every time.
 **2. A correction that leaves the plan true** (`fix` at the ship gate, when what is asked does not change scope, behaviour or acceptance criteria — a bug, a name, a style point, a missed edge case of an existing criterion). In this order:
 
 1. `ai-enabler:delivery-code-implementer` in `fix` mode with the request as its fix list;
-2. `ai-enabler:delivery-test-engineer` in `coverage` mode — the full coverage stage again, since code changed: the suite, any missing tests, the coverage verdict (and the stop below the minimum, if it comes to that);
+2. `ai-enabler:delivery-test-engineer` in `coverage` mode — the coverage stage again, since code changed: the suite within its budget, any missing tests, mutation testing on what changed, the coverage verdict (and the stop below the minimum, if it comes to that);
 3. the review lenses the change touches, scoped to the files that changed, as a new review pass (`fix_rounds` back to 0), appended to `review.md`;
 4. the delivery report rewritten, and back to the ship gate.
 

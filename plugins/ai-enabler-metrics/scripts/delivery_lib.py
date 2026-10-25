@@ -25,7 +25,7 @@ DEFAULTS = {
     "base_branch": None,           # default: the repository's default branch
     "weeks": 6,
     "followup_days": 14,
-    "ticket_pattern": None,        # default: the metrics config's ticket_pattern, else [A-Z][A-Z0-9]+-\d+
+    "ticket_pattern": None,        # default: the metrics config's ticket_pattern, else DEFAULT_TICKET_PATTERN
     "exclude": [],                 # extra glob patterns excluded from PR size
     "area_roots": ["apps", "libs", "packages", "services", "modules"],
     "show_people": True,

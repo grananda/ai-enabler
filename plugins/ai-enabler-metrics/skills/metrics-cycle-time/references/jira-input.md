@@ -8,7 +8,7 @@ A list of the sprints to analyse (closed sprints only), in any order:
 
 ```json
 [
-  { "name": "Sprint 137", "startDate": "2026-08-13T08:00:00.000+0000", "endDate": "2026-09-03T16:00:00.000+0000" }
+  { "name": "Sprint 12", "startDate": "2026-08-13T08:00:00.000+0000", "endDate": "2026-09-03T16:00:00.000+0000" }
 ]
 ```
 
@@ -22,10 +22,10 @@ Each file is a list of issues, an object with an `issues` list, or a single issu
 
 ```json
 {
-  "key": "TB-5120",
+  "key": "PROJ-123",
   "fields": {
     "issuetype": { "name": "Story" },
-    "assignee": { "displayName": "Ana Diaz" },
+    "assignee": { "displayName": "Jane Doe" },
     "status": { "name": "Done" },
     "created": "2026-08-01T09:00:00.000+0000",
     "resolutiondate": "2026-08-27T14:10:00.000+0000",
@@ -42,7 +42,7 @@ Each file is a list of issues, an object with an `issues` list, or a single issu
 
 ```json
 {
-  "key": "TB-5120", "type": "Story", "assignee": "Ana Diaz", "status": "Done",
+  "key": "PROJ-123", "type": "Story", "assignee": "Jane Doe", "status": "Done",
   "created": "2026-08-01T09:00:00.000+0000", "resolved": "2026-08-27T14:10:00.000+0000",
   "transitions": [
     { "at": "2026-08-14T08:02:11.000+0000", "from": "To Do", "to": "In Progress" }

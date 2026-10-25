@@ -1,5 +1,5 @@
 {
-  "description": "Remote guard. When the project is local-only (.enabler/local-only exists, or git.local_only is true in .enabler/config.json) it blocks git push, gh/glab writes and Jira/Confluence MCP writes. Does nothing otherwise.",
+  "description": "Remote guard. When the project is local-only (.enabler/local-only exists, or git.local_only is true in .enabler/config.json) it blocks git push, gh/glab writes, write requests to GitHub, GitLab and Bitbucket, and writes through GitHub, GitLab, Bitbucket, Jira or Confluence MCP tools. Does nothing otherwise.",
   "hooks": {
     "PreToolUse": [
       {

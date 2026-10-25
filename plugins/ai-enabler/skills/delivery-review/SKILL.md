@@ -1,10 +1,10 @@
 ---
 name: delivery-review
-description: Independent multi-lens code review with a severity-ranked report and optional auto-fix. Launches read-only delivery-code-reviewer subagents in parallel (correctness, security, quality, tests), consolidates and filters their findings, writes a Markdown report, and fixes findings only when asked: with `--fix`, or when the person says so after reading the report. Works on an ai-enabler run, a branch against its base, a pull request, or paths. Use when the user says "review my changes", "code review", "review PROJ-123", "review PR 42", "security review of this branch", "is this ready to merge", or "review and fix".
-argument-hint: [JIRA-KEY | PR number or URL | path ...] [--base <branch>] [--lenses correctness,security,quality,tests] [--fix] [--min-confidence 80]
+description: "Independent multi-lens code review with a severity-ranked report and optional auto-fix. Launches read-only delivery-code-reviewer subagents in parallel (correctness, security, quality, tests), consolidates and filters their findings, writes a Markdown report, and fixes findings only when asked: with `--fix`, or when the person says so after reading the report. Works on an ai-enabler run, a branch against its base, a pull request, or paths. Use when the user says \"review my changes\", \"code review\", \"review PROJ-123\", \"review PR 42\", \"security review of this branch\", \"is this ready to merge\", or \"review and fix\"."
+argument-hint: "[JIRA-KEY | PR number or URL | path ...] [--base <branch>] [--lenses correctness,security,quality,tests] [--fix] [--min-confidence 80]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # ai-enabler:delivery-review — independent review, optional fix
@@ -50,6 +50,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` for the run directory 
 
 ## Rules
 
+- **The test engineer gets the configuration and the scope, nothing more.** No extra mutation passes, whole-suite runs beyond `tests.full_suite_runs`, or stability re-runs ("What a brief may ask for" in the run-and-config reference).
 - **What was learned about the repository is kept.** When a subagent reports that the repository profile was wrong or incomplete (a command that does not work here, a convention the code does not follow, a rule nobody had written down), append one line to `profile_notes` in the run's `state.json` in pipeline mode, or turn it into a delta at the end in stand-alone mode; "When something was learned" in the run-and-config reference says how it becomes a delta to the profile. Never edit `profile.md` for it.
 - You do not review the diff in your own context and you do not edit code yourself; reviewers review, the implementer fixes. Your part is consolidation and verification of blockers.
 - Never post review comments to a pull request, approve it, or request changes on it unless the human asks for exactly that.

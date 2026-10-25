@@ -1,10 +1,10 @@
 ---
 name: metrics-usage-report
 description: Produces the AI usage report from the events captured by the ai-enabler-metrics hooks — human interaction with the machine, AI working time versus human waiting and thinking time, output, token usage with its cost in USD per session, user, ticket, skill, agent and model, and which skills and agents are in use — followed by the delivery-flow dashboard (pull request size, review waiting time, rework, Jira cycle time). Runs the bundled scripts, which write HTML with charts plus Markdown, JSON and CSV, then adds a short reading of the numbers. Use when the user says "usage report", "metrics report", "how much did the AI cost", "AI usage report", "cost per ticket", "how much time did we spend with the AI", "show the metrics", "usage for PROJ-123", or "export the metrics".
-argument-hint: [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--user <id>] [--ticket <KEY>] [--metrics-dir <dir> ...] [--out-dir <dir>] [--provider anthropic|bedrock|vertex|foundry] [--bedrock-region <region>] [--bedrock-scope global|regional] [--no-delivery] [--refresh]
+argument-hint: "[--since YYYY-MM-DD] [--until YYYY-MM-DD] [--user <id>] [--ticket <KEY>] [--metrics-dir <dir> ...] [--out-dir <dir>] [--provider anthropic|bedrock|vertex|foundry] [--bedrock-region <region>] [--bedrock-scope global|regional] [--no-delivery] [--refresh]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # ai-enabler-metrics:metrics-usage-report — the usage report

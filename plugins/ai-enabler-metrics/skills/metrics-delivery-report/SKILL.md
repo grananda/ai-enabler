@@ -1,10 +1,10 @@
 ---
 name: metrics-delivery-report
 description: Builds the delivery-flow dashboard — one HTML page with charts over pull request size, review waiting time, rework and Jira cycle time, including per-developer figures — by running the four delivery metric skills and combining their results. Use when the user says "delivery report", "delivery metrics", "team flow report", "DORA-style report", "how is the team delivering", "all the delivery metrics", "sprint and PR metrics together", or "numbers per developer".
-argument-hint: "[--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--project KEY] [--sprints 3] [--refresh] [--no-jira]"
+argument-hint: "[--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--followup-days 14] [--project KEY] [--sprints 3] [--refresh] [--no-jira]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # ai-enabler-metrics:metrics-delivery-report — the delivery-flow dashboard
@@ -16,7 +16,7 @@ Runs every delivery metric and puts the results on one page. The four metrics ar
 1. **Pull-request metrics, in one go.** One command fetches once and computes the three of them:
 
    ```
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/pr_metrics.py" all [--repo ...] [--base ...] [--weeks N] [--refresh]
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/pr_metrics.py" all [--repo ...] [--base ...] [--weeks N] [--followup-days N] [--refresh]
    ```
 
    Only those flags go to this script. `--project`, `--sprints` and `--no-jira` belong to the cycle-time step, and `--refresh` applies to both.
@@ -56,6 +56,8 @@ A delivery metric becomes a KPI only when the team sets a target for it (`delive
 ## Which folder
 
 Paths in this skill say `.enabler/metrics/`. A project set up before 1.0.0 may still keep its data in `.enabler/kpi/`; the scripts use whichever exists and print the paths they write. In such a project read and write under `.enabler/kpi/` — never create `.enabler/metrics/` beside it, which would split the data.
+
+In a project where usage capture was never switched on — no `.enabler/metrics/` and no `.enabler/kpi/` — the delivery scripts write to `.enabler/delivery/` instead (snapshots, `cache/`, `jira-input/`, and `reports/<date>/`), because creating `.enabler/metrics/` would switch capture on. There, read and write every path below `.enabler/delivery/` in place of `.enabler/metrics/delivery/`, and never create `.enabler/metrics/` yourself. Use the paths the scripts print.
 
 ## Rules
 

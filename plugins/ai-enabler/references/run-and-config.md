@@ -16,7 +16,7 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
 | `deltas/delta-NN.md` | `delivery-solution-planner` (delta mode) | One file per change made after the plan was approved: why, what is added, what is removed |
 | `deltas/delta-NN.before/` | the orchestrating skill | Copies of `plan.md` and `requirements.json` taken before the planner writes delta NN, so the delta can be revised or cancelled |
 | `acceptance-tests.md` | `delivery-test-engineer` (acceptance mode) | The tests written before the code, one row per acceptance criterion |
-| `test-report.md` | `delivery-test-engineer` (coverage mode) | Suite result, coverage against the target and the minimum, acceptance-criteria table |
+| `test-report.md` | `delivery-test-engineer` (coverage mode) | Commands run and how long each took, suite result, coverage against the target and the minimum, acceptance-criteria table, mutation results |
 | `review.md` | the orchestrating skill (`delivery-run` or `delivery-review`), in the format the `delivery-review` skill defines | Consolidated findings and what was fixed |
 | `delivery-report.md` | the `delivery-run` skill | What the human reads at the ship gate, written after the plugin's pull-request template |
 | `pull-request.md` | the ship stage | The pull-request body as it was sent: the report, in the template the person chose |
@@ -119,7 +119,9 @@ Optional file `.enabler/config.json`. Like the rest of `.enabler/`, it is a loca
     "coverage_target": 80,
     "coverage_minimum": 70,
     "levels": ["unit", "integration"],
-    "order": "auto"
+    "order": "auto",
+    "full_suite_runs": 2,
+    "mutation": { "enabled": true, "max_mutants": 40 }
   },
   "refine": {
     "enabled": true
@@ -143,6 +145,8 @@ Optional file `.enabler/config.json`. Like the rest of `.enabler/`, it is a loca
 - `tests.coverage_target` and `tests.coverage_minimum` — line and branch coverage of the changed code. The test engineer aims for the target (80); the minimum (70) is the lowest result the pipeline accepts on its own. At or above the target it is `met`. Between the minimum and the target it is `acceptable`: the run continues and the figure is reported. Below the minimum it is `below minimum`, and a person decides whether to proceed. See "Coverage" below.
 - `tests.order` — `auto` writes the tests for the ticket's acceptance criteria before the code whenever the ticket states usable criteria, and falls back to writing tests after the code when it does not (see "Test order" below). `after` always writes them after the code. There is no setting that skips the coverage stage.
 - `refine.enabled` — after intake, the ticket refiner closes the gaps in the definition before anything is planned (see "Ticket refinement" below). `false`, or `--no-refine` for one run, takes the ticket as written.
+- `tests.full_suite_runs` — how many times the test engineer may run the whole suite in one coverage stage: once to surface regressions, once to measure. Default 2. In between it runs only the tests it created or changed. See "Effort budget" in the test engineer.
+- `tests.mutation` — mutation testing, **on by default**: it is what shows whether the tests would notice a wrong decision. It is kept to the code the ticket changed that decides something (business rules, permissions, validations, calculations, security and privacy), each mutant runs against the feature's tests only, in one pass, at most `max_mutants` (40). `enabled: false` turns it off for the project. See "Mutation testing" in the test engineer.
 - `review.auto_fix` — severities `/ai-enabler:delivery-run` fixes on its own inside its fix loop. Everything else is reported and left for the human. The stand-alone `/ai-enabler:delivery-review` ignores this key: there it fixes only with `--fix` or when the person says so.
 
 Command-line flags on a skill override the file for that run.
@@ -230,9 +234,11 @@ Refined criteria count as stated for the test order: once the plan is approved t
 |---|---|---|---|
 | 4 acceptance tests | test engineer, `acceptance` | The new acceptance tests | **Red**: they fail because the code does not exist. A test that fails for another reason (typo, broken setup) is fixed here |
 | 5 implement | implementer | Build, linter, the acceptance tests | The acceptance tests go **green** without being edited |
-| 6 coverage | test engineer, `coverage` | The acceptance tests, the new tests, then the whole suite, with coverage | Everything green; coverage at the target, or at least the minimum |
-| 7 review, fix loop | test engineer, `verify` | The tests of the area a fix touched | Still green after each fix |
+| 6 coverage | test engineer, `coverage` | The changed tests; the whole suite at most `tests.full_suite_runs` times (once for regressions, once to measure); mutation testing on the changed code that decides, against the feature's tests | Green; coverage at the target, or at least the minimum; no surviving mutant left without a reason |
+| 7 review, fix loop | test engineer, `verify` | The tests of the area a fix touched — never the whole suite when a scope is known | Still green after each fix |
 | 8 ship | nobody | Nothing is re-run: the gate reports the last result | — |
+
+**What a brief may ask for.** A skill that launches the test engineer passes it the mode, the configuration values — `tests.coverage_target`, `tests.coverage_minimum`, `tests.levels`, `tests.full_suite_runs`, `tests.mutation` — and the scope of the run. It adds no verification of its own: no extra mutation passes, no extra runs of the whole suite, no repeated runs to check stability, no coverage goals per file. More assurance than the configuration gives is the person's decision, taken at a gate and recorded under `human_interventions` in `state.json`; an agent does not take it because it seems safer. The time it costs is real: on one project, mutation runs against the whole suite and repeated whole-suite runs in every round made the test stage more than half of the whole delivery time.
 
 **When a test runs and does not pass,** the first thing is to say why. Nobody edits a test to make it agree with the code, and nobody weakens, skips or deletes a test to get a green run.
 

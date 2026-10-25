@@ -108,7 +108,7 @@ Under `delivery` in `.enabler/metrics/config.json`; everything is optional:
 | `jira.statuses.order` | a common workflow | The statuses from first to last; statuses in the same group are the same step. Decides what "backward" means |
 | `jira.statuses.in_progress`, `jira.statuses.blocked` | `In Progress`…, `Blocked`… | Where cycle time starts, and what counts as blocked |
 
-The ticket key pattern is the top-level `ticket_pattern`, shared with the AI usage capture.
+The ticket key pattern is the top-level `ticket_pattern`, shared with the AI usage capture; `delivery.ticket_pattern` overrides it for the delivery metrics alone. Without either, a key is two to ten capitals or digits, a hyphen and a number (`PROJ-123`).
 
 ### Per-developer figures
 
@@ -200,7 +200,7 @@ The user id is `git config user.email`, falling back to the OS user name. Set `"
 
 ## Local or shared
 
-`metrics-usage-init` writes a `.gitignore` inside `.enabler/metrics/`. By default it ignores `events/`, so each developer's data stays on their machine and reports are personal. With `--share`, event files are committed: there is one file per user and session, so they never conflict, and anyone can report on the whole team. Sharing puts user ids into the repository, so make it a team decision, and consider `anonymize_users`.
+`metrics-usage-init` writes a `.gitignore` inside `.enabler/metrics/`. It always ignores `.state/`, `reports/`, `delivery/cache/` and `delivery/jira-input/`. By default it also ignores `events/` and `delivery/`, so each developer's data stays on their machine and reports are personal. With `--share`, event files are committed: there is one file per user and session, so they never conflict, and anyone can report on the whole team. Sharing puts user ids into the repository, so make it a team decision, and consider `anonymize_users`.
 
 ## Configuration
 

@@ -1,10 +1,10 @@
 ---
 name: delivery-doctor
-description: Checks that a project is ready for the ai-enabler delivery pipeline and helps set it up — Jira MCP connection, git remote and pull-request CLI, test and coverage commands, project configuration, and whether usage capture is active. Read-only unless asked to write the configuration. Use when the user says "set up ai-enabler", "check my ai-enabler setup", "why can't it read my Jira ticket", "is Jira connected", "ai-enabler doctor", or before the first `/ai-enabler:delivery-run` in a repository.
-argument-hint: [JIRA-KEY to test with] [--init]
+description: "Checks that a project is ready for the ai-enabler delivery pipeline and helps set it up — Jira MCP connection, git remote and pull-request CLI, test and coverage commands, project configuration, and whether usage capture is active. Read-only unless asked to write the configuration. Use when the user says \"set up ai-enabler\", \"check my ai-enabler setup\", \"why can't it read my Jira ticket\", \"is Jira connected\", \"ai-enabler doctor\", or before the first `/ai-enabler:delivery-run` in a repository."
+argument-hint: "[JIRA-KEY to test with] [--init]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.1.1"
+  version: "1.1.2"
 ---
 
 # ai-enabler:delivery-doctor — is this project ready?

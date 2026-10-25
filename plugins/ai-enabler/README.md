@@ -53,7 +53,7 @@ Tests run **on your machine**, in the working tree, on the feature branch, with 
 |---|---|---|---|
 | 4 | test engineer | The new acceptance tests | Red: they fail because the code is not there yet |
 | 5 | implementer | Build, linter, the acceptance tests | The acceptance tests go green, unedited |
-| 6 | test engineer | The whole suite, with coverage | Green; coverage at the target or at least the minimum |
+| 6 | test engineer | The changed tests; the whole suite at most twice, with coverage; mutation testing on the changed code that decides | Green; coverage at the target or at least the minimum; mutants caught |
 | 7 | test engineer | The tests of whatever a review fix touched | Still green |
 | 8 | — | Nothing is re-run; the ship gate reports the last result | — |
 
@@ -68,6 +68,17 @@ When a test runs and does not pass, the first step is to say why, because the an
 | The tests could not be run at all | Reported as such; the change is stated to be untested, never presented as passing |
 
 No test is edited to agree with the code, and none is weakened, skipped or deleted to get a green run.
+
+**The test stage has a budget.** Running tests is where a delivery spends most of its time, so the test engineer works to a budget instead of verifying for as long as it can:
+
+- **Between rounds, only the changed tests** — the test files this run created or modified.
+- **The whole suite at most twice per coverage stage** (`tests.full_suite_runs`): once after the tests are written, to catch regressions elsewhere, and once at the end, to measure coverage.
+- **Mutation testing, on what matters.** A mutant is a small deliberate fault, such as `<` for `<=` or a removed check; a mutant no test catches is a gap that coverage does not show. Only code the ticket changed that decides something is mutated (business rules, permissions, validations, calculations, security and privacy), each mutant runs against the feature's tests — the changed tests plus the existing tests of the modules the ticket touches — never the whole suite, at most `tests.mutation.max_mutants` (40), in one pass. Survivors get a test, or a reason. It is on by default; `tests.mutation.enabled: false` turns it off for a project.
+- **Coverage stops at the target**, judged on the changed code as a whole, not file by file.
+- **Long commands are waited for**, not polled with fixed sleeps, and a faster form of the test command is used when the repository profile records one. The scout now records how long the suite takes and that faster command.
+- **The test report says where the time went:** the duration of every run.
+
+Skills pass the test engineer the configuration and the scope, nothing more: asking for more assurance than the configuration gives is your decision, at a gate.
 
 Fixing is bounded so that a run cannot loop: one extra pass at stage 5, and two fix rounds (`review.max_fix_rounds`) shared by the coverage stage and the review. If tests still fail after that, the run goes on to the review and the result is marked **not ready**: the failures are listed with their cause in the report and in the pull request, and the ship gate says so first and recommends holding or a draft pull request. You can still ship it, knowingly. An unattended run never does: it holds.
 
@@ -125,7 +136,7 @@ Each gate counts how often you send the work back, separately: `adjust` at Gate 
 | `delivery-implement` | `<KEY> [--steps 1,2]` | Stages 4 and 5 on an approved plan: acceptance tests, then the code. |
 | `delivery-test` | `[KEY \| paths] [--base b] [--target 80] [--minimum 70] [--levels unit,integration,e2e] [--before-code]` | Stages 4 and 6, or stand-alone test generation for any change. |
 | `delivery-review` | `[KEY \| PR \| paths] [--base b] [--lenses ...] [--fix] [--min-confidence 80]` | Stage 7, or a stand-alone review of a branch, pull request or paths. |
-| `delivery-ship` | `[KEY] [--no-pr] [--draft] [--no-jira] [--yes]` | Stage 8: commit, push, pull request, Jira. |
+| `delivery-ship` | `[KEY] [--no-pr] [--draft] [--no-jira] [--local] [--yes]` | Stage 8: commit, push, pull request, Jira. |
 | `delivery-doctor` | `[KEY] [--init]` | Checks Jira MCP, git, PR CLI, test commands, configuration, usage capture. |
 | `delivery-ticket-refine` | `<KEY \| ticket.md> [--out path]` | A more robust version of an existing ticket, as a local Markdown file. Never writes to Jira. |
 | `delivery-ticket-create` | `<a few sentences> [--out path]` | A complete ticket from a short brief, as a local Markdown file. A Jira issue only if you ask for it at the end. |
@@ -262,9 +273,11 @@ Optional, in `.enabler/config.json` at the project root — a local file, like e
   "gates": ["plan", "ship"],
   "max_gate_rounds": 3,
   "git": { "base_branch": null, "branch_pattern": "feature/{key}-{slug}",
-           "commit_pattern": "{type}({key}): {summary}", "pull_request": true, "pr_template": "ask" },
+           "commit_pattern": "{type}({key}): {summary}", "pull_request": true, "pr_template": "ask",
+           "local_only": false },
   "jira": { "server": null, "comment_on_ship": true, "transition_on_ship": null },
-  "tests": { "coverage_target": 80, "coverage_minimum": 70, "levels": ["unit", "integration"], "order": "auto" },
+  "tests": { "coverage_target": 80, "coverage_minimum": 70, "levels": ["unit", "integration"], "order": "auto",
+             "full_suite_runs": 2, "mutation": { "enabled": true, "max_mutants": 40 } },
   "refine": { "enabled": true },
   "review": { "lenses": ["correctness", "security", "quality", "tests"],
               "min_confidence": 80, "auto_fix": ["critical", "high"], "max_fix_rounds": 2 }
@@ -289,7 +302,7 @@ Every ticket gets its own folder, `.enabler/runs/<KEY>/`, where `<KEY>` is the J
 | `deltas/delta-NN.md` | whenever the approved plan changes | `delivery-solution-planner` | One file per change made after the plan was approved: what triggered it and why, the acceptance criteria added, changed and removed, the tests to add and the obsolete ones to delete, the code to create, modify and delete. The record of how the work got from the first plan to the final one. |
 | `plan.md` | stage 3, plan | `delivery-solution-planner` | The implementation plan you approve at the first gate, kept current: after a delta it describes the work as it now stands, with a change-history table at the top. Contains the approach, the decisions taken and the alternatives rejected, the ordered steps with the files each one creates or modifies, the test plan (which tests are written before the code), a table tracing every acceptance criterion to steps and tests, risks, assumptions and open questions. |
 | `acceptance-tests.md` | stage 4, before the code | `delivery-test-engineer` | The list of tests written from the ticket's acceptance criteria before any production code existed: for each criterion, the test file, the test names and what each asserts, plus any criterion that could not be turned into a test and why. Absent when the ticket had no usable criteria. |
-| `test-report.md` | stage 6, coverage | `delivery-test-engineer` | The test results after the code: commands run, tests passed and failed, coverage of the changed code per file against the target and the minimum, the acceptance-criteria table (which test covers each, written before or after the code, passing or not), defects found, failures that existed before the change, and the test files added. |
+| `test-report.md` | stage 6, coverage | `delivery-test-engineer` | The test results after the code: commands run, tests passed and failed, coverage of the changed code per file against the target and the minimum, the acceptance-criteria table (which test covers each, written before or after the code, passing or not), defects found, failures that existed before the change, and the test files added. Also how long each run took, and the mutation results: mutants killed and surviving, with the reason for each survivor. |
 | `review.md` | stage 7, review | the skill, from the reviewers' reports | The consolidated code review: the verdict, the findings numbered by severity with file and line, why each matters and how to fix it, the acceptance-criteria check, the findings still to validate, what was checked and found sound, and one section per fix round saying what was fixed, disputed or left open. |
 | `delivery-report.md` | stage 8, before the ship gate | the skill | The summary for whoever reviews the pull request: what changed, the changes made after the plan was approved (one entry per delta), the acceptance criteria with their status and evidence, tests and coverage, the review outcome and open findings, deviations from the plan and assumptions, and how to verify. It is used as the pull-request body. |
 | `pull-request.md` | stage 8, on shipping | the skill | The pull-request body exactly as it was sent: the delivery report, in the template you chose. |
