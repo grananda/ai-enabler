@@ -6,6 +6,18 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.6.0] — 2026-10-28
+
+`ai-enabler` 1.5.0 · `ai-enabler-metrics` 1.1.0
+
+### Added
+
+- **ai-enabler:** external sources of context. Besides the project, the pipeline can read other repositories (by URL, or already cloned in a folder next to the project), other folders, and documents — Markdown, text, PDF, HTML and Word (`.docx`, converted with the standard library, nothing to install). Each source is learned once by a new agent, `delivery-source-scout`, in parallel with the repository scout: a short profile, a delta when the source changes, and for every ticket `external-context.md` with only what applies. Sources are learned during intake, in parallel with the analyst, so the refiner already has them; the planner implements contracts as the source defines them, the test engineer tests against them, the reviewers check conformance, and the plan gate, the delivery report and the pull request name the sources relied on. What a stage finds wrong about a source becomes a delta of that source. The stand-alone skills (`delivery-test`, `delivery-review`, `delivery-implement`, `delivery-ticket-refine`, `delivery-ticket-create`) use them too.
+- **ai-enabler:** adding a source takes one answer. The preflight of `delivery-run` and `delivery-plan` asks once per project whether the work depends on anything else, offering the repositories it finds next to the project; `--context <url|path>` adds one on any run; the new skill `delivery-sources` adds, lists, refreshes, relearns and removes them. A URL whose clone is already next to the project is read there, not cloned again.
+- **ai-enabler:** sources are read-only. A new hook, always on, refuses edits inside a registered source — file tools, redirections, `rm`, `mv`, `sed -i`, copies into it, git commands that change it. Copying from a source into the project is allowed.
+- **ai-enabler:** `delivery-doctor` reports each source and its status.
+- **ai-enabler:** a source changes only when its own part changes: the followed branch or tag of a URL source (matched exactly), the folder and its `paths` in a sibling clone — a commit elsewhere in that repository does not count —, the document itself. `external-context.md` is rewritten when a source changed or was added since it was written, also on resume. A URL given with credentials has them removed before it is stored.
+
 ## [1.5.0] — 2026-10-23
 
 `ai-enabler` 1.4.0 · `ai-enabler-metrics` 1.1.0

@@ -15,8 +15,10 @@ It ships two plugins:
 flowchart TD
     J[(Jira ticket)] -->|MCP| A[delivery-ticket-analyst]
     A --> RF["delivery-ticket-refiner<br/>closes the gaps in the definition"]
+    SS["delivery-source-scout<br/>other repos and documents"] -.->|learned with intake| RF
     RF --> S[delivery-repo-scout]
     S --> P[delivery-solution-planner]
+    SS -.->|external-context.md| P
     P --> G1{{"Gate 1 — plan"}}
     G1 -->|adjust| P
     G1 -->|cancel| X([run stopped])
@@ -106,6 +108,7 @@ Requirements:
 | `/ai-enabler:delivery-doctor` | Check or initialise the project setup |
 | `/ai-enabler:delivery-ticket-refine <KEY \| file.md>` | Make an existing ticket robust — gaps closed, additions marked — as a local Markdown file. Never writes to Jira |
 | `/ai-enabler:delivery-ticket-create "<a few sentences>"` | Write a complete ticket from a short brief, as a local Markdown file; a Jira issue only if you ask for it |
+| `/ai-enabler:delivery-sources [add <url\|path> \| list \| refresh \| relearn NAME \| remove NAME]` | Other repositories, sibling clones, folders and documents (Word included) the pipeline should read besides the project. Read-only |
 | `/ai-enabler-metrics:metrics-usage-init` | Switch usage capture on for a project |
 | `/ai-enabler-metrics:metrics-usage-report` | Produce the usage report: AI usage and delivery flow, as HTML dashboards with charts |
 | `/ai-enabler-metrics:metrics-delivery-report` | Delivery-flow dashboard: PR size, review waiting time, rework, Jira cycle time, per developer |
@@ -124,6 +127,7 @@ Both plugins keep their files in one folder at the root of the project where you
     deltas/delta-NNN-*.md     one small complement each: what changed, or what was learned
     profile.json              fingerprints of the files the profile was derived from
   tickets/                    tickets written by delivery-ticket-refine and delivery-ticket-create (Markdown)
+  sources/                    external sources: the list, what was learned about each, private copies of URL repositories
   local-only                  present only after someone said "do not upload"; blocks push, PR and Jira writes
   runs/                       one folder per ticket — working files, kept out of git
     <KEY>/
@@ -147,7 +151,7 @@ Both plugins keep their files in one folder at the root of the project where you
 
 Each file of a run is described in [plugins/ai-enabler/README.md](plugins/ai-enabler/README.md#the-run-directory-what-each-file-is), and the metrics files in [plugins/ai-enabler-metrics/README.md](plugins/ai-enabler-metrics/README.md) and [docs/metrics-reference.md](docs/metrics-reference.md).
 
-Nothing in `.enabler/` has to be committed: the plugins are used by one person on one machine for now, and the folder is local. Run folders, tickets and the repository profile keep themselves out of git (each holds a `.gitignore` of its own, so yours is not edited for them); usage events and metric snapshots are ignored by default because they name people (`metrics-usage-init --share` changes that deliberately).
+Nothing in `.enabler/` has to be committed: the plugins are used by one person on one machine for now, and the folder is local. Run folders, tickets, sources and the repository profile keep themselves out of git (each holds a `.gitignore` of its own, so yours is not edited for them); usage events and metric snapshots are ignored by default because they name people (`metrics-usage-init --share` changes that deliberately).
 
 ## Documentation
 
@@ -171,16 +175,18 @@ plugins/
     .claude-plugin/plugin.json
     skills/      delivery-run, delivery-plan, delivery-implement, delivery-test,
                  delivery-review, delivery-ship, delivery-doctor,
-                 delivery-ticket-refine, delivery-ticket-create
+                 delivery-ticket-refine, delivery-ticket-create, delivery-sources
     agents/      delivery-ticket-analyst, delivery-ticket-refiner, delivery-repo-scout,
-                 delivery-solution-planner, delivery-code-implementer, delivery-test-engineer,
-                 delivery-code-reviewer
+                 delivery-source-scout, delivery-solution-planner, delivery-code-implementer,
+                 delivery-test-engineer, delivery-code-reviewer
     references/  run directory and configuration, ticket readiness and refinement,
                  git and Jira safety rules, review checklist
     templates/   pull-request.md (the pull-request template, unless the repository has its own)
-    scripts/     repo_profile.py (is the repository profile still valid?)
-    hooks/       hooks.json, remote_guard.py (blocks uploads when the project is local-only)
-    tests/       test_remote_guard.py, test_repo_profile.py
+    scripts/     repo_profile.py (is the repository profile still valid?),
+                 sources.py (external sources: add, check, fetch, record; .docx to Markdown)
+    hooks/       hooks.json, remote_guard.py (blocks uploads when the project is local-only),
+                 source_guard.py (keeps external sources read-only)
+    tests/       test_remote_guard.py, test_repo_profile.py, test_sources.py
   ai-enabler-metrics/
     .claude-plugin/plugin.json
     hooks/       hooks.json, usage_hook.py
@@ -208,6 +214,7 @@ python3 plugins/ai-enabler-metrics/tests/test_delivery.py   # delivery metrics o
 python3 tools/check_versions.py                         # every change carries its version bump and changelog entry
 python3 tools/check_conventions.py                      # naming, owner and version of every skill and agent
 python3 plugins/ai-enabler/tests/test_repo_profile.py   # the repository-profile bookkeeping
+python3 plugins/ai-enabler/tests/test_sources.py        # external sources and their read-only guard
 python3 plugins/ai-enabler/tests/test_remote_guard.py  # what local-only mode blocks and allows
 ```
 

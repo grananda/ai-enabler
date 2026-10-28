@@ -10,6 +10,7 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
 |---|---|---|
 | `state.json` | the orchestrating skill | Where the run is (see below) |
 | `requirements.json` | `delivery-ticket-analyst`, then `delivery-ticket-refiner`; the planner updates its acceptance criteria when a delta changes them | Normalised ticket and readiness verdict. What refinement added is marked `"refined": true`; the verdicts on the ticket as it arrived are kept under `as_received` |
+| `external-context.md` | `delivery-source-scout` | What the project's external sources impose on this ticket: contracts, schemas, rules, components, each with its source and path. Absent when the project has no sources |
 | `refinement.md` | `delivery-ticket-refiner` | What refinement added to the ticket and why, and its questions. Absent when refinement was skipped |
 | `repo-context.md` | `delivery-repo-scout` | Only what this ticket adds to the repository profile: the existing code closest to it |
 | `plan.md` | `delivery-solution-planner` | The implementation plan as it stands now: the approved plan with every approved delta folded in |
@@ -40,6 +41,7 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
   "gate_rounds": { "plan": 0, "ship": 0 },
   "deltas": [{ "id": "delta-01", "at": "", "trigger": "ship gate | plan proved wrong | resumed with changes",
                "summary": "", "approved": false, "applied": false }],
+  "external_context": { "contracts": "git:4f2a…:9c1e…" },
   "profile_notes": ["the coverage report is in build/reports/jacoco, not target/site"],
   "human_interventions": [{ "at": "", "stage": "plan", "kind": "adjustment | fix | delta | question | takeover | coverage_accepted", "note": "" }],
   "pr_url": ""
@@ -50,7 +52,7 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
 
 Update `state.json` whenever a stage completes and whenever the human steps in. `human_interventions` is the pipeline's own record of where a person had to act; keep each note to one line.
 
-`.enabler/runs/`, `.enabler/repo-profile/` and `.enabler/tickets/` hold working files and stay out of commits. `repo_profile.py check` sees to it without touching any file of the project: it puts a `.gitignore` containing `*` inside each of them. Do not add lines to the project's own `.gitignore` for them. A skill that writes a run directory without going through the scout stage runs `check` once for the same reason.
+`.enabler/runs/`, `.enabler/repo-profile/`, `.enabler/tickets/` and `.enabler/sources/` hold working files and stay out of commits. `repo_profile.py check` sees to it without touching any file of the project: it puts a `.gitignore` containing `*` inside each of them. Do not add lines to the project's own `.gitignore` for them. A skill that writes a run directory without going through the scout stage runs `check` once for the same reason.
 
 ## Repository profile
 
@@ -86,13 +88,33 @@ It prints JSON. `root` is the folder whose `.enabler/` is in use, and `profile` 
 
 `record` stores the files as they were when `check` saw them, so a watched file edited in the meantime is found by the next check instead of being swallowed.
 
-**When something was learned.** A later stage may report that the profile was wrong or incomplete: a command that does not work here, a convention the code does not follow, a rule nobody had written down. Append it at once to `profile_notes` in `state.json`, one line each, so it survives a resume. At the next pause — a gate, or the end of the run, never the middle of a stage — and for each note: `next-delta`, launch the scout with the task `delta` and the note as its `learned` reason, `record --expect <delta path> --keep`, and remove the note from `state.json`. `--keep` leaves the fingerprints alone: a learned delta says nothing about which files changed.
+**When something was learned.** (The same holds for an external source: a note that starts with `source <name>: ` becomes a delta of that source; see "External sources".) A later stage may report that the profile was wrong or incomplete: a command that does not work here, a convention the code does not follow, a rule nobody had written down. Append it at once to `profile_notes` in `state.json`, one line each, so it survives a resume. At the next pause — a gate, or the end of the run, never the middle of a stage — and for each note: `next-delta`, launch the scout with the task `delta` and the note as its `learned` reason, `record --expect <delta path> --keep`, and remove the note from `state.json`. `--keep` leaves the fingerprints alone: a learned delta says nothing about which files changed.
 
 **Starting again: `--relearn`.** Run `repo_profile.py reset` and treat the profile as `missing`: the repository is studied from scratch and every delta is dropped, learned ones included, so the scout reads the old profile and deltas *before* the reset and carries over what still holds. Never do it unasked. Suggest it, once, when `suggest_relearn` in the check is not empty (the profile has outgrown its size, there are more than ten deltas, or deltas run long), or when the scout says the profile and its deltas no longer fit together. `--refresh` does not touch the profile: it re-runs the stages of one ticket.
 
 The person may correct `profile.md` or add a delta by hand; the pipeline itself never edits what is written. Nothing in `.enabler/repo-profile/` is committed, and none of it is copied into `CLAUDE.md`, `AGENTS.md` or any other project file.
 
 **A run started before the profile existed** has a `repo-context.md` that holds everything, written by an earlier version. On resume, run `check` like any other run (Step 2), but do not ask for the `ticket` task: keep that file as it is. Agents read the profile, the deltas and it together.
+
+## External sources
+
+The project being changed is rarely the whole story: the API contracts are in another repository, the components in a design system, the business rules in a Word document. An external source tells the pipeline where else to look. It is learned once, like the project, and complemented by deltas.
+
+| Kind | What | Read from |
+|---|---|---|
+| `repo` | A repository given by URL | A shallow, private copy in `.enabler/sources/<name>/checkout/`, updated with `sources.py fetch` |
+| `folder` | A folder on this machine — most often another repository already cloned next to the project, or a folder of specifications | Where it is. A URL whose clone is already next to the project becomes this kind, so nothing is cloned twice |
+| `doc` | A document: `.md`, `.txt`, `.pdf`, `.html`, `.docx`, `.rst`, `.adoc` | Where it is. A `.docx` is read through `sources.py text`, which turns it into Markdown with the standard library |
+
+Everything is in `.enabler/sources/`: `sources.json` (the list, and whether the person was asked), and per source `profile.md`, `deltas/`, `state.json` and `pending.json`, like the repository profile. All of it is local and kept out of git.
+
+**Adding one is meant to be easy.** The preflight of `delivery-run` and `delivery-plan` asks once per project, offering the repositories it finds next to the project (`sources.py siblings`); `--context <url|path>` adds one on any run; `/ai-enabler:delivery-sources` adds, lists, refreshes and removes them. Each source has an `about` — one sentence on what it is for — which is how the scout decides whether it matters for a ticket, and optionally `paths`, the part of a large repository that matters.
+
+**When they are read.** Twice, without adding waiting. During intake, in parallel with the analyst, each source is learned or brought up to date (a profile once, a delta when it changed), so that the refiner already has them. At the scout stage, in parallel with the repository scout, the scout writes what applies to this ticket. `sources.py check` says per source whether it is `missing` (not learned), `unrecorded` (learned, but the run stopped before `record`: just record it), `fresh`, `stale` (a new commit on the followed branch, an edit in the source's folder and `paths` — not elsewhere in its repository —, a changed document) or `unreachable` (used as last learned if `usable`, left out otherwise). `external_context` in `state.json` remembers which fingerprints `external-context.md` was written from, so a resumed run notices a source that changed or was added since. `delivery-source-scout` writes a profile for a missing source, a delta for a stale one, and for every ticket `external-context.md` with what the sources say that matters to it. `record --expect` follows each profile or delta, exactly as for the repository profile. Every agent that reads the repository context reads `external-context.md` too, and, outside a pipeline run, the source profiles themselves; the refiner reads the source profiles. The plan gate names the sources the plan relies on; the delivery report and the pull request name them too, by their URL or document name, never by a local path. What a later stage finds wrong about a source becomes a delta of that source, the way a finding about the project becomes a delta of its profile ("When something was learned").
+
+**Sources are read-only.** No agent writes to one, and the plugin's source guard — a hook that is always on — refuses edits inside a registered source (best effort: it judges what the command line shows): a file tool, a redirection, `rm`, `mv`, `sed -i`, a copy into it, a git command that changes it. Copying from a source into the project is allowed. If a ticket can only be done by changing a source, it is out of scope for this project's pipeline, and the person is told.
+
+**Credentials** are the ones git already has on this machine. The pipeline never asks for a token or writes one; a URL given with one has it removed before it is stored. A `ref` is a branch or a tag, followed exactly; a commit id cannot be followed. A source that cannot be reached is used as last learned, and the person is told.
 
 ## Project configuration
 

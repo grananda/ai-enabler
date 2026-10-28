@@ -45,6 +45,11 @@ the session that produced the change.
 <!-- Omit when there was none. -->
 <One entry per delta, in order: what changed and why, what was added, what was removed (criteria, tests, code).>
 
+### External sources
+
+<!-- Omit when the project has none. -->
+<Each source the change relies on — by its URL or document name, never a local path — and what it imposed: "Orders API contract (git.example.com/team/contracts, openapi/orders.yaml): error bodies and status codes". Anything in a source that the change could not follow, and why.>
+
 ### Deviations and assumptions
 
 <Where the implementation departed from the plan without a delta; assumptions made about the ticket. "None" otherwise.>

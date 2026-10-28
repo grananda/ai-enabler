@@ -4,7 +4,7 @@ description: "Checks that a project is ready for the ai-enabler delivery pipelin
 argument-hint: "[JIRA-KEY to test with] [--init]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.1.2"
+  version: "1.2.0"
 ---
 
 # ai-enabler:delivery-doctor — is this project ready?
@@ -22,9 +22,10 @@ Run them all, then print one table: check, status (`ok`, `warn`, `missing`), and
 5. **Build and tests.** From the manifests and the project's docs, identify the build, test and coverage commands. Do not run the suite; report what was found and what is missing (no tests, no coverage tool).
 6. **Project rules.** Whether `CLAUDE.md`, `AGENTS.md` or contribution guidelines exist for the agents to follow.
 7. **Repository profile.** Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repo_profile.py" check` and report whether the repository has been learned (`missing`, `unrecorded`, `fresh`, `stale` with the files that changed), where it is kept (`root`), how many deltas it has, how long the profile is, and anything under `suggest_relearn`. Do not build, record or rebuild it here.
-8. **Configuration.** Whether `.enabler/config.json` exists and parses; list any key that differs from the defaults in `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md`. Whether `.enabler/runs/`, `.enabler/repo-profile/` and `.enabler/tickets/` are kept out of git: `git check-ignore -q .enabler/runs/x .enabler/repo-profile/x .enabler/tickets/x` (the check in step 7 has just put a `.gitignore` inside each).
-9. **Local-only mode.** Whether `.enabler/local-only` exists (show its line) or `git.local_only` is true. If so, say that pushes, pull requests and Jira writes are blocked for this project, and that only the person lifts it by deleting the file.
-10. **Usage capture.** Whether the `ai-enabler-metrics` plugin is installed (its skills are listed in this session) and whether `.enabler/metrics/` — or `.enabler/kpi/`, its name before the metrics plugin's 1.0.0 — exists in the project, which is what switches capture on.
+8. **External sources.** Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sources.py" check` and report each source with its kind, where it is read and its status (`missing`, `fresh`, `stale`, `unreachable`). If the project was never asked about sources, say so and point to `/ai-enabler:delivery-sources`. Do not fetch or learn anything here.
+9. **Configuration.** Whether `.enabler/config.json` exists and parses; list any key that differs from the defaults in `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md`. Whether `.enabler/runs/`, `.enabler/repo-profile/`, `.enabler/tickets/` and `.enabler/sources/` are kept out of git: `git check-ignore -q .enabler/runs/x .enabler/repo-profile/x .enabler/tickets/x .enabler/sources/x` (the check in step 7 has just put a `.gitignore` inside each).
+10. **Local-only mode.** Whether `.enabler/local-only` exists (show its line) or `git.local_only` is true. If so, say that pushes, pull requests and Jira writes are blocked for this project, and that only the person lifts it by deleting the file.
+11. **Usage capture.** Whether the `ai-enabler-metrics` plugin is installed (its skills are listed in this session) and whether `.enabler/metrics/` — or `.enabler/kpi/`, its name before the metrics plugin's 1.0.0 — exists in the project, which is what switches capture on.
 
 ## When something is missing
 

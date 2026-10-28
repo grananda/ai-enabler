@@ -13,7 +13,7 @@ It is not spec-driven: there is no specification to write and maintain, no chang
 | # | Stage | Subagent | Reads | Writes | Human gate |
 |---|---|---|---|---|---|
 | 1 | Intake | `delivery-ticket-analyst`, then `delivery-ticket-refiner` | Jira issue, links, comments (MCP); the repository profile when there is one | `requirements.json`, strengthened by refinement, and `refinement.md` | only if the ticket is blocked |
-| 2 | Scout | `delivery-repo-scout` | manifests, code, rules, CI — the first time only; afterwards just what changed | the repository profile or a delta to it, and `repo-context.md` | — |
+| 2 | Scout | `delivery-repo-scout`, and `delivery-source-scout` in parallel when the project has external sources | manifests, code, rules, CI — the first time only; afterwards just what changed. Other repositories, sibling folders and documents, the same way | the repository profile or a delta to it, and `repo-context.md`; a profile or delta per source, and `external-context.md` | — |
 | 3 | Plan | `delivery-solution-planner` | the two files above, the code | `plan.md` | **Gate 1 — approve the plan** |
 | 4 | Acceptance tests | `delivery-test-engineer` | the ticket's acceptance criteria, the plan | tests, `acceptance-tests.md` | — |
 | 5 | Implement | `delivery-code-implementer` | plan, context, the acceptance tests | code on a feature branch that makes them pass | — |
@@ -131,8 +131,8 @@ Each gate counts how often you send the work back, separately: `adjust` at Gate 
 
 | Skill | Arguments | What it does |
 |---|---|---|
-| `delivery-run` | `<KEY \| file.md> [--gates ...] [--max-rounds 3] [--ship] [--local] [--no-refine] [--refresh] [--relearn] [--from <stage>]` | The full pipeline. Run it again with the same key to resume. |
-| `delivery-plan` | `<KEY \| file.md> [--no-refine] [--refresh] [--relearn]` | Stages 1–3. Plan and readiness verdict; no code, no git, no Jira write. |
+| `delivery-run` | `<KEY \| file.md> [--gates ...] [--max-rounds 3] [--ship] [--local] [--context <url\|path>] [--no-refine] [--refresh] [--relearn] [--from <stage>]` | The full pipeline. Run it again with the same key to resume. |
+| `delivery-plan` | `<KEY \| file.md> [--context <url\|path>] [--no-refine] [--refresh] [--relearn]` | Stages 1–3. Plan and readiness verdict; no code, no git, no Jira write. |
 | `delivery-implement` | `<KEY> [--steps 1,2]` | Stages 4 and 5 on an approved plan: acceptance tests, then the code. |
 | `delivery-test` | `[KEY \| paths] [--base b] [--target 80] [--minimum 70] [--levels unit,integration,e2e] [--before-code]` | Stages 4 and 6, or stand-alone test generation for any change. |
 | `delivery-review` | `[KEY \| PR \| paths] [--base b] [--lenses ...] [--fix] [--min-confidence 80]` | Stage 7, or a stand-alone review of a branch, pull request or paths. |
@@ -140,6 +140,7 @@ Each gate counts how often you send the work back, separately: `adjust` at Gate 
 | `delivery-doctor` | `[KEY] [--init]` | Checks Jira MCP, git, PR CLI, test commands, configuration, usage capture. |
 | `delivery-ticket-refine` | `<KEY \| ticket.md> [--out path]` | A more robust version of an existing ticket, as a local Markdown file. Never writes to Jira. |
 | `delivery-ticket-create` | `<a few sentences> [--out path]` | A complete ticket from a short brief, as a local Markdown file. A Jira issue only if you ask for it at the end. |
+| `delivery-sources` | `[add <url\|path> [--about ...] [--paths ...] \| list \| refresh \| relearn NAME \| remove NAME]` | The external sources the pipeline reads besides the project: other repositories, sibling clones, folders, documents. |
 
 `delivery-test`, `delivery-review` and `delivery-ship` work without a ticket, so a team can start with those and adopt `delivery-run` later.
 
@@ -231,6 +232,7 @@ Each stage runs in its own context and hands over a file, not a conversation. Th
 | `delivery-ticket-analyst` | Normalises the ticket, makes each acceptance criterion testable, judges readiness | `sonnet` | Everything except edit tools (it needs the MCP tools, whose names vary by server) |
 | `delivery-ticket-refiner` | Closes the gaps in a ticket's definition as marked additions, assumptions and questions; writes the Markdown ticket for the two ticket skills | `opus`, effort `high` | Everything except edit tools; reads Jira, never writes to it |
 | `delivery-repo-scout` | Finds the stack, the commands that really work here, conventions, hard rules | `sonnet` | Read, Grep, Glob, Bash, Write (its own output only) |
+| `delivery-source-scout` | Learns the external sources — other repositories, sibling folders, documents including Word — once each, and writes what they impose on each ticket | `sonnet` | Read, Grep, Glob, Bash, Write (its own output only); never writes to a source |
 | `delivery-solution-planner` | File-level plan with a trace from every criterion to steps and tests; writes the delta when an approved plan changes | `opus`, effort `high` | Read, Grep, Glob, Bash, Write (the plan and deltas; in a delta also the acceptance criteria) |
 | `delivery-code-implementer` | Writes the code in the plan so the acceptance tests pass; applies fix lists | `sonnet` | All; never edits an acceptance test |
 | `delivery-test-engineer` | Acceptance tests before the code; after it, the remaining tests and coverage of the changed code (target 80 %, minimum 70 %) | `sonnet` | All; never edits production code |
@@ -296,6 +298,7 @@ Every ticket gets its own folder, `.enabler/runs/<KEY>/`, where `<KEY>` is the J
 |---|---|---|---|
 | `state.json` | start, then after every stage | the skill | Where the run stands: the stage to run next, the stages done, the branch, whether the plan was approved, the round counters of each gate, the deltas and whether each was approved and applied, whether tests go before or after the code, how many fix rounds were used, the pull-request URL, and every point where a person stepped in. This is what `/ai-enabler:delivery-run <KEY>` reads to resume. |
 | `requirements.json` | stage 1, intake | `delivery-ticket-analyst`, then `delivery-ticket-refiner` | The ticket in a normalised form, with what refinement added marked as such: summary, requirements, each acceptance criterion with an id (`AC-1`, `AC-2`…) and whether the ticket stated it or the analyst derived it, constraints, what is out of scope, dependencies, assumptions and open questions. Also two verdicts: whether the ticket is ready to implement, and whether its criteria are good enough to write tests from. |
+| `external-context.md` | stage 2, scout | `delivery-source-scout` | What the project's external sources impose on this ticket — contracts, schemas, rules, components — each with its source and the path inside it, and any contradiction with the ticket. Only when the project has sources. |
 | `refinement.md` | stage 1, after intake | `delivery-ticket-refiner` | What refinement added to the ticket — each requirement, criterion and assumption with the reason — and the questions it could not answer for you. It is what to read at the plan gate before accepting or rejecting an addition. Absent when refinement was skipped. |
 | `repo-context.md` | stage 2, scout | `delivery-repo-scout` | What this ticket adds to the repository profile: the existing code closest to the ticket, each file with a line on why, and anything true only for this run (uncommitted changes, a branch that already exists). Everything that holds for the repository whatever the ticket is in the profile, below. |
 | `deltas/delta-NN.before/` | just before a delta is written | the skill | Copies of `plan.md` and `requirements.json` as they were, so the delta can be revised or cancelled cleanly. |
@@ -317,13 +320,14 @@ A few things worth knowing:
 
 `state.json` records each point where a person stepped in (`human_interventions`), which is the pipeline's own view of how autonomous a run was. The `ai-enabler-metrics` plugin measures the same thing from the outside.
 
-Four more things can sit directly in `.enabler/`:
+Five more things can sit directly in `.enabler/`:
 
 | File | What it is |
 |---|---|
 | `config.json` | Optional configuration for the pipeline (the keys in "Configuration" above). A local file like the rest. |
 | `repo-profile/` | What the pipeline has learned about the repository. See "The repository profile" below. |
 | `tickets/` | Tickets written by `delivery-ticket-refine` and `delivery-ticket-create`, one Markdown file each. Local, kept out of git, yours to edit. See "Tickets: refining and creating" above. |
+| `sources/` | The external sources: their list (`sources.json`), what was learned about each, and the private copy of a repository given by URL. See "External sources" below. |
 | `local-only` | A marker that exists only after someone refused to upload. While it is there, nothing leaves the machine. See "When you say no" below. |
 
 ## The repository profile: learned once, complemented by deltas
@@ -366,6 +370,46 @@ A delta is also written when the pipeline learns something the hard way: a build
 **It stays on your machine.** The profile is a local working file. It is not committed, and the pipeline does not edit your `.gitignore` to make it so: `.enabler/repo-profile/` and `.enabler/runs/` each hold a `.gitignore` of their own that ignores everything in them. Nothing from the profile is copied into `CLAUDE.md`, `AGENTS.md` or any project file; those remain yours to write. You can read and correct the profile and its deltas by hand, and no `--relearn` is needed afterwards.
 
 **Where it is.** In the `.enabler/` of the folder you opened Claude Code in, next to the runs. If you work in one module of a monorepo, the profile describes that module.
+
+## External sources: other repositories and documents
+
+The project you change is rarely the whole story. The API contracts live in another repository, the components in a design system, the business rules in a Word document. The pipeline can read those too, the same way it reads your repository: learned once, complemented by deltas, and only what matters handed to each ticket.
+
+**What can be a source**
+
+| Kind | Example | How it is read |
+|---|---|---|
+| A repository by URL | `https://git.example.com/team/api-contracts.git` | A shallow, private copy under `.enabler/sources/`, refreshed when the remote moves |
+| A repository already cloned next to yours | `../design-system` | Where it is. Give its URL and the pipeline notices the clone and uses it, instead of cloning again |
+| A folder | `../specs`, or a `vendor/` folder inside the project | Where it is |
+| A document | `docs/business-rules.docx`, a PDF, Markdown, HTML, text | Where it is. Word files are converted to Markdown with the standard library, nothing to install |
+
+**Adding them takes one answer.** The first time you run `delivery-run` or `delivery-plan` in a project, the preflight asks once whether the work depends on anything else, and offers the repositories it finds next to yours:
+
+```
+Besides this repository, does the work depend on anything else — another repository,
+a folder, a document? I can see these repositories next to this one: contracts, design-system.
+```
+
+Name the ones that apply, give a URL or a path, or say none — "none" is remembered. Later: `--context <url|path>` on any run, or `/ai-enabler:delivery-sources add <url|path>`. A source has one sentence on what it is for (`--about`), which is how the scout decides whether it matters for a ticket, and optionally the part that matters (`--paths openapi/**`).
+
+**How they are used, stage by stage.** `delivery-source-scout` works twice, each time in parallel with something else, so it adds no waiting:
+
+| Stage | What happens with the sources |
+|---|---|
+| 1 Intake | Each source is learned once — a short profile: what it is, what it imposes, where things are — or brought up to date with a delta when it changed (a new commit, an edit in the sibling clone, a new version of the document). In parallel with the analyst, so the **refiner** already has them: a specification answers many gaps before anyone is asked |
+| 2 Scout | For this ticket, `external-context.md`: only what applies, with the source and the path inside it. In parallel with the repository scout |
+| 3 Plan | The **planner** implements contracts as the source defines them and says so in each step; a source that contradicts the ticket is a blocking question. The plan gate lists the sources the plan relies on |
+| 4–6 Tests | The **test engineer** checks the change against the contract — fields, status codes, error bodies, limits — not against what the code happens to return |
+| 5 Implement | The **implementer** follows them like the repository's own rules, and reports anything a source gets wrong, which becomes a delta of that source |
+| 7 Review | The **reviewers** check conformance to the sources, with the source and path as evidence, and that nothing inside a source was changed |
+| 8 Ship | The delivery report and the pull request name the sources the change relied on, by URL or document name — never a local path |
+
+The stand-alone skills use them too: `delivery-test`, `delivery-review`, `delivery-implement`, `delivery-ticket-refine` and `delivery-ticket-create` bring the sources up to date first, and outside a pipeline run the agents read the source profiles directly.
+
+**Sources are read-only.** No agent changes them, and a hook that is always on — not only in local-only mode — refuses, on a best-effort reading of the command line, any edit inside a registered source: writing a file, a redirection, `rm`, `mv`, `sed -i`, a copy into it, a git command that changes it. Copying from a source into your project is fine. If a ticket can only be done by changing another repository, the pipeline says so and leaves it to you.
+
+**Credentials** are the ones your git already uses (an SSH agent, a credential helper). The pipeline never asks for a token, and strips one from a URL before storing it. A source it cannot reach is used as last learned, and you are told.
 
 ## When you say no, nothing leaves your machine
 

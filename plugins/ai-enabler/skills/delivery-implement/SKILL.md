@@ -4,7 +4,7 @@ description: Implements an already approved ai-enabler plan — creates the feat
 argument-hint: <JIRA-KEY> [--steps 1,2,3]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.1.1"
+  version: "1.2.0"
 ---
 
 # ai-enabler:delivery-implement — execute an approved plan
@@ -18,7 +18,7 @@ Read first:
 
 ## Flow
 
-1. **Preflight.** `$ARGUMENTS` gives the key. `.enabler/runs/<KEY>/plan.md` must exist; if it does not, say so and point to `/ai-enabler:delivery-plan <KEY>`. If `plan_approved` is not set in `state.json`, show the plan summary and ask for approval once — code is not written from a plan nobody approved.
+1. **Preflight.** `$ARGUMENTS` gives the key. `.enabler/runs/<KEY>/plan.md` must exist; if it does not, say so and point to `/ai-enabler:delivery-plan <KEY>`. If `plan_approved` is not set in `state.json`, show the plan summary and ask for approval once — code is not written from a plan nobody approved. If the project has external sources (`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sources.py" status`) and the run has no `external-context.md` — the sources were added after the plan — launch `ai-enabler:delivery-source-scout` with the `ticket` task first, as Step 2 of `${CLAUDE_PLUGIN_ROOT}/skills/delivery-run/SKILL.md` says, and tell the person the plan was made without them.
 2. **Branch.** Create the feature branch from the base branch, or stay on it if it already exists, following the git safety rules. Record it in `state.json`.
 3. **Acceptance tests first.** If `state.json` holds a delta that is approved and not applied, this run is about that delta: launch `ai-enabler:delivery-test-engineer` in `acceptance` mode with the delta, whatever else is true. Otherwise, unless `acceptance-tests.md` already exists in the run directory, or `test_order` is `after` (see "Test order" in the run-and-config reference; derive it from `requirements.json` if the state does not have it), launch `ai-enabler:delivery-test-engineer` with `mode: acceptance` so the tests for the ticket's criteria exist before the code. When the order is `after`, say why in one line.
 4. **Implement.** Launch `ai-enabler:delivery-code-implementer` in `implement` mode with the run directory, and with the step subset if `--steps` was given. Tell it the acceptance tests are there to be passed, not edited. For a plan organised in slices, launch once per slice, in order.

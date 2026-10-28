@@ -4,7 +4,7 @@ description: Turns a few sentences typed to Claude Code into a complete ticket, 
 argument-hint: <what is needed, in a few sentences> [--out <path>]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # ai-enabler:delivery-ticket-create — a few sentences into a ticket
@@ -18,6 +18,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/ticket-readiness.md` first: it defines wh
 1. **Preflight.** Check, in this order:
    - `$ARGUMENTS` holds a brief. With none, ask what is needed. If it names a Jira key or an existing file instead of describing work, that is a ticket to refine: point to `/ai-enabler:delivery-ticket-refine`.
    - The brief says **what** should change and **for whom or why**. If either is missing, ask — in one go, three questions at most, each about something that changes the feature (who uses it, what the result is, what is explicitly not wanted). Do not interview: everything else is the refiner's work, and what nobody knows yet becomes an assumption or an open question in the ticket.
+   - When the project has external sources (`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sources.py" status`), bring them up to date as Step 1 of `${CLAUDE_PLUGIN_ROOT}/skills/delivery-run/SKILL.md` says under "Learn the external sources at the same time": the refiner reads their profiles, and a specification or a contract answers many gaps before anyone is asked.
    - Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repo_profile.py" check`. Take `root` from it: the output goes under `<root>/.enabler/tickets/`, a folder the script keeps out of git. If the status is `missing`, say in one line that the ticket will be written without knowledge of the repository; do not build the profile now.
    - The output path: `--out` if given, otherwise `<root>/.enabler/tickets/<slug>.md`, where the slug is two to five words from the brief, lowercase with hyphens. Never overwrite a file that is there: add `-2`, `-3`.
 2. **Write the ticket.** Launch `ai-enabler:delivery-ticket-refiner` with `mode: document`, the `brief` exactly as the person wrote it, their answers to your questions, and the absolute output path.

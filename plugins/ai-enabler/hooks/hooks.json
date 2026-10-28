@@ -1,5 +1,5 @@
 {
-  "description": "Remote guard. When the project is local-only (.enabler/local-only exists, or git.local_only is true in .enabler/config.json) it blocks git push, gh/glab writes, write requests to GitHub, GitLab and Bitbucket, and writes through GitHub, GitLab, Bitbucket, Jira or Confluence MCP tools. Does nothing otherwise.",
+  "description": "Remote guard. When the project is local-only (.enabler/local-only exists, or git.local_only is true in .enabler/config.json) it blocks git push, gh/glab writes, write requests to GitHub, GitLab and Bitbucket, and writes through GitHub, GitLab, Bitbucket, Jira or Confluence MCP tools. Does nothing otherwise. Source guard, always on: refuses edits inside the external sources registered in .enabler/sources/sources.json, which the pipeline only reads.",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,6 +8,16 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/remote_guard.py\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/source_guard.py\"",
             "timeout": 10
           }
         ]
