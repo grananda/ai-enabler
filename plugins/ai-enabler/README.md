@@ -391,7 +391,9 @@ Besides this repository, does the work depend on anything else — another repos
 a folder, a document? I can see these repositories next to this one: contracts, design-system.
 ```
 
-Name the ones that apply, give a URL or a path, or say none — "none" is remembered. Later: `--context <url|path>` on any run, or `/ai-enabler:delivery-sources add <url|path>`. A source has one sentence on what it is for (`--about`), which is how the scout decides whether it matters for a ticket, and optionally the part that matters (`--paths openapi/**`).
+Name the ones that apply, give a URL or a path, or say none — "none" is remembered. Later: `--context <url|path>` on any run, or `/ai-enabler:delivery-sources add <url|path>`.
+
+**Adding a source to a project already under way** needs nothing to start again. Later runs use it from their first stage. A run in progress picks it up when you resume it: before the plan is approved, the plan is made with it; after, `external-context.md` is rewritten before the next stage, and if the source imposes something the approved plan does not do, you are shown it — a change of behaviour is a delta at the plan gate, never a silent change. `delivery-sources` lists the runs in progress and tells you what will happen to each. A source has one sentence on what it is for (`--about`), which is how the scout decides whether it matters for a ticket, and optionally the part that matters (`--paths openapi/**`).
 
 **How they are used, stage by stage.** `delivery-source-scout` works twice, each time in parallel with something else, so it adds no waiting:
 

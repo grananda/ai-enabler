@@ -6,6 +6,14 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.6.1] — 2026-10-28
+
+`ai-enabler` 1.5.1 · `ai-enabler-metrics` 1.1.0
+
+### Changed
+
+- **ai-enabler:** `delivery-sources` explains what happens to runs already in progress when a source is added, removed or refreshed — each picks it up when resumed: a plan not yet approved is made with it; after approval, what the source imposes is shown, and a change of behaviour is a delta at the plan gate. The plugin README says the same.
+
 ## [1.6.0] — 2026-10-28
 
 `ai-enabler` 1.5.0 · `ai-enabler-metrics` 1.1.0

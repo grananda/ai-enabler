@@ -4,7 +4,7 @@ description: "Manages the external sources of context the ai-enabler pipeline re
 argument-hint: "[add <url|path> [--name N] [--about TEXT] [--paths GLOB,GLOB] [--ref REF] | list | refresh [NAME] | relearn NAME | remove NAME]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # ai-enabler:delivery-sources — what else the pipeline should read
@@ -29,6 +29,17 @@ Read "External sources" in `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` 
 **`relearn NAME`.** `sources.py reset <name>`, then learn it again as in `add`. For a source whose deltas pile up or whose profile no longer fits.
 
 **`remove NAME`.** Confirm, then `sources.py remove <name>`. It forgets what was learned and deletes the pipeline's own copy of a URL source; the person's own folders and documents are never touched.
+
+## A project already under way
+
+Sources can be added at any time; nothing has to start again.
+
+- **Later runs** use the source from their first stage.
+- **Runs in progress.** After adding, removing or refreshing a source, look for runs that are not finished (`.enabler/runs/*/state.json` with `stage` other than `done` and `status` other than `stopped`) and tell the person what will happen to each:
+  - before its plan was approved: when it is resumed (`/ai-enabler:delivery-run <KEY>` or `/ai-enabler:delivery-plan <KEY>`), the source is learned, `external-context.md` is rewritten, and the plan is made — or revised — with it;
+  - after its plan was approved: when it is resumed, `external-context.md` is rewritten before the next stage; if the source imposes something the approved plan does not do, that is shown to the person and, if it changes behaviour, handled as a delta at the plan gate. Nothing already written is changed silently;
+  - held at the ship gate: the same, before the delivery report is written again.
+- Offer to learn the new source now, so that resuming does not wait for it.
 
 ## Adding
 
