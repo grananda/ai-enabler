@@ -3,3 +3,4 @@ __pycache__/
 .enabler/
 .DS_Store
 kpi-intent/
+.graphify/

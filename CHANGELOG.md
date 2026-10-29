@@ -6,6 +6,14 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.6.2] — 2026-10-29
+
+`ai-enabler` 1.5.1 · `ai-enabler-metrics` 1.1.0
+
+### Changed
+
+- **Marketplace:** the history of the marketplace is joined to the AI Transformation Framework repository, whose first commit was an import of version 1.4.0. Nothing in the plugins changes; `.graphify/` is ignored, as in that import.
+
 ## [1.6.1] — 2026-10-28
 
 `ai-enabler` 1.5.1 · `ai-enabler-metrics` 1.1.0
