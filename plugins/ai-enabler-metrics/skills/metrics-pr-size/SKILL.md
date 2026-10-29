@@ -4,7 +4,7 @@ description: Measures pull request size — the median lines changed per merged 
 argument-hint: "[--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--refresh]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # ai-enabler-metrics:metrics-pr-size — pull request size
@@ -34,6 +34,8 @@ The arithmetic is done by a script, not by you: `pr_metrics.py` reads GitHub thr
 ## Which folder
 
 Paths in this skill say `.enabler/metrics/`. A project set up before 1.0.0 may still keep its data in `.enabler/kpi/`; the scripts use whichever exists and print the paths they write. In such a project read and write under `.enabler/kpi/` — never create `.enabler/metrics/` beside it, which would split the data.
+
+In a project where usage capture was never switched on — no `.enabler/metrics/` and no `.enabler/kpi/` — the delivery scripts write to `.enabler/delivery/` instead (snapshots, `cache/`, `jira-input/`, and `reports/<date>/`), because creating `.enabler/metrics/` would switch capture on. There, read and write every path below `.enabler/delivery/` in place of `.enabler/metrics/delivery/`, and never create `.enabler/metrics/` yourself. Use the paths the scripts print.
 
 ## Rules
 

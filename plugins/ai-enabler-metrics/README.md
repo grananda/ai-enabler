@@ -5,6 +5,21 @@
 - **Usage metrics** — how AI is being used: how much a person interacts with the machine, where the time goes, what it costs. Captured by hooks, so nothing is self-reported.
 - **Delivery-flow metrics** — how the team delivers: pull request size, review waiting time, rework, cycle time. Read from GitHub and Jira, for everyone's work, with or without AI.
 
+## Skills
+
+| Skill | What it does |
+|---|---|
+| `/ai-enabler-metrics:metrics-usage-init` | Switches usage capture on for a project (creates `.enabler/metrics/`), reports whether it is on (`--status`), or explains how to switch it off (`--off`) |
+| `/ai-enabler-metrics:metrics-usage-report` | The usage report from what the hooks recorded — interaction, time, cost per session, user, ticket, skill, agent and model — followed by the delivery-flow dashboard |
+| `/ai-enabler-metrics:metrics-stale-assets` | Skills and agents with their owner, version and last use; the ones unused for 90 days or without an owner |
+| `/ai-enabler-metrics:metrics-delivery-report` | The four delivery metrics on one dashboard, with the KPI verdicts when targets are set |
+| `/ai-enabler-metrics:metrics-pr-size` | Pull request size |
+| `/ai-enabler-metrics:metrics-review-wait` | Waiting time until the first human review |
+| `/ai-enabler-metrics:metrics-rework` | Reverts and follow-up fixes |
+| `/ai-enabler-metrics:metrics-cycle-time` | Jira cycle time, tickets that move backward, time blocked |
+
+The hooks need no setup beyond `metrics-usage-init`: they come with the plugin and stay silent in projects that have not opted in.
+
 ## Metrics, and when one is a KPI
 
 None of these is a KPI by default. A metric becomes a **KPI** only when the team sets a target for it, and only the four delivery metrics can take one:
@@ -93,7 +108,7 @@ Under `delivery` in `.enabler/metrics/config.json`; everything is optional:
 | `jira.statuses.order` | a common workflow | The statuses from first to last; statuses in the same group are the same step. Decides what "backward" means |
 | `jira.statuses.in_progress`, `jira.statuses.blocked` | `In Progress`…, `Blocked`… | Where cycle time starts, and what counts as blocked |
 
-The ticket key pattern is the top-level `ticket_pattern`, shared with the AI usage capture.
+The ticket key pattern is the top-level `ticket_pattern`, shared with the AI usage capture; `delivery.ticket_pattern` overrides it for the delivery metrics alone. Without either, a key is two to ten capitals or digits, a hyphen and a number (`PROJ-123`).
 
 ### Per-developer figures
 
@@ -185,7 +200,7 @@ The user id is `git config user.email`, falling back to the OS user name. Set `"
 
 ## Local or shared
 
-`metrics-usage-init` writes a `.gitignore` inside `.enabler/metrics/`. By default it ignores `events/`, so each developer's data stays on their machine and reports are personal. With `--share`, event files are committed: there is one file per user and session, so they never conflict, and anyone can report on the whole team. Sharing puts user ids into the repository, so make it a team decision, and consider `anonymize_users`.
+`metrics-usage-init` writes a `.gitignore` inside `.enabler/metrics/`. It always ignores `.state/`, `reports/`, `delivery/cache/` and `delivery/jira-input/`. By default it also ignores `events/` and `delivery/`, so each developer's data stays on their machine and reports are personal. With `--share`, event files are committed: there is one file per user and session, so they never conflict, and anyone can report on the whole team. Sharing puts user ids into the repository, so make it a team decision, and consider `anonymize_users`.
 
 ## Configuration
 

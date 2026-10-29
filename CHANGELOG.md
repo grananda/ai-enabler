@@ -6,6 +6,76 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.6.2] — 2026-10-29
+
+`ai-enabler` 1.5.1 · `ai-enabler-metrics` 1.1.0
+
+### Changed
+
+- **Marketplace:** the history of the marketplace is joined to the AI Transformation Framework repository, whose first commit was an import of version 1.4.0. Nothing in the plugins changes; `.graphify/` is ignored, as in that import.
+
+## [1.6.1] — 2026-10-28
+
+`ai-enabler` 1.5.1 · `ai-enabler-metrics` 1.1.0
+
+### Changed
+
+- **ai-enabler:** `delivery-sources` explains what happens to runs already in progress when a source is added, removed or refreshed — each picks it up when resumed: a plan not yet approved is made with it; after approval, what the source imposes is shown, and a change of behaviour is a delta at the plan gate. The plugin README says the same.
+
+## [1.6.0] — 2026-10-28
+
+`ai-enabler` 1.5.0 · `ai-enabler-metrics` 1.1.0
+
+### Added
+
+- **ai-enabler:** external sources of context. Besides the project, the pipeline can read other repositories (by URL, or already cloned in a folder next to the project), other folders, and documents — Markdown, text, PDF, HTML and Word (`.docx`, converted with the standard library, nothing to install). Each source is learned once by a new agent, `delivery-source-scout`, in parallel with the repository scout: a short profile, a delta when the source changes, and for every ticket `external-context.md` with only what applies. Sources are learned during intake, in parallel with the analyst, so the refiner already has them; the planner implements contracts as the source defines them, the test engineer tests against them, the reviewers check conformance, and the plan gate, the delivery report and the pull request name the sources relied on. What a stage finds wrong about a source becomes a delta of that source. The stand-alone skills (`delivery-test`, `delivery-review`, `delivery-implement`, `delivery-ticket-refine`, `delivery-ticket-create`) use them too.
+- **ai-enabler:** adding a source takes one answer. The preflight of `delivery-run` and `delivery-plan` asks once per project whether the work depends on anything else, offering the repositories it finds next to the project; `--context <url|path>` adds one on any run; the new skill `delivery-sources` adds, lists, refreshes, relearns and removes them. A URL whose clone is already next to the project is read there, not cloned again.
+- **ai-enabler:** sources are read-only. A new hook, always on, refuses edits inside a registered source — file tools, redirections, `rm`, `mv`, `sed -i`, copies into it, git commands that change it. Copying from a source into the project is allowed.
+- **ai-enabler:** `delivery-doctor` reports each source and its status.
+- **ai-enabler:** a source changes only when its own part changes: the followed branch or tag of a URL source (matched exactly), the folder and its `paths` in a sibling clone — a commit elsewhere in that repository does not count —, the document itself. `external-context.md` is rewritten when a source changed or was added since it was written, also on resume. A URL given with credentials has them removed before it is stored.
+
+## [1.5.0] — 2026-10-23
+
+`ai-enabler` 1.4.0 · `ai-enabler-metrics` 1.1.0
+
+The test stage was more than half of the delivery time on a real project: the whole suite ran in every round, mutation testing was improvised by the orchestrator and ran against all of it, coverage was chased to 100 % file by file, and long commands were waited for with fixed sleeps. The test engineer now works to a budget. Mutation testing being on by default changes what a delivery does, so it is announced here; it adds tests and does not break anything that worked before, which is why the plugin moves by a minor version.
+
+### Added
+
+- **ai-enabler:** `tests.full_suite_runs` (default 2): the whole suite runs at most that many times per coverage stage — once to catch regressions, once to measure. Between rounds, only the tests the run created or changed.
+- **ai-enabler:** mutation testing is part of the coverage stage, on by default. It is limited to the code the ticket changed that decides something (business rules, permissions, validations, calculations, security and privacy), runs each mutant against the feature's tests only, in one pass, up to `tests.mutation.max_mutants` (40). Surviving mutants get a test or a stated reason, and the ship gate shows how many were caught. `tests.mutation.enabled: false` turns it off for a project.
+- **ai-enabler:** the scout records how long the whole test suite takes and a faster form of the test command (parallel, or changed files only) when the repository documents them; it runs nothing to find them. The test engineer verifies the faster form the first time it uses it and measures the duration, and what it finds becomes a delta to the profile.
+- **ai-enabler:** the test report, the pull-request template and the ship gate give the duration of every whole-suite run and the mutation results.
+- **ai-enabler-metrics:** `metrics-delivery-report` passes `--followup-days` to the rework metric.
+
+### Changed
+
+- **ai-enabler:** coverage is judged on the changed code as a whole, and the test engineer stops adding tests once the target is met. Target and minimum are unchanged (80 % and 70 %).
+- **ai-enabler:** long test commands are waited for, not polled with fixed sleeps, and never started twice on the same tests at once.
+- **ai-enabler:** `verify` mode runs only the tests in its scope; the whole suite only when no scope is given.
+- **ai-enabler:** every skill that launches the test engineer (`delivery-run`, `delivery-test`, `delivery-implement`, `delivery-review`) passes it the mode, the configuration and the scope only. More verification than that is the person's decision at a gate, never added to a brief by the orchestrator.
+
+### Fixed
+
+- **ai-enabler:** the test engineer accepts more verification than the configuration gives when the person decided it (more tests below the minimum); before, its budget refused it "whoever asks".
+- **ai-enabler:** `--local` was described in the safety rules as lasting one run; it switches the project to local-only until a person deletes the marker.
+- **ai-enabler:** the plugin README lists `--local` for `delivery-ship` and `git.local_only` in the configuration; `test-report.md` is described with its durations and mutation results; the root README no longer says usage capture adds a rule to the project's `.gitignore`, and its diagram shows the test budget.
+- **ai-enabler:** the remote guard's description names every write it blocks (GitHub, GitLab and Bitbucket as well as Jira and Confluence).
+- **ai-enabler:** the frontmatter of `delivery-run`, `delivery-test`, `delivery-review`, `delivery-ship` and `delivery-doctor` is valid YAML; their descriptions were unquoted and contained colons.
+- **ai-enabler-metrics:** the delivery skills read and write `.enabler/delivery/` in a project where usage capture was never switched on, as the scripts already did, instead of creating `.enabler/metrics/` and switching capture on by accident.
+- **ai-enabler-metrics:** the argument hints of `metrics-usage-init` and `metrics-usage-report` are valid YAML.
+- **ai-enabler-metrics:** the example Jira data uses placeholder names (`PROJ-123`, "Jane Doe"); the README documents `delivery.ticket_pattern` and the default key pattern, and both the README and the metrics reference describe every folder under `.enabler/metrics/`.
+
+## [1.4.1] — 2026-10-22
+
+`ai-enabler` 1.3.1 · `ai-enabler-metrics` 1.0.0
+
+### Fixed
+
+- **Marketplace:** the root README's list of skills now includes `delivery-ticket-refine` and `delivery-ticket-create`, says that `delivery-run` and `delivery-plan` accept a Markdown file as well as a key, and its quick start shows how to start without a ticket. The plugin descriptions in the README and in the marketplace catalogue mention ticket refinement.
+- **Marketplace:** the `ai-enabler-metrics` README has a table of all its skills, including `metrics-usage-init`, `metrics-usage-report` and `metrics-stale-assets`, which were only mentioned in passing.
+- **ai-enabler:** the description of `delivery-ship` says the pull-request body follows the template the person chose, instead of "the delivery report as its body".
+
 ## [1.4.0] — 2026-10-09
 
 `ai-enabler` 1.3.0 · `ai-enabler-metrics` 1.0.0

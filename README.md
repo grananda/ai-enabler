@@ -6,7 +6,7 @@ It ships two plugins:
 
 | Plugin | What it does |
 |---|---|
-| [`ai-enabler`](plugins/ai-enabler/README.md) | Takes a Jira ticket to a pull request. Dedicated subagents read the ticket through the Jira MCP server, analyse the repository, plan, implement, test and review; the human decides at two gates, the plan and the ship. |
+| [`ai-enabler`](plugins/ai-enabler/README.md) | Takes a Jira ticket to a pull request. Dedicated subagents read the ticket through the Jira MCP server, refine its definition, analyse the repository, plan, implement, test and review; the human decides at two gates, the plan and the ship. Also turns a thin ticket, or a few sentences, into a robust ticket as a local Markdown file. |
 | [`ai-enabler-metrics`](plugins/ai-enabler-metrics/README.md) | Measures AI usage with opt-in hooks (human interaction, AI working time, token cost in USD per session, user, ticket, skill and model) and delivery flow with scripts (pull request size, review waiting time, rework, Jira cycle time), and reports both as HTML dashboards with charts. A delivery metric becomes a KPI only when the team sets a target for it; usage figures are context and never take one. Works with any workflow, not only `ai-enabler`. |
 
 ## How it works
@@ -15,15 +15,17 @@ It ships two plugins:
 flowchart TD
     J[(Jira ticket)] -->|MCP| A[delivery-ticket-analyst]
     A --> RF["delivery-ticket-refiner<br/>closes the gaps in the definition"]
+    SS["delivery-source-scout<br/>other repos and documents"] -.->|learned with intake| RF
     RF --> S[delivery-repo-scout]
     S --> P[delivery-solution-planner]
+    SS -.->|external-context.md| P
     P --> G1{{"Gate 1 — plan"}}
     G1 -->|adjust| P
     G1 -->|cancel| X([run stopped])
     G1 -->|approve| AT["delivery-test-engineer<br/>acceptance tests first"]
     AT --> I[delivery-code-implementer]
     I -->|"acceptance tests still red:<br/>one more pass"| I
-    I --> T["delivery-test-engineer<br/>whole suite · coverage 70–80 %"]
+    I --> T["delivery-test-engineer<br/>changed tests · whole suite ≤ 2× · coverage 70–80 % · mutants"]
     T -->|"a test fails because the code is wrong:<br/>fix, then run again (max 2 rounds)"| I
     T -->|"coverage under 70 %"| CV{{"the person decides"}}
     CV -->|"proceed / more tests"| T
@@ -53,7 +55,7 @@ Reading the loops in the diagram:
 - **Gate 1, `adjust`** — the plan goes back to the planner and returns to the gate. **`cancel`** stops the run; nothing was written outside its folder.
 - **Gate 2, `fix`** — a correction goes to the implementer and comes back through coverage and review. A change to *what* is being built becomes a **delta**: a written, approved change to the plan that lists what is added and what is removed, and is carried out acceptance tests first — new tests written and obsolete ones deleted, then code written and dead code deleted.
 - **Gate 2, `local` / `hold` / `no`** — nothing is uploaded: a local commit, or the work left as it is.
-- **Tests that fail while building** — acceptance tests still failing after the implementation get one more implementer pass. A test that fails because the code is wrong goes back to the implementer and is run again, two rounds at most; a test is never edited to agree with the code. Coverage under 70 % stops for your decision. See "Where tests run, and what happens when they fail" in the plugin README.
+- **Tests that fail while building** — acceptance tests still failing after the implementation get one more implementer pass. A test that fails because the code is wrong goes back to the implementer and is run again, two rounds at most; a test is never edited to agree with the code. Coverage under 70 % stops for your decision. Between rounds only the changed tests run; the whole suite runs at most twice per coverage stage. See "Where tests run, and what happens when they fail" in the plugin README.
 - After three rounds at the same gate the pipeline offers to hand over instead of trying a fourth time on its own.
 
 The pipeline has two gates: one to show the plan before any code is written, one to show the result before anything leaves the machine. It asks at a few other moments only when the decision is yours: a ticket that cannot be implemented as written, a change to the approved plan (a delta), coverage below the minimum, and a fourth round at the same gate. Everything in between runs unattended: reading the ticket, learning the repository's conventions, writing the tests for the acceptance criteria, writing the code that makes them pass, completing the tests up to the coverage target (80 %, with 70 % as the minimum), reviewing and fixing. If coverage ends up under the minimum, it stops once more and asks whether to proceed. Each stage is also a skill of its own, for teams that want to adopt it piece by piece.
@@ -87,6 +89,9 @@ Requirements:
 
 /ai-enabler:delivery-run PROJ-123             # ticket -> plan gate -> tests, code, coverage, review -> ship gate -> PR
 
+/ai-enabler:delivery-ticket-create "users need to export their orders as CSV"
+                                              # no ticket yet? write one, then pass the file to delivery-plan or delivery-run
+
 /ai-enabler-metrics:metrics-usage-report      # what it took: interactions, time, cost — and the delivery dashboard
 ```
 
@@ -94,13 +99,16 @@ Requirements:
 
 | Skill | Use it to |
 |---|---|
-| `/ai-enabler:delivery-run <KEY>` | Run the full pipeline from a ticket to a pull request, or resume a run |
-| `/ai-enabler:delivery-plan <KEY>` | Get an implementation plan and a readiness verdict, without writing code |
+| `/ai-enabler:delivery-run <KEY \| file.md>` | Run the full pipeline from a ticket to a pull request, or resume a run |
+| `/ai-enabler:delivery-plan <KEY \| file.md>` | Get an implementation plan and a readiness verdict, without writing code |
 | `/ai-enabler:delivery-implement <KEY>` | Execute an approved plan |
 | `/ai-enabler:delivery-test [KEY \| paths]` | Generate and run tests for a change, against a coverage target of 80 % and a minimum of 70 % |
 | `/ai-enabler:delivery-review [KEY \| PR \| paths]` | Independent multi-lens review, with optional auto-fix |
 | `/ai-enabler:delivery-ship [KEY]` | Commit, push, open the pull request, update Jira |
 | `/ai-enabler:delivery-doctor` | Check or initialise the project setup |
+| `/ai-enabler:delivery-ticket-refine <KEY \| file.md>` | Make an existing ticket robust — gaps closed, additions marked — as a local Markdown file. Never writes to Jira |
+| `/ai-enabler:delivery-ticket-create "<a few sentences>"` | Write a complete ticket from a short brief, as a local Markdown file; a Jira issue only if you ask for it |
+| `/ai-enabler:delivery-sources [add <url\|path> \| list \| refresh \| relearn NAME \| remove NAME]` | Other repositories, sibling clones, folders and documents (Word included) the pipeline should read besides the project. Read-only |
 | `/ai-enabler-metrics:metrics-usage-init` | Switch usage capture on for a project |
 | `/ai-enabler-metrics:metrics-usage-report` | Produce the usage report: AI usage and delivery flow, as HTML dashboards with charts |
 | `/ai-enabler-metrics:metrics-delivery-report` | Delivery-flow dashboard: PR size, review waiting time, rework, Jira cycle time, per developer |
@@ -109,7 +117,7 @@ Requirements:
 
 ## What appears in your project: the `.enabler/` folder
 
-Both plugins keep their files in one folder at the root of the project where you use them. Nothing is written anywhere else in your repository apart from the code, the tests and, when usage capture is turned on, one `.gitignore` rule for its events.
+Both plugins keep their files in one folder at the root of the project where you use them. Nothing is written anywhere else in your repository apart from the code and the tests.
 
 ```
 .enabler/
@@ -119,6 +127,7 @@ Both plugins keep their files in one folder at the root of the project where you
     deltas/delta-NNN-*.md     one small complement each: what changed, or what was learned
     profile.json              fingerprints of the files the profile was derived from
   tickets/                    tickets written by delivery-ticket-refine and delivery-ticket-create (Markdown)
+  sources/                    external sources: the list, what was learned about each, private copies of URL repositories
   local-only                  present only after someone said "do not upload"; blocks push, PR and Jira writes
   runs/                       one folder per ticket — working files, kept out of git
     <KEY>/
@@ -142,7 +151,7 @@ Both plugins keep their files in one folder at the root of the project where you
 
 Each file of a run is described in [plugins/ai-enabler/README.md](plugins/ai-enabler/README.md#the-run-directory-what-each-file-is), and the metrics files in [plugins/ai-enabler-metrics/README.md](plugins/ai-enabler-metrics/README.md) and [docs/metrics-reference.md](docs/metrics-reference.md).
 
-Nothing in `.enabler/` has to be committed: the plugins are used by one person on one machine for now, and the folder is local. Run folders, tickets and the repository profile keep themselves out of git (each holds a `.gitignore` of its own, so yours is not edited for them); usage events and metric snapshots are ignored by default because they name people (`metrics-usage-init --share` changes that deliberately).
+Nothing in `.enabler/` has to be committed: the plugins are used by one person on one machine for now, and the folder is local. Run folders, tickets, sources and the repository profile keep themselves out of git (each holds a `.gitignore` of its own, so yours is not edited for them); usage events and metric snapshots are ignored by default because they name people (`metrics-usage-init --share` changes that deliberately).
 
 ## Documentation
 
@@ -166,16 +175,18 @@ plugins/
     .claude-plugin/plugin.json
     skills/      delivery-run, delivery-plan, delivery-implement, delivery-test,
                  delivery-review, delivery-ship, delivery-doctor,
-                 delivery-ticket-refine, delivery-ticket-create
+                 delivery-ticket-refine, delivery-ticket-create, delivery-sources
     agents/      delivery-ticket-analyst, delivery-ticket-refiner, delivery-repo-scout,
-                 delivery-solution-planner, delivery-code-implementer, delivery-test-engineer,
-                 delivery-code-reviewer
+                 delivery-source-scout, delivery-solution-planner, delivery-code-implementer,
+                 delivery-test-engineer, delivery-code-reviewer
     references/  run directory and configuration, ticket readiness and refinement,
                  git and Jira safety rules, review checklist
     templates/   pull-request.md (the pull-request template, unless the repository has its own)
-    scripts/     repo_profile.py (is the repository profile still valid?)
-    hooks/       hooks.json, remote_guard.py (blocks uploads when the project is local-only)
-    tests/       test_remote_guard.py, test_repo_profile.py
+    scripts/     repo_profile.py (is the repository profile still valid?),
+                 sources.py (external sources: add, check, fetch, record; .docx to Markdown)
+    hooks/       hooks.json, remote_guard.py (blocks uploads when the project is local-only),
+                 source_guard.py (keeps external sources read-only)
+    tests/       test_remote_guard.py, test_repo_profile.py, test_sources.py
   ai-enabler-metrics/
     .claude-plugin/plugin.json
     hooks/       hooks.json, usage_hook.py
@@ -203,6 +214,7 @@ python3 plugins/ai-enabler-metrics/tests/test_delivery.py   # delivery metrics o
 python3 tools/check_versions.py                         # every change carries its version bump and changelog entry
 python3 tools/check_conventions.py                      # naming, owner and version of every skill and agent
 python3 plugins/ai-enabler/tests/test_repo_profile.py   # the repository-profile bookkeeping
+python3 plugins/ai-enabler/tests/test_sources.py        # external sources and their read-only guard
 python3 plugins/ai-enabler/tests/test_remote_guard.py  # what local-only mode blocks and allows
 ```
 

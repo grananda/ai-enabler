@@ -73,6 +73,7 @@ python3 tools/check_versions.py
 python3 tools/check_conventions.py
 python3 plugins/ai-enabler/tests/test_remote_guard.py
 python3 plugins/ai-enabler/tests/test_repo_profile.py
+python3 plugins/ai-enabler/tests/test_sources.py
 python3 plugins/ai-enabler-metrics/tests/test_usage.py
 python3 plugins/ai-enabler-metrics/tests/test_delivery.py
 claude plugin validate .

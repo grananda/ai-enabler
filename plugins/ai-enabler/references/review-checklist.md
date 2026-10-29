@@ -8,6 +8,8 @@ Given to each `delivery-code-reviewer` instance alongside its lens. It is a list
 - Does it affect code outside the diff — shared modules, public contracts, configuration, build or deployment?
 - Is it backwards compatible for existing callers, stored data and API clients?
 - Does it follow the hard rules listed in the repository profile and its deltas?
+- Does it conform to what the external sources impose (`external-context.md`): the contract's fields, status codes and error bodies, the schema, the documented business rules, the shared component used as intended? A difference is a finding, with the source and its path as evidence.
+- Did it change anything inside an external source? It must not.
 
 ## Correctness
 
@@ -40,6 +42,7 @@ Given to each `delivery-code-reviewer` instance alongside its lens. It is a list
 ## Tests
 
 - A failing-if-broken test for each acceptance criterion.
+- When an external source defines the contract the change implements, tests that check the change against that contract.
 - Error and boundary cases, not just the happy path.
 - Assertions that check behaviour, not that a mock was called.
 - Determinism: no dependence on time, order, network or shared state.

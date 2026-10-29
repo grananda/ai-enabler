@@ -33,6 +33,7 @@ the session that produced the change.
 - **Result:** <passed> passed, <failed> failed, <skipped> skipped — run locally with `<command>`.
 - **Coverage of the changed code:** <x>% line, <y>% branch (target <t>%, minimum <m>%) — <met | acceptable | below minimum, accepted by <who>: <why> | not measured: <why>>.
 - **Written before the code:** <n> of <total> acceptance criteria. <Why not all, when not all.>
+- **Mutation testing:** <killed> of <n> mutants killed, in <modules>; each survivor with its reason — or "off for this project".
 - **Failing or not run:** <each test that fails, with its cause: a defect left open, or a failure that was there before this change. "None" otherwise.>
 
 ### Review
@@ -43,6 +44,11 @@ the session that produced the change.
 
 <!-- Omit when there was none. -->
 <One entry per delta, in order: what changed and why, what was added, what was removed (criteria, tests, code).>
+
+### External sources
+
+<!-- Omit when the project has none. -->
+<Each source the change relies on — by its URL or document name, never a local path — and what it imposed: "Orders API contract (git.example.com/team/contracts, openapi/orders.yaml): error bodies and status codes". Anything in a source that the change could not follow, and why.>
 
 ### Deviations and assumptions
 

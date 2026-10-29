@@ -10,9 +10,13 @@ The event schema written by `plugins/ai-enabler-metrics/hooks/usage_hook.py`, an
   pricing.json                     optional price table override
   events/<user>/<session_id>.jsonl one JSON object per line, append-only
   delivery/<metric>.json           latest snapshot of each delivery metric, and kpis.json with the verdicts (empty when no target is set)
+  delivery/cache/                  GitHub answers kept for a day
+  delivery/jira-input/             Jira data collected through MCP for the cycle-time script
   reports/<YYYY-MM-DD>/            report output
   .state/                          per-session working state of the hook (never committed)
 ```
+
+In a project where usage capture was never switched on, the delivery scripts write the `delivery/` and `reports/` parts under `.enabler/delivery/` instead, so that running a report does not create `.enabler/metrics/` and switch capture on.
 
 ## Events
 

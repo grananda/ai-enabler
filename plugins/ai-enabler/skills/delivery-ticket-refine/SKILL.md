@@ -4,7 +4,7 @@ description: Refines an existing ticket into a more robust definition, written a
 argument-hint: <JIRA-KEY | ticket.md | ticket.txt> [--out <path>]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # ai-enabler:delivery-ticket-refine — a thin ticket into a robust one
@@ -21,6 +21,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/ticket-readiness.md` first: it defines wh
    - `$ARGUMENTS` names a source: a Jira key (`[A-Z][A-Z0-9]+-\d+`) or the path of a `.md`/`.txt` file. With neither, ask for one. A few sentences of free text are not a ticket to refine: point to `/ai-enabler:delivery-ticket-create`.
    - A file source exists and is not empty. If it already starts with the frontmatter line `ai-enabler: refined-ticket`, say that it was refined before and go on: the person may have edited it or answered its questions.
    - For a Jira key, a connected MCP server exposes a tool that reads an issue by key (`jira.server` in `.enabler/config.json` picks one when several are connected; otherwise ask once). With none, follow "When there is no Jira MCP server" in `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md`. Reading Jira is allowed in local-only mode.
+   - When the project has external sources (`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sources.py" status`), bring them up to date as Step 1 of `${CLAUDE_PLUGIN_ROOT}/skills/delivery-run/SKILL.md` says under "Learn the external sources at the same time": the refiner reads their profiles, and a specification or a contract answers many gaps before anyone is asked.
    - Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repo_profile.py" check`. Take `root` from it: the output goes under `<root>/.enabler/tickets/`, a folder the script keeps out of git. If the status is `missing`, say in one line that refinement can use what the pipeline knows about the repository once a plan or a delivery has run here; do not build the profile now.
    - The output path: `--out` if given, otherwise `<root>/.enabler/tickets/<KEY>-refined.md` (for a file, its name without extension in place of the key). Never overwrite a file that is there: add `-2`, `-3`.
 2. **Refine.** Launch `ai-enabler:delivery-ticket-refiner` with `mode: document`, the source, the Jira MCP server when there is one, and the absolute output path.

@@ -8,7 +8,7 @@
     {
       "name": "ai-enabler",
       "source": "./plugins/ai-enabler",
-      "description": "Jira ticket to pull request: intake through the Jira MCP server, repository analysis, plan, implementation, tests with a coverage threshold, independent parallel review with auto-fix, and shipping. Two human gates: the plan and the ship."
+      "description": "Jira ticket to pull request: intake through the Jira MCP server, ticket refinement, repository analysis, plan, implementation, tests with a coverage threshold, independent parallel review with auto-fix, and shipping. Two human gates: the plan and the ship. Also writes robust tickets as local Markdown files, from a thin ticket or a few sentences."
     },
     {
       "name": "ai-enabler-metrics",
