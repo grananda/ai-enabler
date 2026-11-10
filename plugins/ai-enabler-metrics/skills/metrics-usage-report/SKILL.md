@@ -4,7 +4,7 @@ description: Produces the AI usage report from the events captured by the ai-ena
 argument-hint: "[--since YYYY-MM-DD] [--until YYYY-MM-DD] [--user <id>] [--ticket <KEY>] [--metrics-dir <dir> ...] [--out-dir <dir>] [--provider anthropic|bedrock|vertex|foundry] [--bedrock-region <region>] [--bedrock-scope global|regional] [--no-delivery] [--refresh]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # ai-enabler-metrics:metrics-usage-report — the usage report

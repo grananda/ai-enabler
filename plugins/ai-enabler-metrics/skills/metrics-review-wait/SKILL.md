@@ -4,7 +4,7 @@ description: Measures review waiting time — the median hours from a pull reque
 argument-hint: "[--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--refresh]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # ai-enabler-metrics:metrics-review-wait — review waiting time
