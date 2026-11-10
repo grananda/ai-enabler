@@ -11,7 +11,7 @@ metadata:
 
 The project being changed is rarely the whole story: the API contracts are in another repository, the components in a design system, the business rules in a Word document. A source tells the pipeline where to look. It is learned once, like the project, and the planner, implementer, test engineer and reviewers get what matters from it for each ticket.
 
-Read "External sources" in `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` first. Every command below goes through `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sources.py"`, called `sources.py` here.
+Read "External sources" in `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` first. Every command below goes through `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/sources.py"`, called `sources.py` here.
 
 ## Flow
 

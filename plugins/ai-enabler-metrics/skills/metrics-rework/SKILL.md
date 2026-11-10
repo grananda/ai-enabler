@@ -18,7 +18,7 @@ The arithmetic is done by a script, not by you: `pr_metrics.py` reads GitHub thr
 1. **Run it**, passing through any flags from `$ARGUMENTS`:
 
    ```
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/pr_metrics.py" rework [flags]
+   /bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/pr_metrics.py" rework [flags]
    ```
 
    With no flags it analyses the repository of the current directory, its default branch, and the window in `.enabler/metrics/config.json` (`delivery.weeks`, default 6). Translate what the person said into flags: "last quarter" → `--weeks 13`, "on develop" → `--base develop`, another repository → `--repo owner/name`. `--refresh` ignores the local cache of GitHub answers.

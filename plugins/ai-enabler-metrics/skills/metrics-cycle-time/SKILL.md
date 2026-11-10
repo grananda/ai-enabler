@@ -17,7 +17,7 @@ How long does a ticket take once work starts, how often is it sent back, and how
 2. **Try the direct route first:**
 
    ```
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/jira_cycle.py" --project <KEY> [--sprints N] [--board ID]
+   /bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/jira_cycle.py" --project <KEY> [--sprints N] [--board ID]
    ```
 
    (`--refresh` is this skill's own flag, not the script's.) It reads Jira's REST API when the environment has `JIRA_URL` and `JIRA_PERSONAL_TOKEN` (or `JIRA_USERNAME` and `JIRA_API_TOKEN`) — the same variables the `mcp-atlassian` server uses. This is the preferred route: nothing passes through a model, so nothing can be mistyped. `JIRA_URL` must be https. Never ask for a token in the chat and never write one to a file.
@@ -28,7 +28,7 @@ How long does a ticket take once work starts, how often is it sent back, and how
    - Then run the script on the files:
 
      ```
-     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/jira_cycle.py" --project <KEY> --input .enabler/metrics/delivery/jira-input
+     /bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/jira_cycle.py" --project <KEY> --input .enabler/metrics/delivery/jira-input
      ```
    - If no Jira MCP server is connected either, say what is needed (the environment variables above, or a Jira MCP server) and stop.
 4. **Read the snapshot** `.enabler/metrics/delivery/cycle-time.json` and tell the person:

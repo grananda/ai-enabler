@@ -7,7 +7,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/remote_guard.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/remote_guard.py\"",
+            "shell": "bash",
+            "onFailure": "block",
             "timeout": 10
           }
         ]
@@ -17,7 +19,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/source_guard.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/source_guard.py\"",
+            "shell": "bash",
+            "onFailure": "block",
             "timeout": 10
           }
         ]

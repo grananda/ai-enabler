@@ -8,6 +8,14 @@
 
 It is not spec-driven: there is no specification to write and maintain, no change proposal, no roadmap. The Jira ticket is the input, the repository's own conventions are the rules, and the pull request is the output.
 
+## Runtime prerequisites
+
+Python 3.8+ and Bash are required (Git Bash from Git for Windows on Windows; not the Windows/WSL Store alias). Use Claude Code 2.1.319 or later for the guards' `onFailure: block` handling. Every hook and bundled-script instruction uses this plugin's `scripts/run-python.sh`, which probes `python3`, `python`, then `py -3`, skips Windows Store aliases and rejects failed or outdated interpreters. No Python packages or interpreter-selection settings are needed.
+
+`/ai-enabler:delivery-doctor` runs `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" --check` and reports the actual interpreter and version. A failed check is **not ready**, never downgraded to a warning by trying a different command manually. Missing runtime or guard files, startup errors and timeouts block guarded tool calls; a target's denial is never retried with another interpreter. Restore the runtime through your normal installation process and restart Claude Code; do not disable the guard or edit the installed cache.
+
+For manual commands use `/bin/bash "<plugin-root>/scripts/run-python.sh" "<plugin-root>/scripts/<script>.py" ...`, quoting path arguments. Windows path arguments should be native paths (`C:/work/my project`); the launcher converts the script path only and preserves every other argument and stdin. Run only trusted plugin scripts, never scripts from external context sources. The two plugins carry identical independent launchers; checking one does not prove the other installed copy is intact. See the [marketplace runtime instructions](../../README.md#install) for troubleshooting and probe timeout details.
+
 ## The pipeline
 
 | # | Stage | Subagent | Reads | Writes | Human gate |
@@ -205,7 +213,7 @@ metadata:
 ---
 ```
 
-Claude Code accepts the `metadata` block and does not act on it; it is there for people and for tooling. `python3 tools/check_conventions.py` checks every skill and agent of the marketplace against the convention, and `python3 tools/check_versions.py` checks fragment coverage and prevents premature final version changes.
+Claude Code accepts the `metadata` block and does not act on it; it is there for people and for tooling. From the repository root with Python 3.11 or 3.12, `python tools/check_conventions.py --strict` checks every skill and agent of the marketplace against the convention, and `python tools/check_versions.py origin/main` checks fragment coverage and prevents premature final version changes.
 
 ### Renamed in 1.0.0
 

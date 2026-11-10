@@ -78,7 +78,19 @@ Requirements:
 
 - A Jira MCP server connected to Claude Code, to read tickets. See [docs/jira-mcp.md](docs/jira-mcp.md). Without one, the pipeline accepts a Markdown file with the requirements instead.
 - `git`, and the GitHub CLI `gh` (https://cli.github.com, then `gh auth login`): it opens pull requests for `ai-enabler` and is how `ai-enabler-metrics` reads them for the delivery metrics. `glab` works for opening merge requests on GitLab.
-- `python3` (3.8 or later) on the `PATH`, for the usage hooks and report. No extra packages.
+- Python **3.8 or later**, for both plugins' hooks and bundled scripts. No extra packages. Each plugin ships `scripts/run-python.sh`: it probes `python3`, then `python`, then `py -3`, skipping failed/outdated interpreters and Windows Store aliases. It never retries a script after it starts.
+- **Bash** on macOS/Linux; **Git Bash (Git for Windows)** on Windows. PowerShell-only and the Windows/WSL `bash` Store alias are not supported for these launchers. Use Claude Code **2.1.319 or later**, whose hook contract supports `onFailure: block` for guard startup failures.
+
+Hooks explicitly use `/bin/bash` inside the selected Bash shell so a Windows `bash` Store alias on PATH cannot intercept a nested launch. On Windows these are Git Bash commands, not PowerShell commands. Check the exact runtime from a local clone in Bash (installed skills use their own `${CLAUDE_PLUGIN_ROOT}` instead):
+
+```bash
+/bin/bash plugins/ai-enabler/scripts/run-python.sh --check
+/bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh --check
+```
+
+Each prints the actual interpreter path and version. A successful standalone `python --version` is not enough if the hook launcher fails. Missing Python exits nonzero with an installation hint; missing Bash must be fixed before the launcher can run. Install the prerequisites through your normal approved process, make them available to the shell running Claude Code, restart Claude Code, and rerun `delivery-doctor` and `metrics-usage-init --status`. Do not disable guards, patch installed caches, or add a `python3` shim to work around the failure.
+
+The launchers use the first working interpreter on each invocation (no persistent cache or new environment settings). Probes use `-I -S -c` and never consume hook JSON stdin. GNU `timeout`/`gtimeout`, when present, limits each probe to two seconds plus one second to kill it; otherwise the hook's timeout is the outer bound. Script stdout, stderr, arguments and exit status pass through unchanged. Quote paths containing spaces; Windows path arguments should use native paths such as `C:/work/my project`, since arbitrary argument conversion is disabled. Only invoke trusted plugin scripts, not scripts from external context sources.
 
 ## Quick start
 
@@ -209,15 +221,19 @@ AGENTS.md        rules for changing this repository: versions, naming, checks
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md). [AGENTS.md](AGENTS.md) is the canonical common policy; [docs/release-policy.md](docs/release-policy.md) describes change fragments, independent versions and offline release preparation. Feature MRs record intent, and a reviewed release MR applies the final versions. Existing changelog history remains immutable.
 
+Repository governance checks require Python **3.11 or 3.12**, distinct from the plugins' Python 3.8+ runtime minimum. Run the following from the repository root in Bash, with `python` pointing to that development interpreter. If invoking the launcher tests from Windows Python directly, pass `--bash "<Git for Windows>/usr/bin/bash.exe"` to select Git Bash explicitly.
+
 ```
+/bin/bash plugins/ai-enabler/scripts/run-python.sh tools/test_python_launcher.py
 claude plugin validate .                       # marketplace and plugin manifests
-python3 plugins/ai-enabler-metrics/tests/test_usage.py  # hook and report, end to end, no Claude Code needed
-python3 plugins/ai-enabler-metrics/tests/test_delivery.py   # delivery metrics on fixtures
-python3 tools/check_versions.py origin/main             # fragment coverage; no final version bumps in feature MRs
-python3 tools/check_conventions.py                      # naming, owner and version of every skill and agent
-python3 plugins/ai-enabler/tests/test_repo_profile.py   # the repository-profile bookkeeping
-python3 plugins/ai-enabler/tests/test_sources.py        # external sources and their read-only guard
-python3 plugins/ai-enabler/tests/test_remote_guard.py  # what local-only mode blocks and allows
+/bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/tests/test_usage.py  # hook and report, end to end, no Claude Code needed
+/bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/tests/test_delivery.py   # delivery metrics on fixtures
+python tools/check_versions.py origin/main             # fragment coverage; no final version bumps in feature MRs
+python tools/check_conventions.py --strict              # naming, owner and version of every skill and agent
+python -m unittest discover -s tools/tests -v            # release governance tests
+/bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_repo_profile.py   # the repository-profile bookkeeping
+/bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_sources.py        # external sources and their read-only guard
+/bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_remote_guard.py  # what local-only mode blocks and allows
 ```
 
-Skills, agents and references are plain Markdown; edit them and start a new session (or run `/reload-plugins`) to pick up the change. Prices live in `plugins/ai-enabler-metrics/scripts/pricing.json`: refresh the Amazon Bedrock section with `python3 plugins/ai-enabler-metrics/scripts/update_pricing.py` (it reads AWS's public price list), and edit the Anthropic section by hand when list prices change.
+Skills, agents and references are plain Markdown; edit them and start a new session (or run `/reload-plugins`) to pick up the change. Prices live in `plugins/ai-enabler-metrics/scripts/pricing.json`: refresh the Amazon Bedrock section with `/bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/scripts/update_pricing.py` (it reads AWS's public price list), and edit the Anthropic section by hand when list prices change.

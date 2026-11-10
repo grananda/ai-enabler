@@ -16,18 +16,18 @@ Runs every delivery metric and puts the results on one page. The four metrics ar
 1. **Pull-request metrics, in one go.** One command fetches once and computes the three of them:
 
    ```
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/pr_metrics.py" all [--repo ...] [--base ...] [--weeks N] [--followup-days N] [--refresh]
+   /bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/pr_metrics.py" all [--repo ...] [--base ...] [--weeks N] [--followup-days N] [--refresh]
    ```
 
    Only those flags go to this script. `--project`, `--sprints` and `--no-jira` belong to the cycle-time step, and `--refresh` applies to both.
 
    If it stops because the GitHub CLI is missing or not signed in, relay the message and recommend `gh` as `${CLAUDE_PLUGIN_ROOT}/skills/metrics-pr-size/SKILL.md` describes, then continue with what can be collected.
 2. **Cycle time.** Unless `--no-jira` was passed, follow `${CLAUDE_PLUGIN_ROOT}/skills/metrics-cycle-time/SKILL.md` from its step 1. If the project has no Jira project configured and none was given, skip it and say so rather than asking in the middle of a report. If Jira can only be read through MCP and a snapshot `.enabler/metrics/delivery/cycle-time.json` less than 7 days old exists, reuse it unless `--refresh` was passed: closed sprints do not change.
-3. **AI usage, for context.** If today's report folder already holds `usage.json` — because `/ai-enabler-metrics:metrics-usage-report` just wrote it, possibly with filters — leave it as it is. Otherwise, if usage capture is on (`.enabler/metrics/events/` has data), run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/usage_report.py" --quiet` so its headline figures appear on the dashboard too.
+3. **AI usage, for context.** If today's report folder already holds `usage.json` — because `/ai-enabler-metrics:metrics-usage-report` just wrote it, possibly with filters — leave it as it is. Otherwise, if usage capture is on (`.enabler/metrics/events/` has data), run `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/usage_report.py" --quiet` so its headline figures appear on the dashboard too.
 4. **The dashboard:**
 
    ```
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/delivery_report.py"
+   /bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/delivery_report.py"
    ```
 
    It writes `.enabler/metrics/reports/<date>/delivery.html` (or `.enabler/delivery/reports/<date>/` in a project where usage capture was never switched on — running a report does not switch it on), next to the detailed pages (`pr-size.html`, `review-wait.html`, `rework.html`, `cycle-time.html`, and `report.html` for AI usage), and links to them.
