@@ -29,6 +29,7 @@ validate:
     - python tools/ci_checks.py
     - python tools/check_conventions.py --strict
     - python -m unittest discover -s tools/tests -v
+    - python tools/test_python_launcher.py
     - python plugins/ai-enabler/tests/test_remote_guard.py
     - python plugins/ai-enabler/tests/test_repo_profile.py
     - python plugins/ai-enabler/tests/test_sources.py

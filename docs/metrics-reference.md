@@ -190,4 +190,4 @@ One session working on two tickets is split at the prompt where the second key a
 - **Asynchronous hooks.** Most events are recorded by hooks that run in the background, so their timestamps can lag the event by a few milliseconds; durations reported by Claude Code itself (`dur_ms`) are exact.
 - **Esc during generation** is not visible to hooks.
 - **Hand edits** are invisible: only what the AI writes through its tools is counted as output.
-- **Windows.** The hook needs `python3` on the `PATH`; file locking is skipped there, which is harmless for a single session.
+- **Windows.** Hooks and scripts require Git Bash and Python 3.8+. The plugin's `scripts/run-python.sh` probes `python3`, `python`, then `py -3`, skipping Windows Store aliases; `metrics-usage-init --status` checks that same launcher. A missing runtime is reported, not counted as working capture. File locking is skipped on Windows, which is harmless for a single session.

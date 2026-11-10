@@ -1,0 +1,39 @@
+{
+  "summary": "Fix Python discovery for both plugins on supported Bash runtimes, preserve guard denials and block guard startup failures, and check the actual launcher in readiness checks and CI.",
+  "category": "Fixed",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler": "patch",
+    "ai-enabler-metrics": "patch"
+  },
+  "assets": {
+    "plugins/ai-enabler-metrics/agents/metrics-jira-collector.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-cycle-time/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-delivery-report/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-pr-size/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-review-wait/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-rework/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-stale-assets/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-init/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-report/SKILL.md": "patch",
+    "plugins/ai-enabler/agents/delivery-code-implementer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-code-reviewer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-repo-scout.md": "patch",
+    "plugins/ai-enabler/agents/delivery-solution-planner.md": "patch",
+    "plugins/ai-enabler/agents/delivery-source-scout.md": "patch",
+    "plugins/ai-enabler/agents/delivery-test-engineer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-ticket-analyst.md": "patch",
+    "plugins/ai-enabler/agents/delivery-ticket-refiner.md": "patch",
+    "plugins/ai-enabler/skills/delivery-doctor/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-implement/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-plan/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-review/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-run/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-ship/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-sources/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-test/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-ticket-create/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-ticket-refine/SKILL.md": "patch"
+  },
+  "migration": "Compatibility scope: this patch fixes execution on the supported runtime; it is not support for older Claude Code or PowerShell-only installations. Use Claude Code 2.1.319 or later for onFailure: block, Python 3.8+, and Bash (Git Bash from Git for Windows on Windows, not the Windows/WSL Store alias). Upgrade missing prerequisites through the approved installation process, restart Claude Code, run each plugin's scripts/run-python.sh --check in Bash, then rerun delivery-doctor and metrics-usage-init --status. Do not disable guards, patch installed caches or create a python3 shim. Existing .enabler configuration, state, events and resumable runs need no format migration; guard startup failures now block rather than allowing unguarded execution. Maintainers must confirm this supported-runtime compatibility scope before release."
+}

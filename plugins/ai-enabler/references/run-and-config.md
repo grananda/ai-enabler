@@ -66,10 +66,12 @@ A repository is learned once, not once per ticket. What the pipeline knows about
 
 The profile grows by complements, never by rewriting: a document that is extended on every run becomes too long to read, and then it is skimmed and trusted less. The base says what the repository is; each delta says what is different now.
 
+Every abbreviated `repo_profile.py ...` or `sources.py ...` command in this reference and the delivery skills means `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/<script>.py" ...`. Keep script paths and path arguments quoted; on Windows use native paths such as `C:/work/project` for path arguments. Use this launcher, not an ad hoc interpreter fallback. If it fails, report the failure and stop the dependent step.
+
 At the scout stage, ask the script whether the profile still holds — it compares a hash of each build manifest, CI and lint configuration file, the root README and the rules files (`CLAUDE.md`, `AGENTS.md`, contribution guides, ADRs) with what it recorded; lock files and source code are not watched:
 
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repo_profile.py" check
+/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/repo_profile.py" check
 ```
 
 It prints JSON. `root` is the folder whose `.enabler/` is in use, and `profile` the absolute path of `profile.md`; the run directories belong under the same `root`. Pass the scout the absolute paths the script prints, never a relative one.

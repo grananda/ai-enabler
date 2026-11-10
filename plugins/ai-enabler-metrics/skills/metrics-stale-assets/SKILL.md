@@ -16,7 +16,7 @@ Shared assets rot when nobody prunes them: the author moves on, nobody dares del
 1. **Run the script**, passing through the flags in `$ARGUMENTS`:
 
    ```
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" [flags]
+   /bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" [flags]
    ```
 
    It looks at the project's `.claude/skills` and `.claude/agents`, and at the plugins of this marketplace; `--assets-dir` adds another plugin or folder that holds `skills/` and `agents/`. It writes `assets.html` and `assets.json` to `.enabler/metrics/reports/<date>/` and prints the path.

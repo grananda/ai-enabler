@@ -5,6 +5,14 @@
 - **Usage metrics** — how AI is being used: how much a person interacts with the machine, where the time goes, what it costs. Captured by hooks, so nothing is self-reported.
 - **Delivery-flow metrics** — how the team delivers: pull request size, review waiting time, rework, cycle time. Read from GitHub and Jira, for everyone's work, with or without AI.
 
+## Runtime prerequisites
+
+Python 3.8+ and Bash are required (Git Bash from Git for Windows on Windows; not the Windows/WSL Store alias). All fourteen hooks, including Stop, and every report skill use this plugin's own `scripts/run-python.sh`. It probes `python3`, `python`, then `py -3`, skips Windows Store aliases and rejects failed or outdated interpreters. The plugin works independently of `ai-enabler`; no packages or interpreter-selection settings are needed.
+
+`/ai-enabler-metrics:metrics-usage-init --status` runs `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" --check` and reports the interpreter and version. Opt-in (a metrics folder) and runtime readiness are separate: a failed launcher is not successful capture, even if an ad hoc `python --version` works. Missing Bash must be fixed before the launcher can run. Missing Python exits 1 with an actionable error (a reported, nonblocking hook failure, including on Stop). The capture script itself remains passive. Install the prerequisites through your normal approved process, restart Claude Code and check again; do not edit installed caches or settings to hide the error.
+
+Manual commands below run from the marketplace clone in Bash; installed skills use their own `${CLAUDE_PLUGIN_ROOT}`. Quote paths with spaces and use native Windows path arguments (`C:/work/my project`): only the script path is converted; other arguments, stdin, stdout, stderr and the target exit status pass through unchanged. Never retry a failed target with another interpreter. See the [marketplace runtime instructions](../../README.md#install) for details.
+
 ## Skills
 
 | Skill | What it does |
@@ -62,7 +70,7 @@ The report lands in `.enabler/metrics/reports/<date>/`:
 Filters: `--since`, `--until`, `--user`, `--ticket`. Several repositories can be merged into one report by repeating `--metrics-dir`. The script also runs on its own, with no Claude session:
 
 ```
-python3 plugins/ai-enabler-metrics/scripts/usage_report.py --since 2026-10-01 --ticket PROJ-123
+/bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/scripts/usage_report.py --since 2026-10-01 --ticket PROJ-123
 ```
 
 ## Delivery-flow metrics
@@ -192,7 +200,7 @@ Hook payloads carry no token or cost information. Cost comes from the transcript
 ## Opt-in, and what is stored
 
 - **Off by default.** The hooks do nothing in a project without a `.enabler/metrics/` directory. When it is created in the middle of a session, capture starts with the next event, and what that session had already spent is taken as the baseline rather than billed. `/ai-enabler-metrics:metrics-usage-init` creates it; removing it switches capture off. Alternatively, setting the environment variable `ENABLER_METRICS_DIR` to an absolute path captures every project of that user into one place.
-- **Passive.** The script never blocks a tool, never asks anything, prints nothing into the conversation, and always exits 0.
+- **Passive capture.** The Python capture script never blocks a tool, never asks anything, prints nothing into the conversation, and always exits 0. Runtime startup failures are different: the launcher reports them and exits nonzero, rather than pretending capture succeeded.
 - **Stored:** event type and time, session id, user id, ticket key, tool, skill and subagent names, durations, prompt length in characters, the path of files the AI wrote with line counts, the program name of shell commands (`git`, `mvn`, ...), the name of a slash command (never its arguments), token totals per model.
 - **Never stored:** prompt text, model output, file contents, command lines and their arguments, tool results.
 
@@ -244,7 +252,7 @@ The report has a **Cost by price basis** table showing which table priced each p
 2. If the bundled table lacks your region (it ships `us-east-1`, `us-west-2`, `eu-west-1`, `eu-central-1`, `eu-south-2`), or to refresh prices:
 
    ```
-   python3 plugins/ai-enabler-metrics/scripts/update_pricing.py --region eu-west-3
+   /bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/scripts/update_pricing.py --region eu-west-3
    ```
 
    It reads AWS's public price list (no credentials) and updates the `bedrock` section. Add `--file <project>/.enabler/metrics/pricing.json` to keep the addition in the project instead. A project price file is layered over the bundled one, so it only needs to contain what it adds or changes.
@@ -288,8 +296,8 @@ For organisation-wide dashboards, Claude Code's OpenTelemetry export is the comp
 ## Testing
 
 ```
-python3 plugins/ai-enabler-metrics/tests/test_usage.py
-python3 plugins/ai-enabler-metrics/tests/test_delivery.py
+/bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/tests/test_usage.py
+/bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/tests/test_delivery.py
 ```
 
 Neither needs Claude Code, GitHub or Jira.

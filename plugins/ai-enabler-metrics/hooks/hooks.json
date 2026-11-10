@@ -1,12 +1,13 @@
 {
-  "description": "Passive, opt-in usage capture: human interaction, AI working time and token usage per session. Active only in projects that have a .enabler/metrics/ directory (or when ENABLER_METRICS_DIR is set). Never blocks, never stores prompt text or code.",
+  "description": "Passive, opt-in usage capture: human interaction, AI working time and token usage per session. Active only in projects that have a .enabler/metrics/ directory (or when ENABLER_METRICS_DIR is set). The capture script never blocks or stores prompt text or code; runtime startup failures are reported with a nonzero exit.",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "async": true
           }
         ]
@@ -17,7 +18,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "async": true
           }
         ]
@@ -29,7 +31,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "async": true
           }
         ]
@@ -41,7 +44,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "async": true
           }
         ]
@@ -53,7 +57,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "async": true
           }
         ]
@@ -65,7 +70,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "async": true
           }
         ]
@@ -77,7 +83,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "async": true
           }
         ]
@@ -88,7 +95,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "async": true
           }
         ]
@@ -99,7 +107,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "async": true
           }
         ]
@@ -110,7 +119,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "async": true
           }
         ]
@@ -121,7 +131,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "async": true
           }
         ]
@@ -132,7 +143,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "timeout": 30
           }
         ]
@@ -143,7 +155,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "timeout": 30
           }
         ]
@@ -154,7 +167,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/usage_hook.py\"",
+            "shell": "bash",
             "timeout": 30
           }
         ]
