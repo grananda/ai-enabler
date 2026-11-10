@@ -6,6 +6,18 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.7.0] — 2026-11-10
+
+`ai-enabler` 1.5.2 · `ai-enabler-metrics` 1.1.1
+
+### Added
+
+- **ai-enabler, marketplace:** Adopt reviewed change fragments, deterministic offline releases and GitLab validation instead of version bumps in each merge request. Migration: Existing branches must restore published versions and changelog entries and add change fragments before integration.
+
+### Fixed
+
+- **ai-enabler, ai-enabler-metrics, marketplace:** Fix Python discovery for both plugins on supported Bash runtimes, preserve guard denials and block guard startup failures, and check the actual launcher in readiness checks and CI. Migration: Compatibility scope: this patch fixes execution on the supported runtime; it is not support for older Claude Code or PowerShell-only installations. Use Claude Code 2.1.319 or later for onFailure: block, Python 3.8+, and Bash (Git Bash from Git for Windows on Windows, not the Windows/WSL Store alias). Upgrade missing prerequisites through the approved installation process, restart Claude Code, run each plugin's scripts/run-python.sh --check in Bash, then rerun delivery-doctor and metrics-usage-init --status. Do not disable guards, patch installed caches or create a python3 shim. Existing .enabler configuration, state, events and resumable runs need no format migration; guard startup failures now block rather than allowing unguarded execution. Maintainers must confirm this supported-runtime compatibility scope before release.
+
 ## [1.6.2] — 2026-10-29
 
 `ai-enabler` 1.5.1 · `ai-enabler-metrics` 1.1.0
