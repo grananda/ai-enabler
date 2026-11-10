@@ -1,0 +1,50 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - when: never
+
+stages: [validate, release]
+
+variables:
+  GIT_DEPTH: "0"
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUTF8: "1"
+
+.python-job:
+  before_script:
+    - apt-get update -qq && apt-get install -y --no-install-recommends git ca-certificates
+    # Standard read-only CI checkout preparation, not release-tool network access.
+    - if [ -n "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" ]; then git fetch --no-tags origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"; fi
+
+validate:
+  extends: .python-job
+  stage: validate
+  parallel:
+    matrix:
+      - PYTHON_IMAGE: ["python:3.11-slim-bookworm", "python:3.12-slim-bookworm"]
+  image: $PYTHON_IMAGE
+  script:
+    - python tools/ci_checks.py
+    - python tools/check_conventions.py --strict
+    - python -m unittest discover -s tools/tests -v
+    - python plugins/ai-enabler/tests/test_remote_guard.py
+    - python plugins/ai-enabler/tests/test_repo_profile.py
+    - python plugins/ai-enabler/tests/test_sources.py
+    - python plugins/ai-enabler-metrics/tests/test_usage.py
+    - python plugins/ai-enabler-metrics/tests/test_delivery.py
+    - git diff --check
+
+verify-release-manually:
+  extends: .python-job
+  image: python:3.12-slim-bookworm
+  stage: release
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: manual
+      allow_failure: false
+    - when: never
+  script:
+    - python tools/release.py verify-tag --tag "$CI_COMMIT_TAG"
+    - printf '%s\n' 'Verification only. No tags, commits, pushes, release objects or uploads were created.'

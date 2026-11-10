@@ -207,11 +207,13 @@ AGENTS.md        rules for changing this repository: versions, naming, checks
 
 ## Development
 
+Start with [CONTRIBUTING.md](CONTRIBUTING.md). [AGENTS.md](AGENTS.md) is the canonical common policy; [docs/release-policy.md](docs/release-policy.md) describes change fragments, independent versions and offline release preparation. Feature MRs record intent, and a reviewed release MR applies the final versions. Existing changelog history remains immutable.
+
 ```
 claude plugin validate .                       # marketplace and plugin manifests
 python3 plugins/ai-enabler-metrics/tests/test_usage.py  # hook and report, end to end, no Claude Code needed
 python3 plugins/ai-enabler-metrics/tests/test_delivery.py   # delivery metrics on fixtures
-python3 tools/check_versions.py                         # every change carries its version bump and changelog entry
+python3 tools/check_versions.py origin/main             # fragment coverage; no final version bumps in feature MRs
 python3 tools/check_conventions.py                      # naming, owner and version of every skill and agent
 python3 plugins/ai-enabler/tests/test_repo_profile.py   # the repository-profile bookkeeping
 python3 plugins/ai-enabler/tests/test_sources.py        # external sources and their read-only guard

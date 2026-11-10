@@ -1,0 +1,10 @@
+{
+  "summary": "Adopt reviewed change fragments, deterministic offline releases and GitLab validation instead of version bumps in each merge request.",
+  "category": "Added",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler": "patch"
+  },
+  "assets": {},
+  "migration": "Existing branches must restore published versions and changelog entries and add change fragments before integration."
+}

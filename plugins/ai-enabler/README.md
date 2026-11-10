@@ -193,7 +193,7 @@ Every skill and agent of this plugin follows one convention, so that an asset ca
 
 - **Name:** the area first, then what it does — `delivery-plan`, `delivery-code-reviewer`. Lowercase letters, numbers and hyphens, equal to the folder (skills) or file (agents) name. Sorted, everything of one area sits together.
 - **Owner:** one named person under `metadata.owner` in the frontmatter, as `Name <email>`. An asset without an owner is a candidate for removal at the next review.
-- **Version:** a semantic version under `metadata.version`, quoted. It is bumped in the same commit as the change: patch for a fix, minor for new behaviour, major for anything that breaks existing use. The plugin (`plugin.json`) and the marketplace (`VERSION`) have versions of their own that move the same way; the rules are in [AGENTS.md](../../AGENTS.md).
+- **Version:** a quoted semantic version under `metadata.version`. Record patch, minor or major intent in a changes fragment; the release tool applies metadata and plugin version bumps in the release MR, not the feature MR. The plugin (`plugin.json`) and marketplace (`VERSION`) have independent versions; the canonical rules are in [AGENTS.md](../../AGENTS.md) and the workflow in [release policy](../../docs/release-policy.md).
 
 ```yaml
 ---
@@ -205,7 +205,7 @@ metadata:
 ---
 ```
 
-Claude Code accepts the `metadata` block and does not act on it; it is there for people and for tooling. `python3 tools/check_conventions.py` checks every skill and agent of the marketplace against the convention, and `python3 tools/check_versions.py` checks that whatever changed also bumped its version.
+Claude Code accepts the `metadata` block and does not act on it; it is there for people and for tooling. `python3 tools/check_conventions.py` checks every skill and agent of the marketplace against the convention, and `python3 tools/check_versions.py` checks fragment coverage and prevents premature final version changes.
 
 ### Renamed in 1.0.0
 
