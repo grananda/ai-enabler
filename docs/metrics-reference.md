@@ -199,6 +199,21 @@ Any other key under `targets` is ignored and listed as rejected: usage figures a
 
 The hook keeps one "current ticket" per session. It is set from, in order of arrival: the branch name at session start, any human prompt or slash command containing a key, and the arguments of an invoked skill. Every later event carries that key until another key appears. Events recorded before the first key of a session are attributed to that first key at report time.
 
+**What counts as a key.** In a project without ai-enabler runs: a match of `ticket_pattern` when it is set, else anything shaped like `ABC-123` minus known look-alikes (`UTF-8`, `SHA-256`…).
+
+**With the ai-enabler pipeline, tickets are the runs.** The pipeline gives its own things ids of the same shape — acceptance criteria `AC-n`, review findings `CR-n`, lens labels such as `SECURITY-1` — and people quote them at the gates. So when the project has `.enabler/runs/` (looked for from the project, not from the metrics folder):
+
+| Where | Accepted |
+|---|---|
+| First argument of an ai-enabler delivery skill (`delivery-run`, `delivery-plan`, `delivery-implement`, `delivery-test`, `delivery-review`, `delivery-ship`, `delivery-ticket-refine`), before any option | A Jira-shaped key, or a `.md`/`.txt` requirements file, whose name without extension is the run key. Accepted before the run folder exists |
+| A prompt, other skill arguments | The ticket of an existing run, or a run key with no Jira shape found by name (`developer-web-ui`). Anything else (`AC-6`, `CR-1`, `SECURITY-1`, a key with no run) leaves the current ticket as it was |
+| The branch name | Any key, as without runs: people name branches, and a ticket worked by hand in the same project keeps its attribution |
+| Anywhere | A match of `ticket_pattern`, when the team set one |
+
+A run is reported under the Jira-shaped start of its key when it has one (`SHOP-1-discount-codes` → `SHOP-1`, the key the branch, the pull request and people use), else under the run key itself (`developer-web-ui`). `.enabler/runs/adhoc/` is not a ticket.
+
+**Events recorded before this rule.** At report time, an event whose ticket is one of the pipeline's id shapes (`AC-n`, `CR-n`, `SEC-n`, `SECURITY-n`, `TEST-n`, `TESTS-n`, `QUALITY-n`, `CORRECTNESS-n`) keeps the ticket that was current before it in its session — what the hook records now —, or, with none, the session's first ticket, or `(no ticket)`. The rule does not depend on the run folders, which are local to each machine: it works for shared event files and for `ENABLER_METRICS_DIR`. A key of that shape that is a run of the project, or matches its `ticket_pattern`, is kept: a Jira project really called `SEC` sets `ticket_pattern`. A file run whose key has no Jira shape was never recorded by name before this rule; its old events go to the ticket before them or to `(no ticket)`.
+
 One session working on two tickets is split at the prompt where the second key appears. Work with no key at all is reported under `(no ticket)`.
 
 ## Known limits

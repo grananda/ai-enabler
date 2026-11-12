@@ -1,0 +1,20 @@
+{
+  "summary": "In a project that uses the ai-enabler pipeline, AI usage is attributed to its runs: the ids the pipeline gives acceptance criteria (AC-6), review findings (CR-1) and review lenses no longer pass for tickets, a run started from a requirements file is attributed by its name, branch keys and a configured ticket_pattern still count, and events recorded before are corrected when the report is made.",
+  "category": "Fixed",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler-metrics": "patch"
+  },
+  "assets": {
+    "plugins/ai-enabler-metrics/agents/metrics-jira-collector.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-cycle-time/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-delivery-report/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-pr-size/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-review-wait/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-rework/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-stale-assets/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-init/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-report/SKILL.md": "patch"
+  },
+  "migration": ""
+}

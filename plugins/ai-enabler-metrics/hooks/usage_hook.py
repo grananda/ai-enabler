@@ -66,6 +66,10 @@ HARNESS_PROMPT = re.compile(
 WRITE_TOOLS = {"write", "edit", "multiedit", "notebookedit"}
 QUESTION_TOOLS = {"askuserquestion"}
 AGENT_TOOLS = {"agent", "task"}
+JIRA_KEY = re.compile(r"[A-Z][A-Z0-9]{1,9}-\d{1,6}")
+# ai-enabler skills whose first argument names the ticket of a run (a Jira key or a requirements file).
+KEYED_SKILLS = {"delivery-run", "delivery-plan", "delivery-implement", "delivery-test", "delivery-review",
+                "delivery-ship", "delivery-ticket-refine"}
 
 
 # ----------------------------------------------------------------- locating
@@ -202,17 +206,89 @@ class Session:
 
 # ------------------------------------------------------------------ tickets
 
-def find_ticket(text, cfg):
+def find_ticket(text, cfg, runs=None, branch=False):
+    """The ticket a text names, or None.
+
+    Without ai-enabler runs (`runs` is None): the first match of the configured
+    `ticket_pattern`, or of the default pattern minus the look-alikes. With runs, the
+    pipeline's own ids (`AC-6` criteria, `CR-1` findings, lens labels) have the same
+    shape as tickets, so a key the default pattern finds counts only when it is a run's
+    ticket — except in a branch name, which people write. A run key with no Jira shape
+    (`developer-web-ui`) is found by its name. A configured pattern is trusted as before."""
     if not text:
         return None
-    pattern = cfg.get("ticket_pattern") or DEFAULT_TICKET_PATTERN
+    custom = cfg.get("ticket_pattern")
+    tickets = {run_ticket(r) for r in runs or ()}
+    found = []
     try:
-        for m in re.finditer(pattern, text):
+        for m in re.finditer(custom or DEFAULT_TICKET_PATTERN, text):
             key = m.group(0)
-            if cfg.get("ticket_pattern") or key.split("-")[0] not in NOT_TICKETS:
-                return key
+            if custom or (key.split("-")[0] not in NOT_TICKETS and
+                          (runs is None or branch or key in tickets)):
+                found.append((m.start(), -len(key), key))
+                break
     except re.error:
         pass
+    for r in runs or ():
+        if run_ticket(r) == r:
+            m = re.search(r"(?<![\w-])" + re.escape(r) + r"(?!\w)", text)
+            if m:
+                found.append((m.start(), -len(r), r))
+    return min(found)[2] if found else None
+
+
+def find_runs(cwd):
+    """The keys of this project's ai-enabler runs (`.enabler/runs/<KEY>/`), or None when the
+    project has no such folder. Looked for from the project, not from the metrics folder,
+    which ENABLER_METRICS_DIR may put elsewhere."""
+    for start in (os.environ.get("CLAUDE_PROJECT_DIR"), cwd):
+        if not start:
+            continue
+        d = os.path.abspath(start)
+        for _ in range(12):
+            runs = os.path.join(d, ".enabler", "runs")
+            if os.path.isdir(runs):
+                try:
+                    return sorted(n for n in os.listdir(runs) if n != "adhoc" and not n.startswith(".")
+                                  and os.path.isdir(os.path.join(runs, n)))
+                except OSError:
+                    return None
+            parent = os.path.dirname(d)
+            if parent == d:
+                break
+            d = parent
+    return None
+
+
+def run_ticket(key):
+    """The ticket a run is reported under: the Jira-shaped start of its key
+    (`SHOP-1-discount-codes` -> `SHOP-1`), else the run key itself (`developer-web-ui`)."""
+    m = JIRA_KEY.match(key)
+    if m and (m.end() == len(key) or key[m.end()] == "-"):
+        return m.group(0)
+    return key
+
+
+def pipeline_ticket(skill, args, cfg):
+    """The ticket an ai-enabler delivery skill is run for, from its first argument — a Jira key,
+    or a requirements file whose name is the run key — before the run folder exists. Only the
+    words before the first option count, so `--fix CR-1` never does."""
+    skill = str(skill or "")
+    plugin, _, name = skill.rpartition(":")
+    if plugin not in ("", "ai-enabler") or name not in KEYED_SKILLS:
+        return None
+    for word in str(args or "").split():
+        if word.startswith("-"):
+            break
+        word = word.strip("'\"")
+        if word.lower().endswith((".md", ".txt")):
+            return run_ticket(os.path.splitext(re.split(r"[\\/]", word)[-1])[0])
+        custom = cfg.get("ticket_pattern")
+        try:
+            if custom and re.fullmatch(custom, word) or JIRA_KEY.fullmatch(word):
+                return word
+        except re.error:
+            pass
     return None
 
 
@@ -476,7 +552,7 @@ def handle(payload):
         if event == "sessionstart":
             branch = git(["symbolic-ref", "--short", "-q", "HEAD"], cwd)
             if not st.get("ticket"):
-                st["ticket"] = find_ticket(branch, cfg)
+                st["ticket"] = find_ticket(branch, cfg, find_runs(cwd), branch=True)
             if "usage" not in st:
                 # A resumed session starts with history already in its
                 # transcript: take it as the baseline, do not bill it twice.
@@ -498,7 +574,8 @@ def handle(payload):
             if kind == "command":
                 fields["command"] = first[1:80]
             if kind != "system":
-                ticket = find_ticket(prompt, cfg)
+                ticket = (pipeline_ticket(first[1:], head[len(first):], cfg) if kind == "command" else None) \
+                    or find_ticket(prompt, cfg, find_runs(cwd))
                 if ticket:
                     st["ticket"] = ticket
                 if st.get("last_stop"):
@@ -552,7 +629,8 @@ def handle(payload):
                     fields["interrupt"] = True
             if tool_n == "skill":
                 fields["skill"] = ti.get("skill")
-                ticket = find_ticket(str(ti.get("args") or ""), cfg)
+                args = str(ti.get("args") or "")
+                ticket = pipeline_ticket(ti.get("skill"), args, cfg) or find_ticket(args, cfg, find_runs(cwd))
                 if ticket:
                     st["ticket"] = ticket
             elif tool_n in AGENT_TOOLS:

@@ -234,7 +234,84 @@ def main():
     bedrock(tmp, env)
     regressions(tmp, env)
     agents(tmp, env)
+    tickets(tmp, env)
     print("ok — %d events, cost $%.3f, report in %s" % (len(events), o["cost_usd"], out_dir))
+
+
+def tickets(tmp, base_env):
+    """With ai-enabler runs, usage goes to the runs' tickets, not to the pipeline's own ids."""
+    project = os.path.join(tmp, "tickets-project")
+    metrics_dir = os.path.join(project, ".enabler", "metrics")
+    os.makedirs(metrics_dir)
+    for run in ("SHOP-1-discount-codes", "SHOP-2-order-history", "developer-web-ui", "adhoc"):
+        os.makedirs(os.path.join(project, ".enabler", "runs", run))
+    subprocess.run(["git", "init", "-q", "-b", "feature/PROJ-9-by-hand", project], check=True)
+    transcript = os.path.join(tmp, "transcripts", "tickets.jsonl")
+    open(transcript, "w").close()
+    env = dict(base_env, CLAUDE_PROJECT_DIR=project)
+
+    def fire(sid, event, **fields):
+        payload = dict({"hook_event_name": event, "session_id": sid, "cwd": project,
+                        "transcript_path": transcript}, **fields)
+        out = subprocess.run([sys.executable, HOOK], input=json.dumps(payload), text=True,
+                             capture_output=True, env=env)
+        assert out.returncode == 0 and out.stderr == "", (event, out.stderr)
+
+    def current(sid):
+        lines = open(os.path.join(metrics_dir, "events", "dev@example.com", sid + ".jsonl")).read().splitlines()
+        return json.loads(lines[-1]).get("ticket")
+
+    # A file run, before its folder would exist, keeps its ticket through criteria and findings.
+    fire("t1", "UserPromptSubmit", prompt="/ai-enabler:delivery-run ~/specs/SHOP-1-discount-codes.md")
+    assert current("t1") == "SHOP-1"
+    for text in ("AC-6 does not hold", "fix CR-1 first", "SECURITY-1 is noise"):
+        fire("t1", "UserPromptSubmit", prompt=text)
+        assert current("t1") == "SHOP-1", text
+    fire("t1", "PostToolUse", tool_name="Skill", tool_use_id="s1",
+         tool_input={"skill": "ai-enabler:delivery-review", "args": "--fix CR-1"})
+    assert current("t1") == "SHOP-1"
+    fire("t1", "UserPromptSubmit", prompt="now SHOP-2, please")         # another run of the project
+    assert current("t1") == "SHOP-2"
+    # A Jira key with no run yet, from the skill's first argument; a run with no Jira shape, by name.
+    fire("t2", "UserPromptSubmit", prompt="/ai-enabler:delivery-run PROJ-7 --gates none")
+    assert current("t2") == "PROJ-7"
+    fire("t3", "PostToolUse", tool_name="Skill", tool_use_id="s2",
+         tool_input={"skill": "ai-enabler:delivery-plan", "args": "specs/developer-web-ui.md"})
+    assert current("t3") == "developer-web-ui"
+    fire("t3", "UserPromptSubmit", prompt="AC-2 of developer-web-ui is unclear")
+    assert current("t3") == "developer-web-ui"
+    # A ticket worked by hand in the same project: its branch still names it; a prompt alone does not.
+    fire("t4", "SessionStart", source="startup")
+    assert current("t4") == "PROJ-9"
+    fire("t5", "UserPromptSubmit", prompt="PROJ-11 by hand")
+    assert current("t5") is None
+    with open(os.path.join(metrics_dir, "config.json"), "w") as fh:
+        json.dump({"ticket_pattern": "PROJ-\\d+"}, fh)                   # unless the team says so
+    fire("t5", "UserPromptSubmit", prompt="PROJ-11 by hand")
+    assert current("t5") == "PROJ-11"
+    os.remove(os.path.join(metrics_dir, "config.json"))
+
+    # Events recorded with the bug: reported under the runs' tickets, at the same total cost.
+    old_dir = os.path.join(tmp, "tickets-old", ".enabler", "metrics")
+    os.makedirs(os.path.join(old_dir, "events", "old@x.org"))
+    os.makedirs(os.path.join(tmp, "tickets-old", ".enabler", "runs", "SHOP-1-discount-codes"))
+    row = {"model": "claude-opus-5-5", "skill": "-", "agent": "main", "in": 1000, "out": 0}
+    recorded = [("s1", "AC-1"), ("s1", "SHOP-1"), ("s1", "AC-6"), ("s1", "CR-1"), ("s1", "SHOP-2"),
+                ("s1", "TESTS-1"), ("s2", "SECURITY-1"), ("s2", "SHOP-1"), ("s2", "QUALITY-1"), ("s3", "CR-2")]
+    with open(os.path.join(old_dir, "events", "old@x.org", "old.jsonl"), "w") as fh:
+        for i, (sid, key) in enumerate(recorded):
+            fh.write(json.dumps({"v": 1, "ts": "2026-10-01T10:00:%02dZ" % i, "t": 1790848800.0 + i, "ev": "usage",
+                                 "sid": sid, "user": "old@x.org", "ticket": key, "rows": [row]}) + "\n")
+    out_dir = os.path.join(tmp, "tickets-old-report")
+    run = subprocess.run([sys.executable, REPORT, "--metrics-dir", old_dir, "--out-dir", out_dir, "--quiet"],
+                         capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    report = json.load(open(os.path.join(out_dir, "usage.json")))
+    by = {k: v["cost_usd"] for k, v in report["by_ticket"].items()}
+    # s1: AC-1 before SHOP-1 -> SHOP-1; AC-6, CR-1 -> SHOP-1; TESTS-1 after SHOP-2 -> SHOP-2.
+    # s2: SECURITY-1 -> SHOP-1 (first after); QUALITY-1 -> SHOP-1. s3: only a finding -> no ticket.
+    assert by == {"SHOP-1": 0.028, "SHOP-2": 0.008, "(no ticket)": 0.004}, by
+    assert abs(report["overall"]["cost_usd"] - 0.04) < 1e-9 and report["overall"]["tickets"] == 2, report["overall"]
 
 
 def agents(tmp, base_env):
