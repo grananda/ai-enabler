@@ -406,6 +406,21 @@ def bash_summary(command):
     return info
 
 
+def call_summary(tool, tool_input):
+    """What a tool_start records about the call: the program a shell command
+    runs, the subagent type, the MCP server. Never arguments or descriptions."""
+    tool_n = norm(tool)
+    if tool_n == "bash":
+        cmd = bash_summary(tool_input.get("command")).get("cmd")
+        return {"cmd": cmd} if cmd else {}
+    if tool_n in AGENT_TOOLS:
+        return {"agent": tool_input.get("subagent_type") or "general-purpose"}
+    if tool_n.startswith("mcp"):
+        parts = str(tool).split("__")
+        return {"mcp": parts[1]} if len(parts) >= 3 else {}
+    return {}
+
+
 def rel_path(path, cwd):
     if not isinstance(path, str) or not path:
         return None
@@ -452,6 +467,11 @@ def handle(payload):
         ti = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
         tuid = payload.get("tool_use_id")
         pre = st.setdefault("pre", {})
+        # Which agent instance the event happened in. Main-conversation events
+        # carry neither: agent_type alone (a session run with --agent) is main.
+        aid = payload.get("agent_id")
+        aid = str(aid) if aid else None
+        who = {"aid": aid, "atype": payload.get("agent_type") if aid else None}
 
         if event == "sessionstart":
             branch = git(["symbolic-ref", "--short", "-q", "HEAD"], cwd)
@@ -493,18 +513,21 @@ def handle(payload):
                 # Bounded: entries normally leave on PostToolUse.
                 for k in sorted(pre, key=pre.get)[:-200]:
                     pre.pop(k, None)
+            # Written now so that a call that never returns still leaves a trace.
+            emit("tool_start", tool=tool, tuid=tuid, **call_summary(tool, ti), **who)
 
         elif event == "permissionrequest":
             st.setdefault("perm", []).append(tuid or tool)
-            emit("permission", tool=tool)
+            emit("permission", tool=tool, tuid=tuid, **who)
 
         elif event == "permissiondenied":
-            emit("permission_denied", tool=tool)
+            emit("permission_denied", tool=tool, tuid=tuid, **who)
 
         elif event in ("posttooluse", "posttoolusefailure"):
             failed = event == "posttoolusefailure"
             dur = payload.get("duration_ms")
-            fields = {"tool": tool, "dur_ms": dur if isinstance(dur, (int, float)) else None}
+            fields = {"tool": tool, "tuid": tuid, "dur_ms": dur if isinstance(dur, (int, float)) else None}
+            fields.update(who)
             started = pre.pop(tuid, None) if tuid else None
             perm = st.get("perm") or []
             asked = (tuid in perm) or (tool in perm)
@@ -557,10 +580,11 @@ def handle(payload):
 
         elif event == "subagentstart":
             st.setdefault("agents", {})[str(payload.get("agent_id"))] = now
+            emit("subagent_start", **who)
 
         elif event == "subagentstop":
             started = (st.get("agents") or {}).pop(str(payload.get("agent_id")), None)
-            emit("subagent", agent=payload.get("agent_type"),
+            emit("subagent", agent=payload.get("agent_type"), aid=aid,
                  dur_s=round(now - started, 1) if started else None)
 
         elif event == "precompact":

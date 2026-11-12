@@ -1,0 +1,20 @@
+{
+  "summary": "Usage events now record which subagent instance made each tool call and permission prompt, and when calls and subagents start; the usage report gains a \"Slow and unfinished steps\" section listing, per agent instance, its time, longest calls, calls and agents that never finished, and unanswered permissions.",
+  "category": "Added",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler-metrics": "minor"
+  },
+  "assets": {
+    "plugins/ai-enabler-metrics/agents/metrics-jira-collector.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-cycle-time/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-delivery-report/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-pr-size/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-review-wait/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-rework/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-stale-assets/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-init/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-report/SKILL.md": "minor"
+  },
+  "migration": ""
+}

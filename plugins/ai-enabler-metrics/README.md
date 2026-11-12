@@ -161,6 +161,7 @@ Nothing recorded is lost. A project that still has `.enabler/kpi/` keeps being c
 | Human interaction | free-text prompts, slash commands, permission prompts and denials, questions answered, interrupted tool calls, total interactions, tool calls per human prompt |
 | Time | AI working time, human waiting time (approvals, questions), human thinking time (between turns, capped), engaged time, subagent run time, AI time per prompt |
 | Output | files and lines written by the AI, commits, pushes, pull requests, skill runs, subagent runs |
+| Slow and unfinished steps | per agent instance (the main conversation and each subagent run): start and end, wall time, calls and time in them, permission waits, its longest calls; calls and agents that started and never finished; permission prompts nobody answered; instances that spent most of their time waiting |
 | Cost | input, output, cache-read and cache-write tokens; USD by model, skill, agent, ticket, user, day, session; cost per ticket; cost per AI hour. Priced per provider: Anthropic list, or Amazon Bedrock by region and inference profile |
 
 Definitions and formulas are in [docs/metrics-reference.md](../../docs/metrics-reference.md).
@@ -187,22 +188,24 @@ The plugin registers one script on fourteen hook events (`hooks/hooks.json`):
 |---|---|
 | `SessionStart`, `SessionEnd` | Session boundaries, project, branch; final usage delta |
 | `UserPromptSubmit` | A prompt: its kind (human, slash command, system notification), its length, the command name, the gap since the previous turn ended |
-| `PreToolUse` | Nothing by itself; a timestamp used to measure waiting |
+| `PreToolUse` | The start of a tool call: tool, tool-use id, and the same summary as its result (program name, subagent type, MCP server), so a call that never returns still leaves a trace |
 | `PostToolUse`, `PostToolUseFailure` | A tool call: name, duration, and by type — skill name, subagent type, file with lines added and removed, the program a shell command ran, MCP server; failures and interruptions |
 | `PermissionRequest`, `PermissionDenied` | A permission prompt shown to the person, and denials |
 | `Notification` | The notification type |
-| `SubagentStart`, `SubagentStop` | Subagent type and run time |
+| `SubagentStart`, `SubagentStop` | Subagent start and end: instance id, type and run time |
 | `PreCompact` | A context compaction |
 | `Stop`, `StopFailure` | The end of a turn: duration, time blocked on a person, tool count; the token usage added during the turn |
 
 Hook payloads carry no token or cost information. Cost comes from the transcript Claude Code writes for each session: at the end of every turn the script totals `message.usage` for the session and its subagents and records what was added since the previous turn, tagged with the model, the active skill and the agent. Recording it turn by turn means the data survives after local transcripts are cleaned up, and each slice of cost is attributed to the ticket that was active at the time. In a test session, the figure computed this way matched the `total_cost_usd` reported by `claude -p --output-format json` to the fourth decimal.
 
+Every tool call, permission prompt and denial made inside a subagent carries that subagent's instance id and type, so the four reviewers of a run, or two scouts for one ticket, can be told apart; events of the main conversation carry neither. Starts are written as well as ends, and the report's "Slow and unfinished steps" section uses them to show, per agent instance, where its time went and what started and never finished — a command that hung, an agent that was stopped, a permission prompt nobody answered — without opening a transcript. A call refused at the permission prompt leaves a start and no end, like a hung one; it is not listed as unfinished when its agent went on afterwards. Sessions recorded before this capture existed are reported as before and noted as having no per-agent detail.
+
 ## Opt-in, and what is stored
 
 - **Off by default.** The hooks do nothing in a project without a `.enabler/metrics/` directory. When it is created in the middle of a session, capture starts with the next event, and what that session had already spent is taken as the baseline rather than billed. `/ai-enabler-metrics:metrics-usage-init` creates it; removing it switches capture off. Alternatively, setting the environment variable `ENABLER_METRICS_DIR` to an absolute path captures every project of that user into one place.
 - **Passive capture.** The Python capture script never blocks a tool, never asks anything, prints nothing into the conversation, and always exits 0. Runtime startup failures are different: the launcher reports them and exits nonzero, rather than pretending capture succeeded.
-- **Stored:** event type and time, session id, user id, ticket key, tool, skill and subagent names, durations, prompt length in characters, the path of files the AI wrote with line counts, the program name of shell commands (`git`, `mvn`, ...), the name of a slash command (never its arguments), token totals per model.
-- **Never stored:** prompt text, model output, file contents, command lines and their arguments, tool results.
+- **Stored:** event type and time, session id, user id, ticket key, tool, skill and subagent names, the opaque ids Claude Code gives each subagent instance and tool call, durations, prompt length in characters, the path of files the AI wrote with line counts, the program name of shell commands (`git`, `mvn`, ...), the name of a slash command (never its arguments), token totals per model.
+- **Never stored:** prompt text, model output, file contents, command lines and their arguments, tool results, the description the model writes for a subagent call.
 
 The user id is `git config user.email`, falling back to the OS user name. Set `"anonymize_users": true` in `.enabler/metrics/config.json` to store a stable hash instead, or `ENABLER_METRICS_USER` to choose the id.
 
@@ -302,5 +305,5 @@ For organisation-wide dashboards, Claude Code's OpenTelemetry export is the comp
 
 Neither needs Claude Code, GitHub or Jira.
 
-- `test_usage.py` replays a short session through the hook with a synthetic transcript and runs the report. It checks interaction counts, waiting time, cost by skill and agent, Bedrock pricing, privacy (no prompt or command text on disk), the opt-in rule, the old folder and variable names, old skill names mapped to the new ones, and the in-use table: stale after 90 days, never on too little recording, unaffected by report filters, and correct when the plugin runs from the installed cache.
+- `test_usage.py` replays a short session through the hook with a synthetic transcript and runs the report. It checks interaction counts, waiting time, cost by skill and agent, Bedrock pricing, privacy (no prompt or command text on disk), the opt-in rule, the old folder and variable names, old skill names mapped to the new ones, and the in-use table: stale after 90 days, never on too little recording, unaffected by report filters, and correct when the plugin runs from the installed cache. It also replays parallel subagents and checks per-agent attribution, start/end pairing, and the slow and unfinished steps: a killed agent, a hung call, an unanswered permission, a refused one that is not reported, and an events file from before per-agent capture.
 - `test_delivery.py` runs the four delivery metrics on fixtures. It checks medians and intervals, review waits with draft, bot, dismissed and post-merge reviews, follow-up and revert detection, cycle time across a weekend, backward moves, blocked time, and targets: which keys are accepted, how a verdict is reached, and that a malformed target is refused.

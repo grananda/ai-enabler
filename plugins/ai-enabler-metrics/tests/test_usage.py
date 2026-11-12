@@ -233,7 +233,170 @@ def main():
 
     bedrock(tmp, env)
     regressions(tmp, env)
+    agents(tmp, env)
     print("ok — %d events, cost $%.3f, report in %s" % (len(events), o["cost_usd"], out_dir))
+
+
+def agents(tmp, base_env):
+    """Which agent instance did what, and what started and never finished."""
+    project = os.path.join(tmp, "agents-project")
+    metrics_dir = os.path.join(project, ".enabler", "metrics")
+    os.makedirs(metrics_dir)
+    transcript = os.path.join(tmp, "transcripts", "agents.jsonl")
+    open(transcript, "w").close()
+    env = dict(base_env, CLAUDE_PROJECT_DIR=project)
+    reviewer = "ai-enabler:delivery-code-reviewer"
+    secret = "mvn -q test -Dtoken=hunter2"
+
+    def fire(sid, event, **fields):
+        payload = dict({"hook_event_name": event, "session_id": sid, "cwd": project,
+                        "transcript_path": transcript}, **fields)
+        out = subprocess.run([sys.executable, HOOK], input=json.dumps(payload), text=True,
+                             capture_output=True, env=env)
+        assert out.returncode == 0 and out.stdout == "" and out.stderr == "", (event, out.stderr)
+
+    def call(sid, tool, tuid, tool_input, end=True, **who):
+        fire(sid, "PreToolUse", tool_name=tool, tool_use_id=tuid, tool_input=tool_input, **who)
+        if end:
+            fire(sid, "PostToolUse", tool_name=tool, tool_use_id=tuid, tool_input=tool_input,
+                 duration_ms=20, **who)
+
+    # Session A, run with --agent: four reviewers in parallel, all finish. r4 has
+    # a permission refused at the prompt (no result, no denial event) and goes on.
+    a = "aaaaaaaa-0000-0000-0000-000000000001"
+    main_agent = {"agent_type": "ai-enabler:delivery-run"}       # --agent, not a subagent
+    fire(a, "SessionStart", source="startup", **main_agent)
+    fire(a, "UserPromptSubmit", prompt="review PROJ-5", **main_agent)
+    call(a, "Agent", "m1", {"subagent_type": reviewer, "description": "secret ticket content",
+                            "prompt": "do not store"}, **main_agent)
+    for n in range(1, 5):
+        fire(a, "SubagentStart", agent_id="r%d" % n, agent_type=reviewer)
+    for n in range(1, 5):
+        call(a, "Bash", "r%d-1" % n, {"command": secret}, agent_id="r%d" % n, agent_type=reviewer)
+    who = {"agent_id": "r4", "agent_type": reviewer}
+    call(a, "Edit", "r4-2", {"file_path": os.path.join(project, "x.py")}, end=False, **who)
+    fire(a, "PermissionRequest", tool_name="Edit", tool_input={}, **who)
+    time.sleep(1.1)
+    call(a, "Read", "r4-3", {"file_path": os.path.join(project, "x.py")}, **who)
+    for n in range(1, 5):
+        fire(a, "SubagentStop", agent_id="r%d" % n, agent_type=reviewer)
+    # Claude Code's own agents (prompt suggestions, /btw) stop with no start and no type.
+    fire(a, "SubagentStop", agent_id="internal", agent_type="")
+    fire(a, "Stop", **main_agent)
+
+    # Session B: k1 is killed after a finished call, k2 hangs in a command, k3
+    # waits on a permission nobody answers.
+    b = "bbbbbbbb-0000-0000-0000-000000000002"
+    fire(b, "SessionStart", source="startup")
+    fire(b, "UserPromptSubmit", prompt="scout PROJ-6")
+    for n in (1, 2, 3):
+        fire(b, "SubagentStart", agent_id="k%d" % n, agent_type="ai-enabler:delivery-repo-scout")
+    scout = lambda n: {"agent_id": "k%d" % n, "agent_type": "ai-enabler:delivery-repo-scout"}
+    call(b, "Grep", "k1-1", {"pattern": "x"}, **scout(1))
+    call(b, "Bash", "k2-1", {"command": "sleep 600 && echo hunter2"}, end=False, **scout(2))
+    call(b, "Write", "k3-1", {"file_path": os.path.join(project, "y.py")}, end=False, **scout(3))
+    fire(b, "PermissionRequest", tool_name="Write", tool_input={}, **scout(3))
+    time.sleep(1.1)
+    fire(b, "Stop")
+
+    folder = os.path.join(metrics_dir, "events", "dev@example.com")
+    raw_a, raw_b = (open(os.path.join(folder, s + ".jsonl")).read() for s in (a, b))
+    ev_a = [json.loads(line) for line in raw_a.splitlines()]
+    ev_b = [json.loads(line) for line in raw_b.splitlines()]
+
+    # Privacy: no command line, prompt or Agent description, in the new events either.
+    for leaked in ("hunter2", "secret ticket content", "do not store", "sleep 600", "-Dtoken"):
+        assert leaked not in raw_a + raw_b, "leaked: " + leaked
+    assert not any("description" in e or "prompt" in e for e in ev_a + ev_b)
+    # Subagent events carry their instance; main ones carry nothing, even under --agent.
+    tools = [e for e in ev_a if e["ev"] in ("tool", "tool_start", "permission")]
+    for e in tools:
+        if e["tool"] == "Agent":
+            assert "aid" not in e and "atype" not in e, e
+        else:
+            assert e.get("aid", "").startswith("r") and e["atype"] == reviewer, e
+    starts = [e for e in ev_a if e["ev"] == "subagent_start"]
+    stops = [e for e in ev_a if e["ev"] == "subagent" and e["aid"] != "internal"]
+    assert sorted(e["aid"] for e in starts) == sorted(e["aid"] for e in stops) == ["r1", "r2", "r3", "r4"]
+    assert all(e["atype"] == reviewer for e in starts) and all(e["agent"] == reviewer for e in stops)
+    by_aid = {}
+    for e in ev_a:
+        if e["ev"] == "tool" and e.get("aid"):
+            by_aid.setdefault(e["aid"], []).append(e["tool"])
+    assert by_aid == {"r1": ["Bash"], "r2": ["Bash"], "r3": ["Bash"], "r4": ["Bash", "Read"]}, by_aid
+    # Every result pairs with its start.
+    started = {e["tuid"]: e for e in ev_a + ev_b if e["ev"] == "tool_start"}
+    for e in ev_a + ev_b:
+        if e["ev"] == "tool":
+            assert e["tuid"] in started and started[e["tuid"]].get("aid") == e.get("aid"), e
+    assert started["r1-1"]["cmd"] == "mvn" and started["m1"]["agent"] == reviewer
+
+    # Sessions A and B ended ten minutes ago. Session C is running the report right now: its
+    # open call is the report's own command, still running, not unfinished.
+    ago = 600.0
+    for sid in (a, b):
+        path = os.path.join(folder, sid + ".jsonl")
+        lines = [json.loads(line) for line in open(path).read().splitlines()]
+        with open(path, "w") as fh:
+            for e in lines:
+                e["t"] -= ago
+                fh.write(json.dumps(e) + "\n")
+    c = "cccccccc-0000-0000-0000-000000000003"
+    fire(c, "UserPromptSubmit", prompt="/ai-enabler-metrics:metrics-usage-report")
+    call(c, "Bash", "c1", {"command": "python usage_report.py"}, end=False)
+
+    out_dir = os.path.join(tmp, "agents-report")
+    run = subprocess.run([sys.executable, REPORT, "--metrics-dir", metrics_dir, "--out-dir", out_dir, "--quiet"],
+                         capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    act = json.load(open(os.path.join(out_dir, "usage.json")))["agents"]
+    md = open(os.path.join(out_dir, "report.md"), encoding="utf-8").read()
+    assert act["sessions_with_detail"] == 3 and act["sessions_without_detail"] == 0, act
+    inst = {(r["session"][:1], r["aid"]): r for r in act["instances"]}
+    assert {k for k in inst if k[0] == "a"} == {("a", None), ("a", "r1"), ("a", "r2"), ("a", "r3"), ("a", "r4")}
+    assert not any(r["unfinished"] for k, r in inst.items() if k[0] == "a")
+    assert inst[("a", "r4")]["calls"] == 2 and inst[("a", None)]["type"] == "main"
+    # The refused permission and its call are not reported as hanging.
+    assert not any(c["session"] == a for c in act["unfinished_calls"] + act["unanswered_permissions"]), act
+    # Killed, hung and waiting agents of session B.
+    assert all(inst[("b", k)]["unfinished"] for k in ("k1", "k2", "k3")), inst
+    assert inst[("b", "k3")]["mostly_waiting"] and inst[("b", "k2")]["mostly_waiting"]
+    assert not inst[("b", "k1")]["mostly_waiting"]
+    hung = {c["aid"]: c for c in act["unfinished_calls"]}
+    assert set(hung) == {"k2", "k3"}, hung
+    assert hung["k2"]["tool"] == "Bash" and hung["k2"]["summary"] == "sleep"
+    assert hung["k2"]["agent"] == "ai-enabler:delivery-repo-scout · k2"
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    from usage_report import iso
+    assert hung["k2"]["start"] == iso(started["k2-1"]["t"] - ago) and hung["k2"]["open_seconds"] >= 1.0
+    perms = act["unanswered_permissions"]
+    assert [(p["aid"], p["tool"]) for p in perms] == [("k3", "Write")], perms
+    assert ("c", None) in inst, act["instances"]
+    assert not any(x["session"] == c for x in act["unfinished_calls"]), act["unfinished_calls"]
+    assert "## Slow and unfinished steps: unfinished calls" in md and "unfinished |" in md
+    assert "Mostly waiting" in md and "⚠" in md
+
+    # Events recorded before this capture: the usual report, and a note instead of the detail.
+    old_dir = os.path.join(tmp, "old-agents", ".enabler", "metrics")
+    os.makedirs(os.path.join(old_dir, "events", "old@x.org"))
+    old = [{"ev": "session_start", "source": "startup"}, {"ev": "prompt", "kind": "human", "chars": 9},
+           {"ev": "tool", "tool": "Bash", "dur_ms": 50, "cmd": "git", "git": "commit"},
+           {"ev": "subagent", "agent": reviewer, "dur_s": 4.0},
+           {"ev": "turn", "kind": "human", "dur_s": 10.0, "ai_s": 10.0, "tools": 1}]
+    with open(os.path.join(old_dir, "events", "old@x.org", "s-old.jsonl"), "w") as fh:
+        for i, e in enumerate(old):
+            fh.write(json.dumps(dict(e, v=1, ts="2026-10-01T10:00:%02dZ" % i, t=1790848800.0 + i,
+                                     sid="s-old", user="old@x.org")) + "\n")
+    old_out = os.path.join(tmp, "old-agents-report")
+    run = subprocess.run([sys.executable, REPORT, "--metrics-dir", old_dir, "--out-dir", old_out, "--quiet"],
+                         capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    old_json = json.load(open(os.path.join(old_out, "usage.json")))
+    o = old_json["overall"]
+    assert o["tool_calls"] == 1 and o["commits"] == 1 and o["subagent_runs"] == 1 and o["turns"] == 1, o
+    assert old_json["agents"]["sessions_without_detail"] == 1 and not old_json["agents"]["instances"]
+    old_md = open(os.path.join(old_out, "report.md"), encoding="utf-8").read()
+    assert "1 session recorded before per-agent capture has no per-agent detail." in old_md, old_md
 
 
 def bedrock(tmp, base_env):

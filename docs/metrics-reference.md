@@ -36,11 +36,13 @@ Fields on every event:
 |---|---|---|
 | `session_start` | `source` (startup, resume, clear, compact), `project`, `branch`, `model`, `provider`, `region`, `scope` | `SessionStart` |
 | `prompt` | `kind` (`human`, `command`, `system`), `chars`, `command`, `idle_s` | `UserPromptSubmit` |
-| `tool` | `tool`, `dur_ms`, `wait_ms`, `perm`, `failed`, `interrupt`, `question`; and by tool: `skill`; `agent`; `file`, `added`, `removed`; `cmd`, `git` (`commit`, `push` or `commit+push`), `pr`; `mcp` | `PostToolUse`, `PostToolUseFailure` |
-| `permission` | `tool` | `PermissionRequest` |
-| `permission_denied` | `tool` | `PermissionDenied` |
+| `tool_start` | `tool`, `tuid`, `aid`, `atype`; and by tool: `cmd`; `agent`; `mcp` | `PreToolUse` |
+| `tool` | `tool`, `tuid`, `aid`, `atype`, `dur_ms`, `wait_ms`, `perm`, `failed`, `interrupt`, `question`; and by tool: `skill`; `agent`; `file`, `added`, `removed`; `cmd`, `git` (`commit`, `push` or `commit+push`), `pr`; `mcp` | `PostToolUse`, `PostToolUseFailure` |
+| `permission` | `tool`, `tuid`, `aid`, `atype` | `PermissionRequest` |
+| `permission_denied` | `tool`, `tuid`, `aid`, `atype` | `PermissionDenied` |
 | `notification` | `kind` | `Notification` |
-| `subagent` | `agent`, `dur_s` | `SubagentStop` |
+| `subagent_start` | `aid`, `atype` | `SubagentStart` |
+| `subagent` | `agent`, `aid`, `dur_s` | `SubagentStop` |
 | `compact` | `trigger` | `PreCompact` |
 | `turn` | `kind`, `dur_s`, `ai_s`, `wait_s`, `tools`, `failed` | `Stop`, `StopFailure` |
 | `usage` | `rows`: list of `{model, skill, agent, speed, provider, region, scope, in, out, cr, cw5, cw1, web}` | `Stop`, `StopFailure`, `SessionEnd` |
@@ -51,6 +53,9 @@ Notes:
 - `prompt.kind` is `command` only when the first word is a slash command name (`/name` or `/plugin:name`); a prompt that merely begins with a path is `human`. It is `system` when the turn was started by the harness, not a person — for example the notification that a background subagent finished. These are not counted as human interaction.
 - `prompt.idle_s` is the time since the previous turn of the session ended.
 - `tool.wait_ms` is time the tool call spent blocked on a person. For a tool that raised a permission prompt it is the time between `PreToolUse` and `PostToolUse` minus the tool's own `duration_ms`; for `AskUserQuestion` it is the whole interval.
+- `aid` and `atype` are the id and type of the subagent instance an event happened in. Events of the main conversation carry neither, also in a session started with `--agent`. On `subagent_start` and `subagent` the instance is the subagent itself; `subagent.agent` keeps holding its type.
+- `tuid` is the tool-use id: a `tool_start` and the `tool` that ends it share it. `permission` carries it only when Claude Code sends it, which it currently does not, so a permission is paired with its call by agent and tool. `tool_start` holds the same command summary as `tool` (the program name, the subagent type, the MCP server), never arguments, prompts or an Agent call's description.
+- Files written before `tool_start`, `subagent_start`, `aid` and `tuid` existed have none of them; the report says those sessions have no per-agent detail.
 - `usage.rows` holds the tokens added since the previous `usage` event of the session: `in` input, `out` output, `cr` cache read, `cw5` and `cw1` cache writes with 5-minute and 1-hour lifetime, `web` web-search requests. `skill` is the skill active when the tokens were spent (`-` for none). `agent` is `main` or the subagent type. `speed` is present only for fast mode. `provider` (`bedrock`, `vertex`, `foundry`, `gateway`), `region` and `scope` are present when the session did not run on Anthropic's own API: the hook takes them from `CLAUDE_CODE_USE_BEDROCK`, `AWS_REGION` and the configured model ids.
 
 ## Usage metric definitions
@@ -91,6 +96,23 @@ The idle cap (`idle_cap_seconds`, default 600) separates "reading the answer and
 | Lines added / removed | Σ `tool.added`, Σ `tool.removed`: line counts of the content the AI wrote and replaced through its edit tools. A measure of volume written, not a net diff of the repository |
 | Commits, pushes, pull requests | `tool` events that did not fail, whose shell command ran `git commit`, `git push` (both when chained), or `gh pr create` / `glab mr create` |
 | Skill runs, subagent runs | `tool.skill` counts (skills the model invoked), `subagent` events by type. Skills a person invoked as a slash command appear under slash commands |
+
+### Slow and unfinished steps
+
+Computed per agent instance — `main` (the conversation itself) or a subagent identified by `aid` — in every session that has `tool_start` or `subagent_start` events. Claude Code's own agents (prompt suggestions, `/btw`), which end with no start, no type and no calls, are not listed. Ends are looked for in everything recorded, not only in the filtered events, so a call whose end falls outside `--since`, `--until` or `--ticket` is not taken as unfinished.
+
+| Figure | Definition |
+|---|---|
+| Started, ended | `subagent_start.t` and `subagent.t`; for `main`, the first and last event of the session |
+| Unfinished agent | A `subagent_start` with no `subagent` of the same `aid` in the session. Its wall time runs to the last event of the session |
+| Calls, time in calls | Number of the instance's `tool` events, Σ `tool.dur_ms` |
+| Permission wait | Σ `tool.wait_ms` of its calls with `perm`, plus the open time of its unanswered permissions |
+| Longest calls | The three `tool` events of the instance with the highest `dur_ms` |
+| Unfinished call | A `tool_start` with no `tool` of the same `tuid` in the session, after which its agent did nothing: no `tool_start` of the same agent more than a second later, no end of that subagent, and for `main` no `turn` or `prompt`. A call started less than a minute before the report was made is taken as still running and not listed — the report's own command is one. Open for = last event of the session − `tool_start.t` |
+| Unanswered permission | A `permission` with no later `tool` or `permission_denied` of the same agent and tool, after which its agent did nothing (as above), asked at least a minute before the report was made |
+| Waiting share | The union of the instance's permission waits, unanswered permissions and unfinished calls, ÷ its wall time. Over 50 % flags the instance as mostly waiting |
+
+The "agent did nothing afterwards" condition is there because a call refused at the permission prompt fires `PreToolUse` and nothing else — no `PostToolUse`, no `PermissionDenied` — and the agent then goes on. A refused call is therefore not listed; a call that hangs, or an agent stopped while waiting, is.
 
 ### Cost
 
@@ -189,5 +211,6 @@ One session working on two tickets is split at the prompt where the second key a
 - **Resumed sessions.** When a session starts with history already in its transcript, that history is taken as the baseline and not counted again.
 - **Asynchronous hooks.** Most events are recorded by hooks that run in the background, so their timestamps can lag the event by a few milliseconds; durations reported by Claude Code itself (`dur_ms`) are exact.
 - **Esc during generation** is not visible to hooks.
+- **Unfinished means unfinished when the session was last recorded.** A hook cannot fire on silence: a call that hangs is visible only afterwards, as a start with no end. A call still running in an open session looks the same until it returns.
 - **Hand edits** are invisible: only what the AI writes through its tools is counted as output.
 - **Windows.** Hooks and scripts require Git Bash and Python 3.8+. The plugin's `scripts/run-python.sh` probes `python3`, `python`, then `py -3`, skipping Windows Store aliases; `metrics-usage-init --status` checks that same launcher. A missing runtime is reported, not counted as working capture. File locking is skipped on Windows, which is harmless for a single session.
