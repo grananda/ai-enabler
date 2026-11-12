@@ -4,6 +4,7 @@ User-visible change and reason. Use a Conventional Commit MR title.
 
 ## Scope and release intent
 
+- Issue (`Refs #<n>`, never `Closes`; the issue moves to "awaiting release" at merge):
 - Branch type and optional ticket:
 - New `.changes/*.json` files:
 - Component and asset bump intent (no final version edits):
