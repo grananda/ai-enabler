@@ -1,0 +1,20 @@
+{
+  "summary": "On Windows, the usage hook no longer loses the session's ticket, subagent run times or events when the hooks of parallel subagents run at the same time: hook processes take turns through an msvcrt lock, as they already did with fcntl on Linux and macOS, and a state file that cannot be read is never overwritten with an empty one.",
+  "category": "Fixed",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler-metrics": "patch"
+  },
+  "assets": {
+    "plugins/ai-enabler-metrics/agents/metrics-jira-collector.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-cycle-time/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-delivery-report/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-pr-size/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-review-wait/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-rework/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-stale-assets/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-init/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-report/SKILL.md": "patch"
+  },
+  "migration": ""
+}

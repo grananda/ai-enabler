@@ -37,10 +37,15 @@ from datetime import datetime, timezone
 
 try:
     import fcntl
-except ImportError:  # Windows: no advisory locking, last writer wins
+except ImportError:  # Windows: msvcrt locks instead
     fcntl = None
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None
 
 SCHEMA = 1
+LOCK_WAIT_S = 5.0
 METRICS_REL = os.path.join(".enabler", "metrics")
 # Before 1.0.0 the folder was .enabler/kpi and the variables ENABLER_KPI_*. A project
 # that has not moved its folder yet keeps being captured.
@@ -171,35 +176,82 @@ def detect_platform():
 # -------------------------------------------------------------------- state
 
 class Session:
-    """Per-session state, shared by concurrent hook processes through a lock."""
+    """Per-session state, shared by concurrent hook processes. A lock on <state>.lock serialises
+    them — fcntl on Linux and macOS, msvcrt on Windows — so that each one reads, changes and
+    writes the state, and appends its events, in turn."""
 
     def __init__(self, metrics_dir, sid):
         self.dir = os.path.join(metrics_dir, ".state")
         os.makedirs(self.dir, exist_ok=True)
         self.path = os.path.join(self.dir, safe_name(sid) + ".json")
         self.lock = None
+        self.locked = False
+        self.writable = True
         self.data = {}
+
+    def _lock(self):
+        if fcntl:
+            fcntl.flock(self.lock, fcntl.LOCK_EX)
+            return True
+        if msvcrt:
+            # Bounded: a usage hook must not hold the session up. Past the deadline it goes on unlocked.
+            deadline = time.time() + LOCK_WAIT_S
+            while True:
+                try:
+                    self.lock.seek(0)
+                    msvcrt.locking(self.lock.fileno(), msvcrt.LK_NBLCK, 1)
+                    return True
+                except OSError:
+                    if time.time() >= deadline:
+                        return False
+                    time.sleep(0.005)
+        return False
+
+    def _unlock(self):
+        if not self.locked:
+            return
+        if fcntl:
+            fcntl.flock(self.lock, fcntl.LOCK_UN)
+        elif msvcrt:
+            self.lock.seek(0)
+            msvcrt.locking(self.lock.fileno(), msvcrt.LK_UNLCK, 1)
 
     def __enter__(self):
         self.lock = open(self.path + ".lock", "a+")
-        if fcntl:
-            fcntl.flock(self.lock, fcntl.LOCK_EX)
-        try:
-            with open(self.path, encoding="utf-8") as fh:
-                self.data = json.load(fh)
-        except (OSError, ValueError):
-            self.data = {}
+        self.locked = self._lock()
+        for _ in range(5):
+            try:
+                with open(self.path, encoding="utf-8") as fh:
+                    self.data = json.load(fh)
+                break
+            except FileNotFoundError:
+                break
+            except (OSError, ValueError):
+                time.sleep(0.02)
+        else:
+            # The state exists but cannot be read: work on an empty copy, and never write it back
+            # over what the session knows.
+            self.writable = False
         return self
 
     def __exit__(self, *exc):
+        tmp = "%s.%d.tmp" % (self.path, os.getpid())
         try:
-            tmp = self.path + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(self.data, fh)
-            os.replace(tmp, self.path)
+            if self.writable:
+                with open(tmp, "w", encoding="utf-8") as fh:
+                    json.dump(self.data, fh)
+                for attempt in range(5):
+                    try:
+                        os.replace(tmp, self.path)
+                        break
+                    except OSError:
+                        if attempt == 4:
+                            raise
+                        time.sleep(0.02)
         finally:
-            if fcntl:
-                fcntl.flock(self.lock, fcntl.LOCK_UN)
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            self._unlock()
             self.lock.close()
         return False
 

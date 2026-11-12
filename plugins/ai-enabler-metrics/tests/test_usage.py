@@ -235,6 +235,7 @@ def main():
     regressions(tmp, env)
     agents(tmp, env)
     tickets(tmp, env)
+    concurrency(tmp, env)
     print("ok — %d events, cost $%.3f, report in %s" % (len(events), o["cost_usd"], out_dir))
 
 
@@ -540,6 +541,55 @@ def bedrock(tmp, base_env):
     metrics_out = report("--provider", "anthropic")
     assert abs(metrics_out["overall"]["cost_usd"] - 38.20) < 1e-6, metrics_out["overall"]["cost_usd"]
     assert list(metrics_out["pricing"]["unpriced_tokens"].values()) == [2000000], metrics_out["pricing"]
+
+
+def concurrency(tmp, base_env):
+    """Hook processes of parallel subagents overlap: none of them may lose the session's state
+    (its ticket, the start of each subagent), whatever the platform's file locking."""
+    sid = "55555555-2222-3333-4444-555555555555"
+    project = os.path.join(tmp, "concurrent-project")
+    metrics_dir = os.path.join(project, ".enabler", "metrics")
+    os.makedirs(metrics_dir)
+    env = dict(base_env, CLAUDE_PROJECT_DIR=project)
+    env.pop("ENABLER_METRICS_DEBUG", None)
+
+    def payload(event, **fields):
+        return json.dumps(dict({"hook_event_name": event, "session_id": sid, "cwd": project}, **fields))
+
+    def fire(event, **fields):
+        subprocess.run([sys.executable, HOOK], input=payload(event, **fields), text=True, env=env, check=True)
+
+    fire("SessionStart", source="startup")
+    fire("UserPromptSubmit", prompt="work on PROJ-3")
+    agents = ["s%d" % n for n in range(4)]
+    for aid in agents:
+        fire("SubagentStart", agent_id=aid, agent_type="ai-enabler:delivery-code-reviewer")
+    batch = []
+    for round_ in range(6):
+        for aid in agents:
+            who = {"agent_id": aid, "agent_type": "ai-enabler:delivery-code-reviewer"}
+            tuid = "%s-%d" % (aid, round_)
+            batch.append(payload("PreToolUse", tool_name="Read", tool_use_id=tuid, tool_input={}, **who))
+            batch.append(payload("PostToolUse", tool_name="Read", tool_use_id=tuid, tool_input={},
+                                 duration_ms=5, **who))
+    procs = [subprocess.Popen([sys.executable, HOOK], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, text=True, env=env) for _ in batch]
+    for p, data in zip(procs, batch):
+        p.stdin.write(data)
+        p.stdin.close()
+    for p in procs:
+        assert p.wait(timeout=60) == 0, p.stderr.read()
+    for aid in agents:
+        fire("SubagentStop", agent_id=aid, agent_type="ai-enabler:delivery-code-reviewer")
+
+    events = [json.loads(line) for line in
+              open(os.path.join(metrics_dir, "events", "dev@example.com", sid + ".jsonl")).read().splitlines()]
+    kinds = [e["ev"] for e in events]
+    assert kinds.count("tool") == len(batch) // 2 and kinds.count("prompt") == 1, kinds   # no event lost
+    assert all(e.get("ticket") == "PROJ-3" for e in events[1:]), \
+        [(e["ev"], e.get("ticket")) for e in events if e.get("ticket") != "PROJ-3"][:5]
+    stops = [e for e in events if e["ev"] == "subagent"]
+    assert len(stops) == len(agents) and all(isinstance(e.get("dur_s"), (int, float)) for e in stops), stops
 
 
 def regressions(tmp, base_env):
