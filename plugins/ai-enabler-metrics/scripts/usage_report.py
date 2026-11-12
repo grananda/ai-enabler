@@ -33,8 +33,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import charts as C  # noqa: E402
 import assets as A  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "hooks"))
+from usage_hook import run_ticket  # noqa: E402
 TOKEN_FIELDS = ("in", "out", "cr", "cw5", "cw1")
 NO_TICKET = "(no ticket)"
+# Ids the ai-enabler pipeline gives its own things, shaped like ticket keys: acceptance criteria,
+# review findings, review lenses. Events recorded before the hook knew the runs may carry them.
+PIPELINE_IDS = re.compile(r"(AC|CR|SEC|SECURITY|TEST|TESTS|QUALITY|CORRECTNESS)-\d+")
 
 
 # ------------------------------------------------------------------ pricing
@@ -291,6 +296,29 @@ def parse_day(value, end=False):
     return dt.timestamp() + (86400 if end else 0)
 
 
+def pipeline_id_check(metrics_dirs):
+    """A function telling whether a recorded ticket is one of the pipeline's own ids rather than a
+    ticket. A key that is a run of the project (`.enabler/runs/` next to the metrics folder) or
+    matches its configured `ticket_pattern` is a ticket, whatever its shape."""
+    runs, patterns = set(), []
+    for kd in metrics_dirs:
+        try:
+            with open(os.path.join(kd, "config.json"), encoding="utf-8") as fh:
+                pattern = (json.load(fh) or {}).get("ticket_pattern")
+            if pattern:
+                patterns.append(re.compile(pattern))
+        except (OSError, ValueError, AttributeError, re.error):
+            pass
+        rd = os.path.join(os.path.dirname(os.path.abspath(kd)), "runs")
+        if os.path.isdir(rd):
+            runs.update(run_ticket(n) for n in os.listdir(rd) if os.path.isdir(os.path.join(rd, n)))
+
+    def check(key):
+        return bool(PIPELINE_IDS.fullmatch(key)) and key not in runs and \
+            not any(p.fullmatch(key) for p in patterns)
+    return check
+
+
 def load_events(metrics_dirs, since, until, user, ticket):
     events, files = [], 0
     for kd in metrics_dirs:
@@ -315,6 +343,20 @@ def load_events(metrics_dirs, since, until, user, ticket):
                             continue
                         events.append(current_names(e))
     events.sort(key=lambda e: e["t"])
+    # Events recorded before the hook knew the project's runs may name a criterion (AC-6) or a
+    # review finding (CR-1) as their ticket. Such an event keeps the ticket that was current before
+    # it, as the hook now would; without one, the backfill below gives it the session's first.
+    is_pipeline_id = pipeline_id_check(metrics_dirs)
+    current = {}
+    for e in events:
+        key = e.get("ticket")
+        if key and is_pipeline_id(key):
+            if current.get(e.get("sid")):
+                e["ticket"] = current[e.get("sid")]
+            else:
+                del e["ticket"]
+        elif key:
+            current[e.get("sid")] = key
     # The ticket is often named only in the first prompt: what a session did
     # before that (its start, a first question) belongs to the same ticket.
     # Done before filtering, so --ticket sees those events too.

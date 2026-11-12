@@ -225,7 +225,7 @@ The user id is `git config user.email`, falling back to the OS user name. Set `"
 | `provider`, `bedrock_region`, `bedrock_scope`, `cost_multiplier`, `model_aliases` | unset | Pricing overrides; see "Pricing, and Amazon Bedrock" |
 | `ticket_pattern` | `null` | Regular expression for ticket keys, for example `"(PROJ|OPS)-\\d+"`. The default matches anything shaped like `ABC-123`, minus a list of known false friends such as `UTF-8` |
 
-A session is attributed to the last ticket key seen in a prompt, in the arguments of a skill, or in the branch name at session start.
+A session is attributed to the last ticket key seen in a prompt, in the arguments of a skill, or in the branch name at session start. In a project that uses the ai-enabler pipeline, tickets are its runs (`.enabler/runs/<KEY>/`): the ids the pipeline gives acceptance criteria (`AC-6`) and review findings (`CR-1`) look like ticket keys and are ignored, a run started from a requirements file is attributed by its name, and events recorded before this rule are corrected at report time. The details are in [docs/metrics-reference.md](../../docs/metrics-reference.md#attribution-to-tickets).
 
 ## Pricing, and Amazon Bedrock
 
