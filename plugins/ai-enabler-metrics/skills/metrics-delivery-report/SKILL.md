@@ -4,7 +4,7 @@ description: Builds the delivery-flow dashboard — one HTML page with charts ov
 argument-hint: "[--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--followup-days 14] [--project KEY] [--sprints 3] [--refresh] [--no-jira]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.1.1"
+  version: "1.1.2"
 ---
 
 # ai-enabler-metrics:metrics-delivery-report — the delivery-flow dashboard

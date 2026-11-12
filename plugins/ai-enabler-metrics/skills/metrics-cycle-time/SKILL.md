@@ -4,7 +4,7 @@ description: Measures Jira cycle time for the last closed sprints — median wor
 argument-hint: "[--project KEY] [--sprints 3] [--board ID] [--refresh]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.2"
+  version: "1.0.3"
 ---
 
 # ai-enabler-metrics:metrics-cycle-time — Jira cycle time, backward moves, blocked time
