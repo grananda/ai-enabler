@@ -4,7 +4,7 @@ description: "Ships a finished change — commits it on its feature branch, push
 argument-hint: "[JIRA-KEY] [--local] [--no-pr] [--draft] [--no-jira] [--yes]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.1.3"
+  version: "1.1.4"
 ---
 
 # ai-enabler:delivery-ship — commit, push, pull request, Jira

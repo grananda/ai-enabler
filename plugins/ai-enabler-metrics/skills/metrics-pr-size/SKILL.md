@@ -4,7 +4,7 @@ description: Measures pull request size — the median lines changed per merged 
 argument-hint: "[--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--refresh]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.2"
+  version: "1.0.3"
 ---
 
 # ai-enabler-metrics:metrics-pr-size — pull request size

@@ -4,7 +4,7 @@ description: "Independent multi-lens code review with a severity-ranked report a
 argument-hint: "[JIRA-KEY | PR number or URL | path ...] [--base <branch>] [--lenses correctness,security,quality,tests] [--fix] [--min-confidence 80]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.2.1"
+  version: "1.2.2"
 ---
 
 # ai-enabler:delivery-review — independent review, optional fix

@@ -6,6 +6,22 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.8.0] — 2026-11-12
+
+`ai-enabler` 1.6.0 · `ai-enabler-metrics` 1.2.0
+
+### Added
+
+- **ai-enabler-metrics, marketplace:** Usage events now record which subagent instance made each tool call and permission prompt, and when calls and subagents start; the usage report gains a "Slow and unfinished steps" section listing, per agent instance, its time, longest calls, calls and agents that never finished, and unanswered permissions.
+- **marketplace:** Document how work is tracked on the GitLab board — one issue per change, workflow columns up to "awaiting release", labels that mirror the change fragment, a comment on the issue recording what was done and concluded at each step — and what coding assistants may do with issues.
+- **ai-enabler, marketplace:** repo_profile.py check adds a short summary of what changed, grouped by kind and folder when many files changed, which the pipeline hands to the scout instead of hundreds of paths; delivery-doctor reports the permission settings and external sources that would stop an unattended run on a prompt.
+
+### Fixed
+
+- **ai-enabler, marketplace:** The repository and source scouts stay fast on large codebases: they search through git and the search tools instead of walking the tree, bound every git log, open at most ten files for a ticket, and run every command in the foreground, narrowing one that does not return within two minutes; a new always-on hook refuses a background command from either scout.
+- **ai-enabler-metrics, marketplace:** On Windows, the usage hook no longer loses the session's ticket, subagent run times or events when the hooks of parallel subagents run at the same time: hook processes take turns through an msvcrt lock, as they already did with fcntl on Linux and macOS, and a state file that cannot be read is never overwritten with an empty one.
+- **ai-enabler-metrics, marketplace:** In a project that uses the ai-enabler pipeline, AI usage is attributed to its runs: the ids the pipeline gives acceptance criteria (AC-6), review findings (CR-1) and review lenses no longer pass for tickets, a run started from a requirements file is attributed by its name, branch keys and a configured ticket_pattern still count, and events recorded before are corrected when the report is made.
+
 ## [1.7.0] — 2026-11-10
 
 `ai-enabler` 1.5.2 · `ai-enabler-metrics` 1.1.1
