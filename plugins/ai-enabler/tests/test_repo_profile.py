@@ -160,6 +160,58 @@ def many_files(p):
     assert c["status"] == "stale" and c["changed"] == ["pom.xml"] and not c["removed"], c
 
 
+def summary(p):
+    """The scout gets a summary of what changed, never hundreds of paths: every file when there are
+    few, groups by kind and folder when there are many, and nothing when nothing watched changed."""
+    for i in range(300):
+        p.write("libs/lib%03d/package.json" % i, "{}")
+    for i in range(30):
+        p.write("apps/app%02d/src/main.ts" % i, "x")
+    p.write("package.json", "{}")
+    p.write(".github/workflows/ci.yml", "on: push")
+    p.write(".github/workflows/nightly.yml", "on: schedule")
+    p.write(".enabler/repo-profile/profile.md", "# Profile\n")
+    p.run("record")
+
+    # Only files the profile does not depend on: fresh, and nothing to summarise.
+    p.write("apps/app00/src/main.ts", "y")
+    p.write("package-lock.json", "{}")
+    c = p.check()
+    assert c["status"] == "fresh" and c["summary"] == [], c
+
+    # A few files: one line each, rules first.
+    p.write("package.json", '{"x": 1}')
+    p.write("CLAUDE.md", "Use named exports.")
+    c = p.check()
+    assert c["summary"] == ["2 watched files: 1 changed, 1 added, 0 removed.",
+                            "added CLAUDE.md (rules)", "changed package.json (build)"], c["summary"]
+    p.run("record")
+
+    # A merge that touches 300 manifests: a handful of lines, the root files still named one by one.
+    for i in range(300):
+        p.write("libs/lib%03d/package.json" % i, '{"version": "2.0.0"}')
+    p.write("package.json", '{"x": 2}')
+    p.write("AGENTS.md", "Agents rules.")
+    os.remove(p.path(".github/workflows/nightly.yml"))
+    c = p.check()
+    lines = c["summary"]
+    assert len(c["changed"]) == 301, c["changed"][:3]
+    assert lines == [
+        "303 watched files: 301 changed, 1 added, 1 removed.",
+        "added AGENTS.md (rules)",
+        "ci · .github/ · 1 removed · nightly.yml ×1 · e.g. .github/workflows/nightly.yml",
+        "changed package.json (build)",
+        "build · libs/ · 300 changed · package.json ×300 · e.g. libs/lib000/package.json, libs/lib001/package.json",
+    ], lines
+    p.run("record")
+
+    # More folders than the summary holds: the rest is counted, not listed.
+    for i in range(25):
+        p.write("mod%02d/pom.xml" % i, "<project/>")
+    c = p.check()
+    assert len(c["summary"]) == 1 + 20 + 1 and c["summary"][-1] == "… and 5 more groups (5 files).", c["summary"]
+
+
 def odd_names(p):
     """Names with accents and spaces are watched like any other."""
     p.write("módulo año/package.json", "{}")
@@ -213,8 +265,8 @@ def without_git(p):
 
 
 def main():
-    cases = [(basics, True), (unrecorded, True), (many_files, True), (odd_names, True), (one_folder, True),
-             (limits, True), (without_git, False)]
+    cases = [(basics, True), (unrecorded, True), (many_files, True), (summary, True), (odd_names, True),
+             (one_folder, True), (limits, True), (without_git, False)]
     for case, git in cases:
         p = Project(git=git)
         try:

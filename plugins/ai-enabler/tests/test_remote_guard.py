@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Checks the remote guard: what it blocks in local-only mode, and that it
-stays out of the way otherwise.
+stays out of the way otherwise. Then the scout guard: background commands
+refused for the two scouts, and nobody else.
 
     python3 tests/test_remote_guard.py
 """
@@ -206,6 +207,32 @@ def main():
     assert run(project, "Bash", {"command": "git push"}).returncode == 0
 
     print("ok — %d blocked, %d allowed" % (len(BLOCKED), len(ALLOWED)))
+    scout_guard()
+
+
+def scout_guard():
+    """The scouts run every command in the foreground; nobody else is affected."""
+    hook = os.path.join(ROOT, "hooks", "scout_guard.py")
+
+    def call(tool, tool_input, **who):
+        payload = dict({"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input}, **who)
+        return subprocess.run([sys.executable, hook], input=json.dumps(payload), text=True, capture_output=True)
+
+    background = {"command": "find . -name '*.ts'", "run_in_background": True}
+    for agent in ("ai-enabler:delivery-repo-scout", "ai-enabler:delivery-source-scout", "delivery-repo-scout"):
+        for tool in ("Bash", "PowerShell"):
+            out = call(tool, background, agent_id="a1", agent_type=agent)
+            assert out.returncode == 2 and "foreground only" in out.stderr and out.stdout == "", (agent, tool, out)
+        # A session started with --agent carries agent_type without agent_id: still a scout.
+        assert call("Bash", background, agent_type=agent).returncode == 2, agent
+        assert call("Bash", {"command": "git ls-files '*.ts'"}, agent_id="a1", agent_type=agent).returncode == 0
+        assert call("Bash", dict(background, run_in_background=False), agent_type=agent).returncode == 0
+    for who in ({}, {"agent_type": "ai-enabler:delivery-test-engineer", "agent_id": "t1"},
+                {"agent_type": "other-plugin:delivery-repo-scout", "agent_id": "o1"}):
+        assert call("Bash", background, **who).returncode == 0, who
+    bad = subprocess.run([sys.executable, hook], input="not json", text=True, capture_output=True)
+    assert bad.returncode == 0, bad.stderr
+    print("ok — scout guard")
 
 
 if __name__ == "__main__":

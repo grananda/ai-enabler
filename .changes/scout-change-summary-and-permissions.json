@@ -1,0 +1,29 @@
+{
+  "summary": "repo_profile.py check adds a short summary of what changed, grouped by kind and folder when many files changed, which the pipeline hands to the scout instead of hundreds of paths; delivery-doctor reports the permission settings and external sources that would stop an unattended run on a prompt.",
+  "category": "Added",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler": "minor"
+  },
+  "assets": {
+    "plugins/ai-enabler/agents/delivery-code-implementer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-code-reviewer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-repo-scout.md": "patch",
+    "plugins/ai-enabler/agents/delivery-solution-planner.md": "patch",
+    "plugins/ai-enabler/agents/delivery-source-scout.md": "patch",
+    "plugins/ai-enabler/agents/delivery-test-engineer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-ticket-analyst.md": "patch",
+    "plugins/ai-enabler/agents/delivery-ticket-refiner.md": "patch",
+    "plugins/ai-enabler/skills/delivery-doctor/SKILL.md": "minor",
+    "plugins/ai-enabler/skills/delivery-implement/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-plan/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-review/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-run/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-ship/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-sources/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-test/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-ticket-create/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-ticket-refine/SKILL.md": "patch"
+  },
+  "migration": ""
+}

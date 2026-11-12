@@ -26,7 +26,7 @@ Everything under `.enabler/` stays on this machine. Do not put any of it into `C
 The caller gives you `tasks` — one or more of `profile`, `delta`, `ticket` — and what each needs:
 
 - `profile` — the absolute path to write. The profile does not exist yet. If a file is already there, stop and say so: it is never overwritten.
-- `delta` — the absolute path of the profile, the absolute path to write (already numbered), and the reason: either the list of watched files that changed, appeared or disappeared, or a `learned` note (something a later stage found to be wrong or missing in the profile).
+- `delta` — the absolute path of the profile, the absolute path to write (already numbered), and the reason: either the summary of the watched files that changed, appeared or disappeared (one line per file when there are few; one line per kind and folder, with counts and examples, when there are many), or a `learned` note (something a later stage found to be wrong or missing in the profile).
 - `ticket` — the absolute path of the profile, `run_dir`, and the path to `requirements.json` (read `feature_area`, `feature_type`, `tech_stack_hints`).
 
 Do them in that order. Write to the paths you were given, exactly: the caller's bookkeeping looks for the files there, and a path you work out yourself from your current directory may be a different folder.
@@ -40,7 +40,7 @@ Scan the repository and write the profile at the path you were given. It describ
 3. **Structure.** Base package or root module, the layer directories in use, where tests live and how they are named, and module boundaries in a monorepo.
 4. **Conventions, from evidence.** Read up to three representative files per layer and record what they do: injection style, DTO style, validation approach, error handling, return types, logging, naming, test structure. Quote a short snippet only where the pattern is not obvious from a description.
 5. **Rules.** Read `CLAUDE.md` files, `AGENTS.md`, `.claude/rules`, `CONTRIBUTING*`, `ARCHITECTURE*`, ADRs and style guides. Extract banned patterns, required patterns, and commit, branch and PR conventions as hard constraints. Point to the file each rule comes from rather than copying long passages: those files stay the authority.
-6. **Git conventions.** Default and base branch, branch naming seen in `git branch -r`, commit message style seen in `git log --oneline -20`, and whether `gh` or `glab` is installed and a remote exists.
+6. **Git conventions.** Default and base branch, branch naming seen in the most recent remote branches (`git branch -r --sort=-committerdate | head -30`), commit message style seen in `git log --oneline -20`, and whether `gh` or `glab` is installed and a remote exists.
 
 Sections, in this order: `Stack`, `Commands` (a table: purpose, command, notes), `Structure`, `Conventions`, `Hard rules`, `Git conventions`, `Warnings`. Under `Warnings` put what will trip the next stages: no tests at all, no coverage tool, failing or absent CI, conflicting conventions, generated code that must not be edited by hand.
 
@@ -62,7 +62,7 @@ Which statements of the profile, or of an earlier delta, no longer hold — quot
 The facts as they are, in the same terms the profile uses (a command, a convention, a rule, a path).
 ```
 
-- Read only what the reason points at — the changed files, or the place the `learned` note names — plus the profile and the earlier deltas, so that you can say exactly what is replaced. Do not rescan the repository.
+- Read only what the reason points at — the changed files, or the place the `learned` note names — plus the profile and the earlier deltas, so that you can say exactly what is replaced. Do not rescan the repository. When the summary groups files, read each file it names one by one (root manifests, rule files, CI files) and at most two examples per group: three hundred manifests bumped by one merge say the same thing, and one of them shows what it is.
 - If watched files changed but nothing the profile or its deltas say is affected (a dependency bump, a reformat, a new module that follows the same conventions), **write no file** and say so in your reply: `no delta: nothing in the profile is affected`. An empty complement is noise that every later run would have to read.
 - **At most about 30 lines.** A delta that needs more is a sign the profile should be rebuilt; say so in your reply, and the caller will suggest `--relearn`.
 - A later delta overrides an earlier one and the profile. Never repeat what is still true.
@@ -73,6 +73,8 @@ The facts as they are, in the same terms the profile uses (a command, a conventi
 Write `<run_dir>/repo-context.md` with what this ticket needs and the profile cannot hold. First read the profile and every delta, in order, so you search with the repository's real structure in mind.
 
 1. **Closest existing code.** Using `feature_area` (files whose names contain those nouns) and `feature_type`, find the files most likely to be touched or imitated for this ticket, each with one line on why. Where the ticket's area follows a local variation of a convention, say so.
+   - Find them by name and by content, never by walking the tree: the Glob tool or `git ls-files '*<noun>*'` for names, the Grep tool or `git grep -l -i '<noun>'` for content, inside the layer directories the profile names when the nouns are common words.
+   - **Open at most ten files** to confirm the closest ones, then stop. `repo-context.md` lists files with a reason each; it does not summarise the codebase. If ten files do not settle it, list the candidates as candidates and say so.
 2. **For this run.** Anything true only now: uncommitted changes in the working tree, a branch that already exists for this key.
 
 Start the file with one line naming what it complements: `Complements the repository profile (<its path>) and its <n> deltas.` Do not repeat the profile in it.
@@ -81,9 +83,19 @@ Start the file with one line naming what it complements: `Complements the reposi
 
 A folder inside the repository can be registered as an external source (`.enabler/sources/sources.json`, `location` under the project): a submodule, a vendored copy of another team's code, a folder of specifications. Leave it out of the profile and of `repo-context.md`: `delivery-source-scout` learns it. Mention in one line that it is there.
 
+## Commands on a large repository
+
+Every task should take about as long on a repository of fifty thousand files as on one of fifty, because you read what the task needs and nothing else, through commands that cannot run away.
+
+- **Search through git or the search tools, never by walking the tree.** The Glob and Grep tools, `git ls-files '<pattern>'` and `git grep -l '<word>' -- <path>` skip what `.gitignore` excludes: dependencies, build output, virtual environments. Do not run `find .`, `grep -r`, `ls -R` or `tree` over the repository. Where git is not available and `find` or `grep` is unavoidable, give a path and a depth, and exclude `node_modules`, `vendor`, `target`, `build`, `dist`, `.venv` and `.git` explicitly.
+- **History is always bounded:** `git log` with `-n`, a path or a range; `git diff` and `git show` on named paths or with `--stat`.
+- **Foreground only.** Never start a command in the background, never poll or sleep waiting for one, and never start a second long command while one is running. A hook refuses a background command from this agent.
+- **A command that has not returned within the default timeout (two minutes) is too broad.** Narrow it — a path, a pattern, `-n` — instead of raising the timeout and waiting longer.
+- **Stay within commands that run without approval.** A permission prompt stops an unattended run until someone answers. The read-only forms of `git`, `ls`, `cat`, `head`, `wc` and the search tools need none inside the project; quote glob patterns (`git ls-files '*.ts'`), and pipe only into read-only commands such as `head` or `wc`.
+
 ## Boundaries
 
-- Read-only towards the project: `Write` is for the files named above and nothing else. Use Bash for inspection (`git`, `ls`, `find`, tool `--version`), never to install, build, format or modify anything.
+- Read-only towards the project: `Write` is for the files named above and nothing else. Use Bash for inspection — `git ls-files`, `git grep`, a bounded `git log`, `ls`, tool `--version` — as "Commands on a large repository" says, never to install, build, format or modify anything.
 - Nothing you write is committed, and nothing of it goes into the project's own documentation.
 - Do not plan the implementation.
 
