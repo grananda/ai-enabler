@@ -56,7 +56,7 @@ The plugin's hooks are installed for every session but stay silent until a proje
      - with `--share`, leave `events/` and `delivery/*.json` out of it (keep `delivery/cache/` and `delivery/jira-input/` ignored), so event files are committed and the team's data can be reported together. There is one file per user and session, so they do not conflict on merge.
 5. **Tell the human what happens next**, briefly:
    - capture starts with the next prompt of this session; what the session spent before is not counted;
-   - what is recorded: counts and names of prompts, tools, skills and subagents, durations, lines added and removed, token totals per model, the ticket key; and what is not: prompt text, model output, file contents, command lines;
+   - what is recorded: counts and names of prompts, tools, skills and subagents, the opaque ids that tie each tool call to the subagent that made it, durations, lines added and removed, token totals per model, the ticket key; and what is not: prompt text, model output, file contents, command lines;
    - with `--share`, the e-mail from `git config user.email` is written into committed files unless `--anonymize` is set — say this plainly so the team decides knowingly;
    - `/ai-enabler-metrics:metrics-usage-report` produces the report.
 

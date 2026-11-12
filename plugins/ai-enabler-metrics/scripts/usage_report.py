@@ -25,6 +25,7 @@ import json
 import os
 import re
 import sys
+import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
@@ -518,6 +519,181 @@ def aggregate(events, pricing, idle_cap):
     return overall, dims, session_meta
 
 
+# ------------------------------------------------- slow and unfinished steps
+
+WAITING_SHARE = 0.5     # an agent instance is "mostly waiting" above this share of its wall time
+MOVED_ON_S = 1.0        # calls of one parallel batch start within this of each other
+STILL_RUNNING_S = 60.0  # a call started this shortly before the report may simply still be running
+
+
+def _union(spans):
+    total, end = 0.0, None
+    for a, b in sorted(spans):
+        if b <= a:
+            continue
+        if end is None or a > end:
+            total, end = total + b - a, b
+        elif b > end:
+            total, end = total + b - end, b
+    return total
+
+
+def agent_label(atype, aid):
+    return "%s · %s" % (atype or "subagent", str(aid)[:8]) if aid else "main"
+
+
+def call_summary(e):
+    return e.get("cmd") or e.get("agent") or e.get("mcp") or e.get("skill") or ""
+
+
+def agent_activity(events, reference, now=None):
+    """Per agent instance of each session: its span, calls, permission waits, and
+    what started and never finished. `events` are the selected events; `reference`
+    is everything recorded, so that an end falling outside the filters still
+    closes what it ends.
+
+    A call refused at the permission prompt fires PreToolUse and nothing else, so
+    a start with no end counts as unfinished only while its agent did nothing
+    afterwards: no later call, no end of the agent (or, for the main
+    conversation, no end of turn or new prompt)."""
+    sids = {e.get("sid") for e in events}
+    now = time.time() if now is None else now
+    by_sid = defaultdict(list)
+    for e in reference:
+        if e.get("sid") in sids:
+            by_sid[e.get("sid")].append(e)
+    last, first, detailed, legacy = {}, {}, set(), set()
+    closed_calls, closed_agents, moved_on = set(), set(), defaultdict(list)
+    unanswered = set()
+    for sid, evs in by_sid.items():
+        evs.sort(key=lambda e: e["t"])
+        first[sid], last[sid] = evs[0]["t"], evs[-1]["t"]
+        kinds = {e.get("ev") for e in evs}
+        if kinds & {"tool_start", "subagent_start"}:
+            detailed.add(sid)
+        elif kinds & {"tool", "subagent"}:
+            legacy.add(sid)
+            continue
+        pending = []
+        for e in evs:
+            ev, aid = e.get("ev"), e.get("aid")
+            if ev == "tool" and e.get("tuid"):
+                closed_calls.add((sid, e["tuid"]))
+            elif ev == "subagent" and aid:
+                closed_agents.add((sid, aid))
+                moved_on[(sid, aid)].append(e["t"])
+            elif ev == "tool_start":
+                moved_on[(sid, aid)].append(e["t"])
+            elif ev in ("turn", "prompt"):
+                moved_on[(sid, None)].append(e["t"])
+            if ev == "permission":
+                pending.append(e)
+            elif ev in ("tool", "permission_denied"):
+                for p in pending:
+                    if p.get("aid") == aid and p.get("tool") == e.get("tool") and (
+                            not (p.get("tuid") and e.get("tuid")) or p["tuid"] == e["tuid"]):
+                        pending.remove(p)
+                        break
+        unanswered.update((sid, p["t"], p.get("aid"), p.get("tool")) for p in pending)
+
+    def still_open(sid, aid, t):
+        # The report's own command, among others, is still running when the report is made.
+        return now - t >= STILL_RUNNING_S and not any(m > t + MOVED_ON_S for m in moved_on.get((sid, aid), ()))
+
+    inst, calls, open_calls, open_perms = {}, [], [], []
+
+    def instance(e, atype=None):
+        key = (e.get("sid"), e.get("aid"))
+        a = inst.get(key)
+        if a is None:
+            a = inst[key] = {"sid": key[0], "aid": key[1], "atype": None, "start": None, "end": None,
+                             "first": e["t"], "calls": 0, "call_s": 0.0, "perm_s": 0.0, "waits": [],
+                             "unfinished": False}
+        a["atype"] = a["atype"] or atype or e.get("atype")
+        a["first"] = min(a["first"], e["t"])
+        return a
+
+    for e in events:
+        sid, ev, t = e.get("sid"), e.get("ev"), e["t"]
+        if sid not in detailed:
+            continue
+        if ev == "subagent_start" and e.get("aid"):
+            a = instance(e)
+            a["start"] = t
+            a["unfinished"] = (sid, e["aid"]) not in closed_agents
+        elif ev == "subagent" and e.get("aid"):
+            a = instance(e, e.get("agent"))
+            a["end"] = t
+            if a["start"] is None and e.get("dur_s"):
+                a["start"] = t - e["dur_s"]
+        elif ev == "tool":
+            a = instance(e)
+            dur_s = (e.get("dur_ms") or 0) / 1000.0
+            a["calls"] += 1
+            a["call_s"] += dur_s
+            if e.get("perm") and e.get("wait_ms"):
+                wait_s = e["wait_ms"] / 1000.0
+                a["perm_s"] += wait_s
+                a["waits"].append((t - dur_s - wait_s, t - dur_s))
+            if e.get("dur_ms"):
+                calls.append({"sid": sid, "aid": e.get("aid"), "tool": e.get("tool"),
+                              "summary": call_summary(e), "seconds": round(dur_s, 1), "end": t})
+        elif ev == "tool_start":
+            a = instance(e)
+            if e.get("tuid") and (sid, e["tuid"]) not in closed_calls and still_open(sid, e.get("aid"), t):
+                open_calls.append({"sid": sid, "aid": e.get("aid"), "tool": e.get("tool"),
+                                   "summary": call_summary(e), "start": t,
+                                   "open_seconds": round(last[sid] - t, 1)})
+                a["waits"].append((t, last[sid]))
+        elif ev == "permission":
+            a = instance(e)
+            if (sid, t, e.get("aid"), e.get("tool")) in unanswered and still_open(sid, e.get("aid"), t):
+                open_perms.append({"sid": sid, "aid": e.get("aid"), "tool": e.get("tool"),
+                                   "start": t, "open_seconds": round(last[sid] - t, 1)})
+                a["perm_s"] += last[sid] - t
+                a["waits"].append((t, last[sid]))
+
+    labels = {}
+    instances = []
+    for a in inst.values():
+        if a["aid"] is None:
+            a["start"], a["end"] = first[a["sid"]], last[a["sid"]]
+        elif a["start"] is None and not (a["calls"] or a["waits"]):
+            continue    # an internal agent of Claude Code's (prompt suggestions, /btw): nothing to show
+        a["start"] = a["start"] or a["first"]
+        if a["aid"] and a["end"] is None:
+            a["unfinished"] = True
+        end = a["end"] if a["end"] is not None else last[a["sid"]]
+        wall = max(0.0, end - a["start"])
+        waiting = min(wall, _union(a["waits"]))
+        labels[(a["sid"], a["aid"])] = agent_label(a["atype"], a["aid"])
+        instances.append({
+            "session": a["sid"], "agent": labels[(a["sid"], a["aid"])], "aid": a["aid"],
+            "type": a["atype"] or ("main" if a["aid"] is None else None),
+            "start": iso(a["start"]), "end": None if a["unfinished"] else iso(end),
+            "unfinished": a["unfinished"], "wall_seconds": round(wall, 1), "calls": a["calls"],
+            "call_seconds": round(a["call_s"], 1), "permission_wait_seconds": round(a["perm_s"], 1),
+            "waiting_share": round(waiting / wall, 3) if wall else None,
+            "mostly_waiting": bool(wall) and waiting / wall > WAITING_SHARE})
+    instances.sort(key=lambda r: (not r["unfinished"], not r["mostly_waiting"], -r["wall_seconds"]))
+
+    def named(rows, time_key):
+        return [dict({k: v for k, v in r.items() if k not in ("sid", "aid", time_key)},
+                     session=r["sid"], aid=r["aid"],
+                     agent=labels.get((r["sid"], r["aid"])) or agent_label(None, r["aid"]),
+                     **{time_key: iso(r[time_key])}) for r in rows]
+
+    longest = []
+    for key in labels:
+        mine = sorted((c for c in calls if (c["sid"], c["aid"]) == key), key=lambda c: -c["seconds"])
+        longest += mine[:3]
+    longest.sort(key=lambda c: -c["seconds"])
+    return {"sessions_with_detail": len(detailed & sids), "sessions_without_detail": len(legacy & sids),
+            "instances": instances, "longest_calls": named(longest, "end"),
+            "unfinished_calls": named(sorted(open_calls, key=lambda c: -c["open_seconds"]), "start"),
+            "unanswered_permissions": named(sorted(open_perms, key=lambda c: -c["open_seconds"]), "start")}
+
+
 # --------------------------------------------------------------- formatting
 
 def iso(t):
@@ -694,6 +870,65 @@ def build_sections(overall, dims, session_meta, pricing, args, n_files):
     return sections
 
 
+def activity_sections(act, limit=40):
+    """The "Slow and unfinished steps" tables, from agent_activity()."""
+    def when(value):
+        return (value or "").replace("T", " ").rstrip("Z")
+
+    def capped(rows, note):
+        return note + (" Showing the first %d of %d." % (limit, len(rows)) if len(rows) > limit else "")
+
+    def section(title, note, headers, rows, numeric, empty):
+        return {"title": title, "note": note, "headers": headers, "rows": rows[:limit], "bar": None,
+                "numeric": numeric, "empty": empty}
+
+    old = act["sessions_without_detail"]
+    old_note = (" %d session%s recorded before per-agent capture %s no per-agent detail."
+                % (old, "" if old == 1 else "s", "has" if old == 1 else "have")) if old else ""
+    if not act["sessions_with_detail"]:
+        return [section("Slow and unfinished steps", old_note.strip() or None, [], [], (),
+                        "No per-agent detail recorded.")]
+
+    flagged = [r["agent"] for r in act["instances"] if r["mostly_waiting"]]
+    flag = ("Mostly waiting (over %d%% of wall time on permission prompts or calls that never ended): %s."
+            % (WAITING_SHARE * 100, ", ".join(flagged)) if flagged else
+            "No agent instance spent most of its time waiting.")
+    inst = act["instances"]
+    rows = [[r["session"][:8], r["agent"], when(r["start"]), "unfinished" if r["unfinished"] else when(r["end"]),
+             dur(r["wall_seconds"]), num(r["calls"]), dur(r["call_seconds"]), dur(r["permission_wait_seconds"]),
+             pct(r["waiting_share"]) + (" ⚠" if r["mostly_waiting"] else "")] for r in inst]
+    out = [section(
+        "Slow and unfinished steps",
+        capped(inst, "One row per agent instance: 'main' is the conversation itself, a subagent is its type and "
+               "the start of its id. Wall time of an unfinished agent runs to the last event of its session. "
+               "Waiting is time on permission prompts and in calls that never ended. " + flag + old_note),
+        ["Session", "Agent", "Started (UTC)", "Ended (UTC)", "Wall time", "Calls", "Time in calls",
+         "Permission wait", "Waiting"], rows, (4, 5, 6, 7, 8), "No agent activity recorded.")]
+    calls = act["longest_calls"]
+    out.append(section(
+        "Slow and unfinished steps: longest calls",
+        capped(calls, "The three longest calls of each agent instance, longest first."),
+        ["Session", "Agent", "Tool", "Command / agent / server", "Duration", "Ended (UTC)"],
+        [[c["session"][:8], c["agent"], c["tool"] or "", c["summary"], dur(c["seconds"]), when(c["end"])]
+         for c in calls], (4,), "No timed calls."))
+    calls = act["unfinished_calls"]
+    out.append(section(
+        "Slow and unfinished steps: unfinished calls",
+        capped(calls, "Calls that started and never returned, while their agent did nothing else afterwards. "
+               "'Open for' runs to the last event of the session."),
+        ["Session", "Agent", "Tool", "Command / agent / server", "Started (UTC)", "Open for"],
+        [[c["session"][:8], c["agent"], c["tool"] or "", c["summary"], when(c["start"]), dur(c["open_seconds"])]
+         for c in calls], (5,), "None: every call that started returned."))
+    perms = act["unanswered_permissions"]
+    out.append(section(
+        "Slow and unfinished steps: unanswered permissions",
+        capped(perms, "Permission prompts followed by no result, no denial and nothing else from the same agent."),
+        ["Session", "Agent", "Tool", "Asked (UTC)", "Open for"],
+        [[p["session"][:8], p["agent"], p["tool"] or "", when(p["start"]), dur(p["open_seconds"])] for p in perms],
+        (4,), "None."))
+    return out
+
+
 def render_md(sections, header):
     out = ["# AI usage report", ""]
     out += ["%s: %s  " % kv for kv in header] + [""]
@@ -702,7 +937,7 @@ def render_md(sections, header):
         if sec["note"]:
             out += [sec["note"], ""]
         if not sec["rows"]:
-            out += ["_No data._", ""]
+            out += ["_%s_" % (sec.get("empty") or "No data."), ""]
             continue
         out.append("| " + " | ".join(h or " " for h in sec["headers"]) + " |")
         out.append("|" + "|".join(["---"] * len(sec["headers"])) + "|")
@@ -786,10 +1021,11 @@ def render_html(sections, header, tiles, charts_html=""):
     tables = []
     for sec in sections:
         if not sec["rows"]:
-            body = "<p class='note'>No data.</p>"
+            body = "<p class='note'>%s</p>" % C.e(sec.get("empty") or "No data.")
         else:
             rows = [[pct(c) if i == sec["bar"] else c for i, c in enumerate(row)] for row in sec["rows"]]
-            numeric = tuple(range(1, len(sec["headers"]))) if len(sec["headers"]) > 2 else ()
+            numeric = sec["numeric"] if "numeric" in sec else (
+                tuple(range(1, len(sec["headers"]))) if len(sec["headers"]) > 2 else ())
             body = C.table(sec["headers"], rows, numeric=numeric)
         tables.append(C.section(sec["title"], body, note=sec["note"]))
     return C.page("AI usage report", ["%s: %s" % kv for kv in header],
@@ -882,6 +1118,8 @@ def main():
     # the filtered events: a skill used by someone else or last month is still in use.
     all_events = events if not (args.since or args.until or args.user or args.ticket) else \
         load_events(metrics_dirs, None, None, None, None)[0]
+    activity = agent_activity(events, all_events)
+    sections += activity_sections(activity)
     in_use = A.classify(A.installed(args.assets_dir), all_events)
     if in_use["assets"]:
         sections.append(A.report_section(in_use))
@@ -919,6 +1157,7 @@ def main():
             "by_ticket": {k: g.summary() for k, g in dims["ticket"].items()},
             "by_user": {k: g.summary() for k, g in dims["user"].items()},
             "by_day": {k: g.summary() for k, g in dims["day"].items()},
+            "agents": activity,
         }, fh, indent=2)
     write_csv(os.path.join(out_dir, "tickets.csv"), dims["ticket"], "ticket")
     write_csv(os.path.join(out_dir, "users.csv"), dims["user"], "user")
