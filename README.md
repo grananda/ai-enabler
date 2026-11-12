@@ -171,6 +171,7 @@ Nothing in `.enabler/` has to be committed: the plugins are used by one person o
 |---|---|
 | [CHANGELOG.md](CHANGELOG.md) | What each version brought, newest first |
 | [AGENTS.md](AGENTS.md) | Rules for changing this repository: how versions are bumped, the naming and metadata convention, the checks to run |
+| [docs/work-items.md](docs/work-items.md) | How work is tracked on the GitLab board: issues, columns, labels, and what coding assistants may do with them |
 | [docs/reference/](docs/reference/README.md) | The AI4IT SWAT framework manual this marketplace follows, and how each of its standards is implemented here |
 | [docs/design.md](docs/design.md) | Why the marketplace is shaped this way: what was taken from AI Enablement, what from AIAD, and the decisions behind the pipeline |
 | [plugins/ai-enabler/README.md](plugins/ai-enabler/README.md) | The delivery pipeline: stages, subagents, gates, configuration, run directory, safety rules |

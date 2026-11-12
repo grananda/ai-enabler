@@ -22,6 +22,16 @@ Use `feat/<slug>`, `fix/<slug>`, `docs/<slug>`, `chore/<slug>` or `refactor/<slu
 
 Commit subjects and MR titles use Conventional Commits, for example `fix(runtime): normalize local paths`. See the release policy for accepted types and squash/merge rules. Do not commit or push without the person's authorization; branch before authorized commits on `main`. Do not alter other worktrees, client projects or remote configuration as part of an unrelated change.
 
+## Work items and the board
+
+Work is tracked as GitLab issues on the project's "Development" board; [docs/work-items.md](docs/work-items.md) is the reference for columns, labels and access.
+
+- Every change that reaches `main` has an issue titled `<KEY> — <summary>` (the summary alone when there is no ticket key; never invent one). Name the branch after the key (`feat/enabler-2-...`). The MR description says `Refs #<n>`, never `Closes` or `Fixes`: a merged change is not released until a release MR consumes its fragment.
+- The board's columns are `workflow/` labels: analysis → ready → in progress → in review → awaiting release, then closed once the release is tagged. Keep exactly one `workflow/` label; GitLab here does not enforce it.
+- `component/`, `type/` and `bump/` labels mirror the fragment. The fragment is the authority; when they differ, fix the labels.
+- Analyse before implementing, and record the work on the issue: every piece of work ends with a comment saying what was done and what was concluded — the analysis, the scope decided, each working session with its commits, findings, the MR, the release — following "Comments: the record of the work" in [docs/work-items.md](docs/work-items.md). Keep a Status section current in the description. Report checks honestly, including platform failures.
+- Reading issues and the board is always allowed. Commenting the work on an issue you were asked to work on, and keeping its Status current, needs no further confirmation. Creating, labelling, moving or closing issues is a remote write: only with the person's request or confirmation, as for a push. Never print, request in chat or commit a GitLab token.
+
 ## Naming, ownership and metadata
 
 The convention comes from Standard 2 of the AI4IT SWAT framework manual in [docs/reference/](docs/reference/README.md): shared AI assets have a name, an owner and a version so they outlive their author.

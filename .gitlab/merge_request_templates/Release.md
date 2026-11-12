@@ -7,6 +7,7 @@ Use title `chore(release): prepare <marketplace-version>` and branch `release/<m
 - Planned marketplace/plugin/asset versions:
 - Proposed immutable annotated tags:
 - Consumed fragments:
+- Issues released (in "awaiting release"; close them after the tags exist):
 
 ## Verification
 

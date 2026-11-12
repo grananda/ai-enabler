@@ -1,0 +1,9 @@
+{
+  "summary": "Document how work is tracked on the GitLab board — one issue per change, workflow columns up to \"awaiting release\", labels that mirror the change fragment, a comment on the issue recording what was done and concluded at each step — and what coding assistants may do with issues.",
+  "category": "Added",
+  "components": {
+    "marketplace": "patch"
+  },
+  "assets": {},
+  "migration": ""
+}
