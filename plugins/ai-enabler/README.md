@@ -145,7 +145,7 @@ Each gate counts how often you send the work back, separately: `adjust` at Gate 
 | `delivery-test` | `[KEY \| paths] [--base b] [--target 80] [--minimum 70] [--levels unit,integration,e2e] [--before-code]` | Stages 4 and 6, or stand-alone test generation for any change. |
 | `delivery-review` | `[KEY \| PR \| paths] [--base b] [--lenses ...] [--fix] [--min-confidence 80]` | Stage 7, or a stand-alone review of a branch, pull request or paths. |
 | `delivery-ship` | `[KEY] [--no-pr] [--draft] [--no-jira] [--local] [--yes]` | Stage 8: commit, push, pull request, Jira. |
-| `delivery-doctor` | `[KEY] [--init]` | Checks Jira MCP, git, PR CLI, test commands, configuration, usage capture. |
+| `delivery-doctor` | `[KEY] [--init]` | Checks Jira MCP, git, PR CLI, test commands, configuration, permissions for unattended runs, usage capture. |
 | `delivery-ticket-refine` | `<KEY \| ticket.md> [--out path]` | A more robust version of an existing ticket, as a local Markdown file. Never writes to Jira. |
 | `delivery-ticket-create` | `<a few sentences> [--out path]` | A complete ticket from a short brief, as a local Markdown file. A Jira issue only if you ask for it at the end. |
 | `delivery-sources` | `[add <url\|path> [--about ...] [--paths ...] \| list \| refresh \| relearn NAME \| remove NAME]` | The external sources the pipeline reads besides the project: other repositories, sibling clones, folders, documents. |
@@ -367,7 +367,7 @@ The first time the pipeline runs in a repository, the scout studies it and write
 | missing | Studies the repository and writes the profile |
 | unrecorded: a profile you wrote or restored by hand | Adopts it as it is; it is never overwritten |
 | fresh | Nothing; only looks for the code closest to the ticket |
-| stale, with the files that changed | Reads those files and writes one delta — or none, when nothing the profile says is affected (a dependency bump, a reformat) |
+| stale, with the files that changed | Reads those files and writes one delta — or none, when nothing the profile says is affected (a dependency bump, a reformat). After a large merge it gets a summary — files grouped by kind and folder, with counts and examples — rather than hundreds of paths, reads the root files and a couple of examples per group, and says when the change is too large for a delta |
 
 A change is only marked as seen once its delta exists: the script refuses to record otherwise. And it records the files as they were when the change was noticed, so an edit made while the delta was being written is picked up by the next run.
 
@@ -378,6 +378,28 @@ A delta is also written when the pipeline learns something the hard way: a build
 **It stays on your machine.** The profile is a local working file. It is not committed, and the pipeline does not edit your `.gitignore` to make it so: `.enabler/repo-profile/` and `.enabler/runs/` each hold a `.gitignore` of their own that ignores everything in them. Nothing from the profile is copied into `CLAUDE.md`, `AGENTS.md` or any project file; those remain yours to write. You can read and correct the profile and its deltas by hand, and no `--relearn` is needed afterwards.
 
 **Where it is.** In the `.enabler/` of the folder you opened Claude Code in, next to the runs. If you work in one module of a monorepo, the profile describes that module.
+
+### Large repositories and unattended runs
+
+The scouts are meant to take about as long on fifty thousand files as on fifty. They search through git and the search tools — `git ls-files`, `git grep`, Glob, Grep — which skip what `.gitignore` excludes, instead of walking the tree with `find` or `grep -r` into `node_modules`, `target` or `.venv`; they bound every `git log`; they open at most ten files to find the code closest to a ticket; and they run every command in the foreground, narrowing one that does not return within two minutes rather than waiting longer. A hook that is always on refuses a background command from either scout: a command sent to the background and then waited on is how a scout ends up holding a run for hours. A delta after a large merge starts from the grouped summary `repo_profile.py check` computes, not from the full list of changed files.
+
+**What can stop a run that nobody is watching is a permission prompt.** It waits until someone answers — overnight, if the run is left alone. The scouts keep to commands Claude Code runs without asking: its built-in read-only set (`ls`, `cat`, `head`, `wc`, `grep`, `find` and the read-only forms of `git`, as long as glob patterns are quoted) and the Read, Grep and Glob tools inside the project. What still asks:
+
+- **Reading outside the project.** An external source next to it (`../contracts`, `../specs`) is outside Claude Code's working directories. Add those folders to `.claude/settings.local.json` (yours, not committed: where a sibling folder lives depends on the machine), or to `.claude/settings.json` when the whole team has the same layout, so that they can be read without a prompt. Claude Code applies them once you accept the workspace trust dialog that lists them:
+
+  ```json
+  {
+    "permissions": {
+      "additionalDirectories": ["../contracts", "../specs"]
+    }
+  }
+  ```
+
+  Sources registered by URL are cloned under `.enabler/sources/`, inside the project, and need nothing.
+- **An `ask` or `deny` rule** in your settings that covers `git`, `ls`, Read, Grep or Glob.
+- **The permission mode.** In `dontAsk` mode a call that would prompt is refused instead, and the scouts carry on with less; in auto mode a classifier may delay some commands.
+
+`/ai-enabler:delivery-doctor` reports each of these for the project.
 
 ## External sources: other repositories and documents
 

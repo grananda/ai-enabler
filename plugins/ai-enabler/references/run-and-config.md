@@ -81,9 +81,9 @@ It prints JSON. `root` is the folder whose `.enabler/` is in use, and `profile` 
 | `missing` | The repository has not been learned yet | `profile`, `ticket` | `record --expect <profile path>` |
 | `unrecorded` | There is a `profile.md` but no usable fingerprints: written or restored by hand | `ticket` | `record`. Never overwrite that profile |
 | `fresh` | Nothing the profile was derived from has changed | `ticket` | — |
-| `stale` | Some watched files changed, appeared or disappeared (the script lists them) | `delta`, `ticket` | see below |
+| `stale` | Some watched files changed, appeared or disappeared (the script lists them, and summarises them under `summary`) | `delta`, `ticket` | see below |
 
-**When the profile is stale.** Get the delta's path with `repo_profile.py next-delta "<a few words on what changed>"` (they only become a file name: two or three nouns such as `"test runner"`, not a sentence and not the name of a command) and pass it to the scout with the files the check listed. The scout answers one of two things:
+**When the profile is stale.** Get the delta's path with `repo_profile.py next-delta "<a few words on what changed>"` (they only become a file name: two or three nouns such as `"test runner"`, not a sentence and not the name of a command) and pass it to the scout with the `summary` lines of the check. `summary` names every file when a dozen or fewer changed; beyond that it gives one line per kind of file (`rules`, `ci`, `build`, `lint`, `docs`) and top-level folder, with counts, file names and two examples, and still names each file at the root of the project. Never pass the full `changed`, `added` and `removed` lists: after a large merge they run to hundreds of paths, and the scout would open them one by one. The scout answers one of two things:
 
 - it wrote the delta — run `repo_profile.py record --expect <delta path>`. The script refuses if that file is not there, so a change is never marked as seen with nothing describing it;
 - nothing the profile or its deltas say is affected (a dependency bump, a reformat) and it wrote no file — run `repo_profile.py record`. No empty delta is kept.

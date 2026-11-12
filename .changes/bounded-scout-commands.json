@@ -1,0 +1,13 @@
+{
+  "summary": "The repository and source scouts stay fast on large codebases: they search through git and the search tools instead of walking the tree, bound every git log, open at most ten files for a ticket, and run every command in the foreground, narrowing one that does not return within two minutes; a new always-on hook refuses a background command from either scout.",
+  "category": "Fixed",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler": "patch"
+  },
+  "assets": {
+    "plugins/ai-enabler/agents/delivery-repo-scout.md": "patch",
+    "plugins/ai-enabler/agents/delivery-source-scout.md": "patch"
+  },
+  "migration": ""
+}

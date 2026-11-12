@@ -101,7 +101,7 @@ class LauncherTests(unittest.TestCase):
         for plugin in PLUGINS:
             config = json.loads((plugin / "hooks/hooks.json").read_text())
             count = sum(len(group["hooks"]) for groups in config["hooks"].values() for group in groups)
-            self.assertEqual(count, 2 if plugin.name == "ai-enabler" else 14)
+            self.assertEqual(count, 3 if plugin.name == "ai-enabler" else 14)
         doctor = (PLUGINS[0] / "skills/delivery-doctor/SKILL.md").read_text(encoding="utf-8")
         status = (PLUGINS[1] / "skills/metrics-usage-init/SKILL.md").read_text(encoding="utf-8")
         for text in (doctor, status):

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Keeps track of whether the repository profile is still true.
 
-    repo_profile.py check             missing, unrecorded, fresh or stale? (JSON on stdout)
+    repo_profile.py check             missing, unrecorded, fresh or stale? (JSON on stdout; `summary` is what
+                                      changed, in a few lines whatever the number of files: hand that to the
+                                      scout, not the full `changed`/`added`/`removed` lists)
     repo_profile.py record            remember the state of the watched files
         --expect PATH                 refuse unless PATH (the profile or the delta just asked for) was written
         --keep                        keep the fingerprints as they are (a delta about something learned,
@@ -43,26 +45,34 @@ import sys
 from datetime import datetime, timezone
 
 SCHEMA = 1
-WATCHED = [
-    # build manifests
-    "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties",
-    "package.json", "angular.json", "nx.json", "turbo.json", "lerna.json", "pnpm-workspace.yaml",
-    "tsconfig.json", "tsconfig.*.json", "vite.config.*", "next.config.*", "webpack.config.*", "jest.config.*",
-    "vitest.config.*", "karma.conf.*", "playwright.config.*", "cypress.config.*", "babel.config.*", "biome.json",
-    "pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "requirements-*.txt", "requirements/*.txt",
-    "tox.ini", "pytest.ini", "mypy.ini", "go.mod", "Cargo.toml", "*.csproj", "*.sln", "Directory.Build.props",
-    "Gemfile", "composer.json", "Makefile", "makefile", "GNUmakefile", "justfile", "Taskfile.yml", "Taskfile.yaml",
-    "Dockerfile", "docker-compose.yml", "docker-compose.yaml", ".nvmrc", ".tool-versions",
-    # CI
-    ".github/workflows/*.yml", ".github/workflows/*.yaml", "Jenkinsfile", ".gitlab-ci.yml",
-    "azure-pipelines.yml", "bitbucket-pipelines.yml", ".circleci/config.yml", ".pre-commit-config.yaml",
-    # lint and format
-    ".eslintrc", ".eslintrc.*", "eslint.config.*", ".prettierrc", ".prettierrc.*", "checkstyle.xml",
-    "ruff.toml", ".ruff.toml", ".flake8", ".pylintrc", ".editorconfig", "sonar-project.properties",
-    ".golangci.yml", ".golangci.yaml",
-    # the project's own rules
-    "CLAUDE.md", "claude.md", "AGENTS.md", "CONTRIBUTING.md", "CONTRIBUTING", "ARCHITECTURE.md",
-    ".claude/rules/*", ".github/CODEOWNERS", "CODEOWNERS", "docs/adr/*", "adr/*",
+# What is watched, by what it tells the profile. The kind only labels the change summary.
+WATCHED_KINDS = [
+    ("rules", [
+        # the project's own rules
+        "CLAUDE.md", "claude.md", "AGENTS.md", "CONTRIBUTING.md", "CONTRIBUTING", "ARCHITECTURE.md",
+        ".claude/rules/*", ".github/CODEOWNERS", "CODEOWNERS", "docs/adr/*", "adr/*",
+    ]),
+    ("ci", [
+        ".github/workflows/*.yml", ".github/workflows/*.yaml", "Jenkinsfile", ".gitlab-ci.yml",
+        "azure-pipelines.yml", "bitbucket-pipelines.yml", ".circleci/config.yml", ".pre-commit-config.yaml",
+    ]),
+    ("build", [
+        # build manifests
+        "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties",
+        "package.json", "angular.json", "nx.json", "turbo.json", "lerna.json", "pnpm-workspace.yaml",
+        "tsconfig.json", "tsconfig.*.json", "vite.config.*", "next.config.*", "webpack.config.*", "jest.config.*",
+        "vitest.config.*", "karma.conf.*", "playwright.config.*", "cypress.config.*", "babel.config.*", "biome.json",
+        "pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "requirements-*.txt", "requirements/*.txt",
+        "tox.ini", "pytest.ini", "mypy.ini", "go.mod", "Cargo.toml", "*.csproj", "*.sln", "Directory.Build.props",
+        "Gemfile", "composer.json", "Makefile", "makefile", "GNUmakefile", "justfile", "Taskfile.yml", "Taskfile.yaml",
+        "Dockerfile", "docker-compose.yml", "docker-compose.yaml", ".nvmrc", ".tool-versions",
+    ]),
+    ("lint", [
+        # lint and format
+        ".eslintrc", ".eslintrc.*", "eslint.config.*", ".prettierrc", ".prettierrc.*", "checkstyle.xml",
+        "ruff.toml", ".ruff.toml", ".flake8", ".pylintrc", ".editorconfig", "sonar-project.properties",
+        ".golangci.yml", ".golangci.yaml",
+    ]),
 ]
 # Watched at the root of the project only: every folder may have a README, one of them documents the commands.
 ROOT_ONLY = ["README", "README.*"]
@@ -71,6 +81,9 @@ ROOT_ONLY = ["README", "README.*"]
 IGNORED_DIRS = ("node_modules/", "vendor/", ".git/", ".enabler/")
 WALK_SKIP = IGNORED_DIRS + ("dist/", "build/", "target/", "coverage/", ".nx/", ".venv/", "venv/", "__pycache__/")
 PROFILE_LINES, DELTA_LINES, MANY_DELTAS = 150, 30, 10
+# The change summary handed to the scout: every file when there are few, groups when there are many.
+LIST_ALL, SUMMARY_GROUPS, EXAMPLES = 12, 20, 2
+KIND_ORDER = ["rules", "ci", "build", "lint", "docs"]
 
 
 def project_root():
@@ -113,26 +126,69 @@ def candidates(root):
     return found
 
 
-def watched(root):
-    """Watched files, at the root and in the modules of a monorepo. Every one of them: no cap."""
-    out = set()
-    for path in candidates(root):
-        if any(("/" + path).find("/" + d) >= 0 for d in IGNORED_DIRS):
-            continue
-        name = path.rsplit("/", 1)[-1]
-        if "/" not in path and any(fnmatch.fnmatch(name, pat) for pat in ROOT_ONLY):
-            out.add(path)
-            continue
-        for pat in WATCHED:
+def kind_of(path):
+    """What a watched file tells the profile (rules, ci, build, lint, docs), or None if it is not watched."""
+    if any(("/" + path).find("/" + d) >= 0 for d in IGNORED_DIRS):
+        return None
+    name = path.rsplit("/", 1)[-1]
+    if "/" not in path and any(fnmatch.fnmatch(name, pat) for pat in ROOT_ONLY):
+        return "docs"
+    for kind, patterns in WATCHED_KINDS:
+        for pat in patterns:
             if "/" in pat:
                 # Directory patterns match at the root and under any module.
                 if fnmatch.fnmatch(path, pat) or fnmatch.fnmatch(path, "*/" + pat):
-                    out.add(path)
-                    break
+                    return kind
             elif fnmatch.fnmatch(name, pat):
-                out.add(path)
-                break
-    return sorted(out)
+                return kind
+    return None
+
+
+def watched(root):
+    """Watched files, at the root and in the modules of a monorepo. Every one of them: no cap."""
+    return sorted(path for path in set(candidates(root)) if kind_of(path))
+
+
+def change_summary(changed, added, removed):
+    """What changed, short enough to hand to the scout whatever the number of files. Up to LIST_ALL
+    files, one line each. Beyond that, one line per kind and top-level folder with counts, file names
+    and a couple of examples; files at the root of the project are always named one by one, since
+    each of them (the root manifest, CLAUDE.md, the CI file) can change what the profile says."""
+    entries = [(p, "changed") for p in changed] + [(p, "added") for p in added] + \
+        [(p, "removed") for p in removed]
+    if not entries:
+        return []
+    total = "%d watched files: %d changed, %d added, %d removed." % (
+        len(entries), len(changed), len(added), len(removed))
+    rank = lambda kind: KIND_ORDER.index(kind) if kind in KIND_ORDER else len(KIND_ORDER)
+    if len(entries) <= LIST_ALL:
+        rows = sorted(entries, key=lambda e: (rank(kind_of(e[0]) or ""), e[0]))
+        return [total] + ["%s %s (%s)" % (how, p, kind_of(p) or "other") for p, how in rows]
+    groups = {}
+    for p, how in entries:
+        kind = kind_of(p) or "other"
+        key = (kind, p) if "/" not in p else (kind, p.split("/", 1)[0] + "/")
+        g = groups.setdefault(key, {"changed": 0, "added": 0, "removed": 0, "names": {}, "paths": []})
+        g[how] += 1
+        name = p.rsplit("/", 1)[-1]
+        g["names"][name] = g["names"].get(name, 0) + 1
+        g["paths"].append(p)
+    order = sorted(groups, key=lambda k: (rank(k[0]), "/" in k[1], -len(groups[k]["paths"]), k[1]))
+    lines = [total]
+    for kind, where in order[:SUMMARY_GROUPS]:
+        g = groups[(kind, where)]
+        counts = ", ".join("%d %s" % (g[h], h) for h in ("changed", "added", "removed") if g[h])
+        if "/" not in where:
+            lines.append("%s %s (%s)" % (counts.split(" ", 1)[1], where, kind))
+            continue
+        names = sorted(g["names"].items(), key=lambda kv: (-kv[1], kv[0]))
+        named = ", ".join("%s ×%d" % kv for kv in names[:3]) + (", …" if len(names) > 3 else "")
+        examples = ", ".join(sorted(g["paths"])[:EXAMPLES])
+        lines.append("%s · %s · %s · %s · e.g. %s" % (kind, where, counts, named, examples))
+    rest = order[SUMMARY_GROUPS:]
+    if rest:
+        lines.append("… and %d more groups (%d files)." % (len(rest), sum(len(groups[k]["paths"]) for k in rest)))
+    return lines
 
 
 def fingerprints(root):
@@ -203,7 +259,7 @@ def check(root):
     state = load_state(root)
     names = deltas(root)
     result = {"status": "missing", "root": root, "profile": profile, "deltas": len(names),
-              "changed": [], "added": [], "removed": []}
+              "changed": [], "added": [], "removed": [], "summary": []}
     if not os.path.isfile(profile):
         return result
     result["profile_lines"] = line_count(profile)
@@ -225,6 +281,7 @@ def check(root):
     result["changed"] = sorted(p for p in now if p in then and now[p] != then[p])
     result["added"] = sorted(p for p in now if p not in then)
     result["removed"] = sorted(p for p in then if p not in now)
+    result["summary"] = change_summary(result["changed"], result["added"], result["removed"])
     result["status"] = "stale" if (result["changed"] or result["added"] or result["removed"]) else "fresh"
     result["recorded"] = state.get("recorded")
     pending = os.path.join(base, "pending.json")

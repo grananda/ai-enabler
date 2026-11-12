@@ -81,7 +81,7 @@ The repository is learned once and then only kept up to date; read "Repository p
    - `missing` — `profile` and `ticket`, then `repo_profile.py record --expect <profile path>`;
    - `unrecorded` — `ticket`, then `repo_profile.py record`. The profile that is there was written by hand: it is adopted, never overwritten;
    - `fresh` — `ticket` only;
-   - `stale` — `delta` and `ticket`. Get the delta's path with `repo_profile.py next-delta "<what changed>"` and pass it with the files the check listed. If the scout wrote the delta, `repo_profile.py record --expect <delta path>`; if it reports that nothing in the profile is affected and wrote no file, `repo_profile.py record`.
+   - `stale` — `delta` and `ticket`. Get the delta's path with `repo_profile.py next-delta "<what changed>"` and pass it with the `summary` lines of the check — never the full `changed`, `added` and `removed` lists, which after a large merge run to hundreds of paths. If the scout wrote the delta, `repo_profile.py record --expect <delta path>`; if it reports that nothing in the profile is affected and wrote no file, `repo_profile.py record`.
 
    The `ticket` task always gets the run directory and the path to `requirements.json`.
 3. Read the warnings the scout returns: no test command, no coverage tool or a dirty tree change how later stages behave, and belong in the final report. If `suggest_relearn` in the check is not empty, or the scout says the profile and its deltas no longer fit together, mention once that `--relearn` would rebuild it; do not do it unasked.
