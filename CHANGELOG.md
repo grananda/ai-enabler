@@ -6,6 +6,14 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.8.1] — 2026-11-16
+
+`ai-enabler` 1.6.0 · `ai-enabler-metrics` 1.2.1
+
+### Fixed
+
+- **ai-enabler-metrics, marketplace:** The usage report no longer under-counts cost and over-counts people behind an LLM gateway or with background subagents: cache writes reported as a total without a split by duration are priced as 5-minute writes instead of dropped, and a subagent handing its report back to the session is counted as a system turn, so it no longer adds human prompts, human interactions or human thinking time. Applies to sessions recorded from this version on.
+
 ## [1.8.0] — 2026-11-12
 
 `ai-enabler` 1.6.0 · `ai-enabler-metrics` 1.2.0
