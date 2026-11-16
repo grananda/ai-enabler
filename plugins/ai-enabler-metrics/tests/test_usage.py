@@ -68,6 +68,7 @@ def main():
     fire("PostToolUse", tool_name="Bash", tool_use_id="t2", duration_ms=50,
          tool_input={"command": "git commit -m 'secret message that must not be stored'"})
     fire("SubagentStart", agent_id="a1", agent_type="ai-enabler:delivery-code-reviewer")
+    time.sleep(1.0)
     fire("PostToolUse", tool_name="Agent", tool_use_id="t3", duration_ms=5,
          tool_input={"subagent_type": "ai-enabler:delivery-code-reviewer", "prompt": "do not store me"})
     fire("SubagentStop", agent_id="a1", agent_type="ai-enabler:delivery-code-reviewer")
@@ -144,7 +145,11 @@ def main():
     assert o["commits"] == 1 and o["lines_added"] == 3 and o["files_touched"] == 1
     assert o["subagent_runs"] == 1 and o["tickets"] == 1
     assert o["human_wait_seconds"] >= 1 and o["human_think_seconds"] >= 1
-    assert o["ai_seconds"] <= 3, o["ai_seconds"]       # turn and subagent overlap, counted once
+    # The subagent ran inside the first turn: its time is not added on top. Compared
+    # with the recorded durations, not the clock, so a slow machine does not matter.
+    turns_ai = sum(e["ai_s"] for e in events if e["ev"] == "turn")
+    sub_s = sum(e.get("dur_s") or 0 for e in events if e["ev"] == "subagent")
+    assert sub_s >= 1.0 and o["ai_seconds"] <= turns_ai + 0.6, (o["ai_seconds"], turns_ai, sub_s)
     assert list(metrics_out["by_ticket"]) == ["PROJ-7"]
 
     # Skills and agents in use: stale after 90 days without use, never judged on too little data.
@@ -453,6 +458,9 @@ def agents(tmp, base_env):
     assert not any(x["session"] == c for x in act["unfinished_calls"]), act["unfinished_calls"]
     assert "## Slow and unfinished steps: unfinished calls" in md and "unfinished |" in md
     assert "Mostly waiting" in md and "⚠" in md
+    # The internal agent is not a subagent run: four reviewers, nothing for the killed scouts.
+    o = json.load(open(os.path.join(out_dir, "usage.json")))["overall"]
+    assert o["subagent_runs"] == 4 and "subagent ×" not in md, o["subagent_runs"]
 
     # Events recorded before this capture: the usual report, and a note instead of the detail.
     old_dir = os.path.join(tmp, "old-agents", ".enabler", "metrics")

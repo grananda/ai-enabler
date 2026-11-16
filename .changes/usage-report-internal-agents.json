@@ -1,0 +1,20 @@
+{
+  "summary": "The usage report's Output table no longer counts Claude Code's own internal agents (prompt suggestions, /btw) as subagent runs, as the \"Slow and unfinished steps\" section already did.",
+  "category": "Fixed",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler-metrics": "patch"
+  },
+  "assets": {
+    "plugins/ai-enabler-metrics/agents/metrics-jira-collector.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-cycle-time/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-delivery-report/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-pr-size/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-review-wait/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-rework/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-stale-assets/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-init/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-report/SKILL.md": "patch"
+  },
+  "migration": ""
+}

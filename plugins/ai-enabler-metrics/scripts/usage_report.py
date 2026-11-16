@@ -536,7 +536,9 @@ def aggregate(events, pricing, idle_cap):
                 g.n["permissions"] += 1
             elif ev == "permission_denied":
                 g.n["denials"] += 1
-            elif ev == "subagent":
+            elif ev == "subagent" and (e.get("agent") or e.get("dur_s") is not None):
+                # Claude Code's own agents (prompt suggestions, /btw) stop with no type and no
+                # start; they are not runs anyone asked for.
                 g.agents[e.get("agent") or "subagent"] += 1
                 g.sec["subagent"] += e.get("dur_s") or 0
                 g.busy[e.get("sid")].append((e["t"] - (e.get("dur_s") or 0), e["t"]))

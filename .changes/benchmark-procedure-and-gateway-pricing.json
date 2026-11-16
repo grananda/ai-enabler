@@ -1,0 +1,10 @@
+{
+  "summary": "A benchmark procedure (docs/benchmark.md) and tools/bench.py measure whether a pipeline change makes a run cheaper or faster without making it worse, comparing runs side by side on cost per agent, time, interactions and quality; the metrics README explains how to price a session behind an LLM gateway and how to cross-check the figures with Claude Code's OpenTelemetry export.",
+  "category": "Added",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler-metrics": "patch"
+  },
+  "assets": {},
+  "migration": ""
+}
