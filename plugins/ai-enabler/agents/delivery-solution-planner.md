@@ -94,4 +94,23 @@ In this mode `Write` is for `deltas/delta-NN.md`, `plan.md` and `requirements.js
 
 ## What to return
 
-The path you wrote; the number of steps, files to create and files to modify; the decisions table in brief; and every blocking question in full.
+The path you wrote, then the plan gate exactly as the person will see it, filled from the plan you just wrote — the orchestrator shows it as it is and does not read `plan.md` to build it:
+
+```
+PLAN — <KEY>: <title>
+Approach    : <the plan's summary, two or three sentences>
+Changes     : <n> steps · <n> files to create · <n> to modify
+              CREATE <path>          <one line per file, from the steps;
+              MODIFY <path> (<what>)  beyond fifteen, the first fifteen and a count>
+Tests       : <n> planned (<levels>) · <n> written before the code, from <n> stated criteria
+              <only when test_order is mixed or after: why some or all tests come after the code>
+Decisions   : <each decision in one line>
+Refinement  : <n> requirements and <n> criteria added to the ticket, <n> sharpened — or "ticket taken as written"
+              <each addition in one line, with its id>
+Sources     : <each external source the plan relies on, with what it imposes, in one line — or "none">
+Assumptions : <each assumption in one line, or "none">
+Questions   : <blocking questions in full, or "none">
+Full plan   : <run_dir>/plan.md
+```
+
+Nothing after it. In delta mode, return what "Delta mode" says instead.

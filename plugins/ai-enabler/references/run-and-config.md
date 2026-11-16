@@ -44,14 +44,14 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
                "summary": "", "approved": false, "applied": false }],
   "external_context": { "contracts": "git:4f2a…:9c1e…" },
   "profile_notes": ["the coverage report is in build/reports/jacoco, not target/site"],
-  "human_interventions": [{ "at": "", "stage": "plan", "kind": "adjustment | fix | delta | question | takeover | coverage_accepted", "note": "" }],
+  "human_interventions": [{ "at": "", "stage": "plan", "kind": "approval | adjustment | fix | delta | question | takeover | coverage_accepted | hold | local | ship | cancel | stop", "note": "" }],
   "pr_url": ""
 }
 ```
 
 `gate_rounds` and `deltas` are explained under "Rounds at a gate" and "Changing course after approval"; `profile_notes` (absent or empty most of the time) under "Repository profile". `refined` says whether the ticket went through refinement in this run; a run started before refinement existed has no such key and is resumed as it is. `stage` is the stage to run next, using exactly the names above; they are also the values `--from` accepts. `status` is `held` when the run waits at the ship gate, `stopped` when a person cancelled or stopped it (the note of the last intervention says where and why), `active` otherwise.
 
-Update `state.json` whenever a stage completes and whenever the human steps in. `human_interventions` is the pipeline's own record of where a person had to act; keep each note to one line.
+Update `state.json` whenever a stage completes and whenever the human steps in, through `scripts/run_state.py` (`init`, `update`, `intake`, `show`), never by editing the file: one call per transition records every change of that transition and stamps the time. `human_interventions` is the pipeline's own record of where a person had to act; keep each note to one line. Its kinds are `approval`, `adjustment`, `fix`, `delta`, `question`, `takeover`, `coverage_accepted`, `hold`, `local`, `ship`, `cancel` and `stop`.
 
 `.enabler/runs/`, `.enabler/repo-profile/`, `.enabler/tickets/` and `.enabler/sources/` hold working files and stay out of commits. `repo_profile.py check` sees to it without touching any file of the project: it puts a `.gitignore` containing `*` inside each of them. Do not add lines to the project's own `.gitignore` for them. A skill that writes a run directory without going through the scout stage runs `check` once for the same reason.
 

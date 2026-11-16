@@ -198,10 +198,12 @@ plugins/
     templates/   pull-request.md (the pull-request template, unless the repository has its own)
     scripts/     repo_profile.py (is the repository profile still valid?),
                  sources.py (external sources: add, check, fetch, record; .docx to Markdown),
-                 review_scope.py (which review lenses a change needs, and the review pack)
+                 review_scope.py (which review lenses a change needs, and the review pack),
+                 run_state.py (the run's state.json bookkeeping and intake summary)
     hooks/       hooks.json, remote_guard.py (blocks uploads when the project is local-only),
                  source_guard.py (keeps external sources read-only)
-    tests/       test_remote_guard.py, test_repo_profile.py, test_sources.py, test_review_scope.py
+    tests/       test_remote_guard.py, test_repo_profile.py, test_sources.py, test_review_scope.py,
+                 test_run_state.py
   ai-enabler-metrics/
     .claude-plugin/plugin.json
     hooks/       hooks.json, usage_hook.py
@@ -237,6 +239,7 @@ python -m unittest discover -s tools/tests -v            # release governance te
 /bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_repo_profile.py   # the repository-profile bookkeeping
 /bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_sources.py        # external sources and their read-only guard
 /bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_review_scope.py   # review lenses, grouping and the review pack
+/bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_run_state.py      # state.json bookkeeping and the intake summary
 /bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_remote_guard.py  # what local-only mode blocks and allows
 ```
 

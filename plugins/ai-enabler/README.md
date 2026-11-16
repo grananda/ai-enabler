@@ -243,7 +243,7 @@ The six agents took the same prefix (`ticket-analyst` → `delivery-ticket-analy
 
 ## Subagents
 
-Each stage runs in its own context and hands over a file, not a conversation. That keeps the orchestrator's context small over a long run, makes a run resumable, and makes the reviewer independent of the author.
+Each stage runs in its own context and hands over a file, not a conversation. That keeps the orchestrator's context from growing with everything each stage read, makes a run resumable, and makes the reviewer independent of the author.
 
 | Agent | Role | Model | Tools |
 |---|---|---|---|
@@ -264,7 +264,7 @@ The two stages where a mistake is most expensive run on the strongest model; the
 - **Refinement — Opus, high effort.** Seeing what a definition does not say is judgement, not transcription, and a gap missed here is a behaviour missing from the result. It reads one ticket, so it is also a cheap place to spend the stronger model.
 - **Review — Opus, high effort.** The reviewer is the last check before a person, and its value is in catching what the author missed; it should not be weaker than the author.
 - **Intake, scout, implementation, tests — Sonnet.** Each works from explicit material: the ticket, the repository, an approved plan, stated acceptance criteria. This is where most tokens are spent, so it is also where the price difference matters.
-- **Orchestration** runs on whatever model the session uses. It delegates the reading and the writing, so its own token use is small.
+- **Orchestration** runs on whatever model the session uses — at a client, usually the strongest. It is not cheap: everything it reads stays in its context and is read again on every later turn, and it takes about a hundred turns on a medium ticket. Measured on one, it was the largest single cost of the run, between a quarter and two fifths of it. So it reads as little as it can: the subagents' short returns carry what it needs to decide, `scripts/run_state.py` keeps `state.json` and summarises `requirements.json` without it opening either, the planner hands it the plan gate ready to show, and it loads no skill the pipeline does not name.
 
 The models are set as aliases (`opus`, `sonnet`) in each agent's frontmatter, so they follow the provider's current version. To change one, edit the `model:` line in `agents/<name>.md` (`haiku`, `sonnet`, `opus`, `fable`, `inherit`, or a full model id). The usage report's "Cost by agent" table shows what each stage actually costs, which is the evidence to tune this with.
 
@@ -315,7 +315,7 @@ Every ticket gets its own folder, `.enabler/runs/<KEY>/`, where `<KEY>` is the J
 
 | File | Written at | By | What it is |
 |---|---|---|---|
-| `state.json` | start, then after every stage | the skill | Where the run stands: the stage to run next, the stages done, the branch, whether the plan was approved, the round counters of each gate, the deltas and whether each was approved and applied, whether tests go before or after the code, how many fix rounds were used, the pull-request URL, and every point where a person stepped in. This is what `/ai-enabler:delivery-run <KEY>` reads to resume. |
+| `state.json` | start, then after every stage | the skill, through `scripts/run_state.py` | Where the run stands: the stage to run next, the stages done, the branch, whether the plan was approved, the round counters of each gate, the deltas and whether each was approved and applied, whether tests go before or after the code, how many fix rounds were used, the pull-request URL, and every point where a person stepped in. This is what `/ai-enabler:delivery-run <KEY>` reads to resume. |
 | `requirements.json` | stage 1, intake | `delivery-ticket-analyst`, then `delivery-ticket-refiner` | The ticket in a normalised form, with what refinement added marked as such: summary, requirements, each acceptance criterion with an id (`AC-1`, `AC-2`…) and whether the ticket stated it or the analyst derived it, constraints, what is out of scope, dependencies, assumptions and open questions. Also two verdicts: whether the ticket is ready to implement, and whether its criteria are good enough to write tests from. |
 | `external-context.md` | stage 2, scout | `delivery-source-scout` | What the project's external sources impose on this ticket — contracts, schemas, rules, components — each with its source and the path inside it, and any contradiction with the ticket. Only when the project has sources. |
 | `refinement.md` | stage 1, after intake | `delivery-ticket-refiner` | What refinement added to the ticket — each requirement, criterion and assumption with the reason — and the questions it could not answer for you. It is what to read at the plan gate before accepting or rejecting an addition. Absent when refinement was skipped. |
