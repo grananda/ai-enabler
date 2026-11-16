@@ -1,0 +1,9 @@
+{
+  "summary": "The release procedure ends with a GitLab release for each marketplace version, named Marketplace X.Y.Z on the marketplace tag, with components, changes, update instructions and validation, so every release appears on the project's Releases page and not only as tags.",
+  "category": "Changed",
+  "components": {
+    "marketplace": "patch"
+  },
+  "assets": {},
+  "migration": ""
+}

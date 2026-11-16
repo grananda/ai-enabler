@@ -24,3 +24,5 @@ Use title `chore(release): prepare <marketplace-version>` and branch `release/<m
 ## Publication gate
 
 This MR does not authorize an automatic push, tag or upload. Record who will perform the human verification and separately authorized publication. Never force-replace a tag. Repository configuration does not itself protect main or tags.
+
+After merge, the maintainer: creates and verifies the annotated tags on the release merge commit and pushes them; runs the manual `verify-release-manually` job of the marketplace tag pipeline; creates the GitLab release `Marketplace <version>` on the marketplace tag (sections Components, Changes, Requirements and update, Validation; see [the release procedure](../../docs/release-policy.md#offline-release-procedure)); closes the released issues naming the version.

@@ -26,4 +26,4 @@ Do not rewrite or reset another person's branch. Coordinate a rebase onto govern
 
 ## Release work
 
-Only a release MR changes final versions. See [the offline release procedure](docs/release-policy.md#offline-release-procedure). Preparation never commits, pushes, tags or uploads. A human reviews, merges, verifies and explicitly authorizes publication actions separately. Once the tags exist, close the issues whose fragments the release consumed, naming the marketplace version.
+Only a release MR changes final versions. See [the offline release procedure](docs/release-policy.md#offline-release-procedure). Preparation never commits, pushes, tags or uploads. A human reviews, merges, verifies and explicitly authorizes publication actions separately. Once the tags exist, create the GitLab release `Marketplace <version>` on the marketplace tag, and close the issues whose fragments the release consumed, naming the marketplace version.
