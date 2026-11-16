@@ -1,6 +1,6 @@
 # Review checklist
 
-Given to each `delivery-code-reviewer` instance alongside its lens. It is a list of places to look, not a list of findings to produce: report only what the changed code actually shows.
+Given to each `delivery-code-reviewer` instance alongside its lenses. It is a list of places to look, not a list of findings to produce: report only what the changed code actually shows.
 
 ## All lenses
 

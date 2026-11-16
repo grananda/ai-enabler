@@ -26,7 +26,7 @@ Before anything else, read these two files and follow them throughout:
 | 4 | acceptance-tests | `ai-enabler:delivery-test-engineer` (`acceptance`) | tests for the ticket's criteria, `acceptance-tests.md` | — |
 | 5 | implement | `ai-enabler:delivery-code-implementer` | code on a feature branch that makes those tests pass | — |
 | 6 | coverage | `ai-enabler:delivery-test-engineer` (`coverage`) | remaining tests, coverage (target 80 %, minimum 70 %), `test-report.md` | only if coverage is below the minimum |
-| 7 | review | `ai-enabler:delivery-code-reviewer` × lenses, in parallel | `review.md` | — |
+| 7 | review | `ai-enabler:delivery-code-reviewer`, one instance per lens or group of lenses the change needs, in parallel | `review-pack.md`, `review.md` | — |
 | 8 | ship | this skill, following `ai-enabler:delivery-ship` | commit, push, PR, Jira update | **ship** |
 
 Tests come before the code. A test written from the ticket says what the code must do; a test written from the code only confirms what it already does, errors included. Stage 4 therefore runs whenever the ticket states acceptance criteria worth testing against, and the ticket decides how much it can cover — read "Test order" in the run-and-config reference. Stage 6 always runs, whatever the order: it aims at 80 % coverage of the changed code, accepts 70 % or more, and below that hands the decision to the person ("Coverage" in the same reference).
@@ -173,15 +173,22 @@ Launch `ai-enabler:delivery-test-engineer` with `mode: coverage`, the run direct
 
 ## Step 7 — Review and fix loop
 
-1. Launch one `ai-enabler:delivery-code-reviewer` per lens in `review.lenses`, **all in a single message so they run in parallel**. Give each: its lens, the scope (the base branch), the run directory, and the path `${CLAUDE_PLUGIN_ROOT}/references/review-checklist.md`.
-2. Consolidate. Merge findings that point at the same line and cause, keep the highest severity, drop findings whose confidence is below `review.min_confidence`, and renumber. Before accepting a `critical` or `high` finding, open the cited code and check it yourself: a false blocker costs a fix round.
-3. Write `review.md` in the format `${CLAUDE_PLUGIN_ROOT}/skills/delivery-review/SKILL.md` defines (verdict, findings numbered `CR-n` by severity, acceptance-criteria table, "To validate", "Checked and found sound").
-4. Fix loop, while there are findings whose severity is in `review.auto_fix` and `fix_rounds < review.max_fix_rounds` (the budget is per review pass; see "Rounds at a gate" in the reference):
+1. Decide the lenses and write the review pack, with no model involved:
+
+   ```
+   /bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/review_scope.py" --base <base branch> --run-dir .enabler/runs/<KEY> --lenses <review.lenses, comma-separated> --group-below <review.group_below_lines> [--sensitive <glob> for each of review.sensitive_paths] [--no-select when review.select_lenses is false]
+   ```
+
+   It prints JSON: `groups` (one list of lenses per reviewer to launch), `skipped` (a lens left out and why), `triggers`, and `pack`, the path of `review-pack.md` in the run directory. Correctness, quality and tests always run; security runs whenever the change touches external input, I/O, queries, HTML rendering, authentication, secrets, configuration, dependencies or a sensitive path, and is left out only when nothing of the kind is found. Small changes (under `review.group_below_lines` changed lines) get two reviewers carrying two lenses each instead of one per lens. If the script fails, launch one reviewer per lens in `review.lenses` without a pack, as before, and say so in `review.md`.
+2. Launch one `ai-enabler:delivery-code-reviewer` per entry of `groups`, **all in a single message so they run in parallel**. Give each: its lenses, the pack, the scope (the base branch), the run directory, and the path `${CLAUDE_PLUGIN_ROOT}/references/review-checklist.md`.
+3. Consolidate. Merge findings that point at the same line and cause, keep the highest severity, drop findings whose confidence is below `review.min_confidence`, and renumber. Before accepting a `critical` or `high` finding, open the cited code and check it yourself: a false blocker costs a fix round.
+4. Write `review.md` in the format `${CLAUDE_PLUGIN_ROOT}/skills/delivery-review/SKILL.md` defines (verdict, findings numbered `CR-n` by severity, acceptance-criteria table, "To validate", "Checked and found sound"). Under "Checked and found sound", say which lenses ran in which reviewer, and any lens left out with the reason the script gave: the person must see at the ship gate that security was not reviewed, and why.
+5. Fix loop, while there are findings whose severity is in `review.auto_fix` and `fix_rounds < review.max_fix_rounds` (the budget is per review pass; see "Rounds at a gate" in the reference):
    - send those findings to `ai-enabler:delivery-code-implementer` in `fix` mode;
    - launch the test engineer in `verify` mode on the affected area;
-   - re-run only the lenses that had findings, scoped to the files that changed;
+   - re-run only the lenses that had findings: `review_scope.py` again with `--lenses <those lenses> --no-select` for a fresh pack, and the reviewers told which files the fix changed;
    - increment `fix_rounds` and append the outcome to `review.md`.
-5. Whatever remains — lower severities, findings the implementer disputed, anything left when the budget ran out — is listed as open in the delivery report. Do not keep looping, and do not downgrade a finding to make the report look clean.
+6. Whatever remains — lower severities, findings the implementer disputed, anything left when the budget ran out — is listed as open in the delivery report. Do not keep looping, and do not downgrade a finding to make the report look clean.
 
 ## Step 8 — Delivery report, and the ship gate
 
@@ -233,7 +240,7 @@ Three situations send the run backwards. Handle each the same way every time.
 
 1. `ai-enabler:delivery-code-implementer` in `fix` mode with the request as its fix list;
 2. `ai-enabler:delivery-test-engineer` in `coverage` mode — the coverage stage again, since code changed: the suite within its budget, any missing tests, mutation testing on what changed, the coverage verdict (and the stop below the minimum, if it comes to that);
-3. the review lenses the change touches, scoped to the files that changed, as a new review pass (`fix_rounds` back to 0), appended to `review.md`;
+3. a new review pass (`fix_rounds` back to 0) as in Step 7, from `review_scope.py`: the lenses the change needs, with a fresh pack, appended to `review.md`;
 4. the delivery report rewritten, and back to the ship gate.
 
 **3. A change to what is being built** — to scope, behaviour or acceptance criteria — once the plan has been approved. It comes from a `fix` at the ship gate that asks for something different, from an implementer that found the plan wrong, or from a resumed run whose ticket or instructions changed. This is a **delta**; read "Changing course after approval: deltas" in the run-and-config reference and follow it:
@@ -259,7 +266,7 @@ Three situations send the run backwards. Handle each the same way every time.
    - `ai-enabler:delivery-test-engineer` in `acceptance` mode with the delta: tests for the added and changed criteria are written, and the tests the delta lists as obsolete are removed. This runs even if the run's `test_order` was `after` for lack of criteria in the ticket; only a configured `tests.order: after` skips it;
    - `ai-enabler:delivery-code-implementer` in `implement` mode with the delta: the new tests are made to pass and the code the delta lists is deleted. Then set the delta's `applied: true`;
    - the coverage stage;
-   - the review lenses the change touches, as a new review pass (`fix_rounds` back to 0), giving the reviewers the run directory so they read `deltas/`;
+   - a new review pass (`fix_rounds` back to 0) as in Step 7, from `review_scope.py` with a fresh pack, giving the reviewers the run directory so they read `deltas/`;
    - the delivery report, with the delta under "Changes after the plan was approved", and the ship gate.
 
 Criteria marked `removed_by` are no longer in force: leave them out of "criteria met" at the ship gate and show them in the report only under the delta that removed them, or, for the ones marked `plan-gate`, in one line under "What refinement added to the ticket" as rejected at the plan gate.

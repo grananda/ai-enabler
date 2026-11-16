@@ -18,6 +18,7 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
 | `deltas/delta-NN.before/` | the orchestrating skill | Copies of `plan.md` and `requirements.json` taken before the planner writes delta NN, so the delta can be revised or cancelled |
 | `acceptance-tests.md` | `delivery-test-engineer` (acceptance mode) | The tests written before the code, one row per acceptance criterion |
 | `test-report.md` | `delivery-test-engineer` (coverage mode) | Commands run and how long each took, suite result, coverage against the target and the minimum, acceptance-criteria table, mutation results |
+| `review-pack.md` | `scripts/review_scope.py`, before each review pass | What every reviewer of the pass reads first: files changed and their kind, the lenses and why, the criteria in force, the test report, and the diff of the code |
 | `review.md` | the orchestrating skill (`delivery-run` or `delivery-review`), in the format the `delivery-review` skill defines | Consolidated findings and what was fixed |
 | `delivery-report.md` | the `delivery-run` skill | What the human reads at the ship gate, written after the plugin's pull-request template |
 | `pull-request.md` | the ship stage | The pull-request body as it was sent: the report, in the template the person chose |
@@ -152,6 +153,9 @@ Optional file `.enabler/config.json`. Like the rest of `.enabler/`, it is a loca
   },
   "review": {
     "lenses": ["correctness", "security", "quality", "tests"],
+    "select_lenses": true,
+    "group_below_lines": 150,
+    "sensitive_paths": [],
     "min_confidence": 80,
     "auto_fix": ["critical", "high"],
     "max_fix_rounds": 2
@@ -171,6 +175,10 @@ Optional file `.enabler/config.json`. Like the rest of `.enabler/`, it is a loca
 - `refine.enabled` — after intake, the ticket refiner closes the gaps in the definition before anything is planned (see "Ticket refinement" below). `false`, or `--no-refine` for one run, takes the ticket as written.
 - `tests.full_suite_runs` — how many times the test engineer may run the whole suite in one coverage stage: once to surface regressions, once to measure. Default 2. In between it runs only the tests it created or changed. See "Effort budget" in the test engineer.
 - `tests.mutation` — mutation testing, **on by default**: it is what shows whether the tests would notice a wrong decision. It is kept to the code the ticket changed that decides something (business rules, permissions, validations, calculations, security and privacy), each mutant runs against the feature's tests only, in one pass, at most `max_mutants` (40). `enabled: false` turns it off for the project. See "Mutation testing" in the test engineer.
+- `review.lenses` — the lenses a review may use. Within them, `scripts/review_scope.py` decides what each change needs.
+- `review.select_lenses` — `true` leaves the security lens out when the change touches no external input, I/O, process execution, query, HTML rendering, authentication, secret, configuration, dependency or sensitive path; correctness, quality and tests always run. The review report says when security was left out and why. `false` runs every lens of `review.lenses` on every change.
+- `review.group_below_lines` — under this many changed lines (150), two reviewers carry two lenses each (correctness with tests, security with quality) instead of one reviewer per lens. `0` always launches one per lens.
+- `review.sensitive_paths` — path patterns (`src/billing/*`, `**/Payments/**`) whose change always brings the security lens, whatever is in it.
 - `review.auto_fix` — severities `/ai-enabler:delivery-run` fixes on its own inside its fix loop. Everything else is reported and left for the human. The stand-alone `/ai-enabler:delivery-review` ignores this key: there it fixes only with `--fix` or when the person says so.
 
 Command-line flags on a skill override the file for that run.
