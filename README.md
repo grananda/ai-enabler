@@ -177,6 +177,7 @@ Nothing in `.enabler/` has to be committed: the plugins are used by one person o
 | [plugins/ai-enabler/README.md](plugins/ai-enabler/README.md) | The delivery pipeline: stages, subagents, gates, configuration, run directory, safety rules |
 | [plugins/ai-enabler-metrics/README.md](plugins/ai-enabler-metrics/README.md) | Usage and delivery metrics: what is measured, when a metric is a KPI, privacy, sharing, the reports, coming from `ai-enabler-kpi` |
 | [docs/metrics-reference.md](docs/metrics-reference.md) | Event schema, metric definitions and formulas, pricing, known limits |
+| [docs/benchmark.md](docs/benchmark.md) | How to measure whether a pipeline change makes a run cheaper or faster without making it worse |
 | [docs/jira-mcp.md](docs/jira-mcp.md) | Connecting Jira (Cloud or Data Center) through MCP |
 
 ## Repository layout
@@ -210,9 +211,9 @@ plugins/
                  metrics-rework, metrics-cycle-time
     agents/      metrics-jira-collector
     tests/       test_usage.py, test_delivery.py
-docs/            design, metrics reference, Jira MCP setup
+docs/            design, metrics reference, benchmark procedure, Jira MCP setup
   reference/     the AI4IT SWAT framework manual the marketplace follows
-tools/           check_conventions.py, check_versions.py
+tools/           check_conventions.py, check_versions.py, release.py, bench.py
 VERSION          the marketplace version
 CHANGELOG.md     what each version brought
 AGENTS.md        rules for changing this repository: versions, naming, checks

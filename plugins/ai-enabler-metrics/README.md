@@ -222,7 +222,7 @@ The user id is `git config user.email`, falling back to the OS user name. Set `"
 | `idle_cap_seconds` | `600` | Longest gap between turns counted as thinking time; longer gaps count as the cap and as an "away" gap |
 | `anonymize_users` | `false` | Store a hash instead of the e-mail |
 | `record_paths` | `true` | Store the paths of files the AI wrote (needed for "files touched") |
-| `provider`, `bedrock_region`, `bedrock_scope`, `cost_multiplier`, `model_aliases` | unset | Pricing overrides; see "Pricing, and Amazon Bedrock" |
+| `provider`, `bedrock_region`, `bedrock_scope`, `cost_multiplier`, `model_aliases` | unset | Pricing overrides; see "Pricing, and Amazon Bedrock" and "Behind an LLM gateway" |
 | `ticket_pattern` | `null` | Regular expression for ticket keys, for example `"(PROJ|OPS)-\\d+"`. The default matches anything shaped like `ABC-123`, minus a list of known false friends such as `UTF-8` |
 
 A session is attributed to the last ticket key seen in a prompt, in the arguments of a skill, or in the branch name at session start. In a project that uses the ai-enabler pipeline, tickets are its runs (`.enabler/runs/<KEY>/`): the ids the pipeline gives acceptance criteria (`AC-6`) and review findings (`CR-1`) look like ticket keys and are ignored, a run started from a requirements file is attributed by its name, and events recorded before this rule are corrected at report time. The details are in [docs/metrics-reference.md](../../docs/metrics-reference.md#attribution-to-tickets).
@@ -286,6 +286,43 @@ It is on-demand, standard-tier token pricing. It does not know about provisioned
 
 Models missing from a table are listed in the report as unpriced rather than silently counted as zero.
 
+### Behind an LLM gateway
+
+When `ANTHROPIC_BASE_URL` points Claude Code at a gateway or proxy (LiteLLM, a corporate gateway), the hook records the provider as `gateway`. The report looks for a `gateway` table first and falls back to the `anthropic` one, with a note, when there is none. That fallback is right for a gateway in front of Anthropic or Microsoft Foundry. For other models, or other prices, add a `gateway` table to the project's `.enabler/metrics/pricing.json`, with the model ids as the transcript shows them (the report strips a `[1m]` suffix) and the provider's prices per million tokens:
+
+```json
+{
+  "providers": {
+    "gateway": {
+      "models": {
+        "gpt-6.1-sol":   { "input": 2.0, "output": 10.0, "cache_read": 0.10, "cache_write_5m": 2.50, "cache_write_1h": 5.00 },
+        "gpt-6.1-terra": { "input": 1.0, "output": 5.0,  "cache_read": 0.05, "cache_write_5m": 1.25, "cache_write_1h": 2.50 }
+      }
+    }
+  }
+}
+```
+
+The figures are Azure OpenAI retail prices, Global deployment, short context, from the [Azure Retail Prices API](https://prices.azure.com/api/retail/prices) (service *Foundry Models*); a Data Zone deployment costs more. A gateway that sends a Bedrock model is priced with the Bedrock table by setting `"provider": "bedrock"` instead (see above). `cost_multiplier` applies here too.
+
+Two things to check on the first gateway report:
+
+- **Cache writes.** A gateway that does not split cache writes by duration still reports their total; it is priced as 5-minute writes. If the report shows cache reads but no cache writes at all, the gateway is not reporting them, and the cost is understated.
+- **What the gateway itself bills.** The report prices tokens as Claude Code saw them. The gateway's own usage log, or the cloud provider's cost management, is the reference for the amount billed.
+
+### Cross-checking with OpenTelemetry
+
+Claude Code's [OpenTelemetry export](https://code.claude.com/docs/en/monitoring-usage.md) counts the same tokens independently: the `claude_code.token.usage` metric, by `type` (`input`, `output`, `cacheRead`, `cacheCreation`) and `model`. With `OTEL_LOG_TOOL_DETAILS=1` its cost and token counters also carry the agent names. To compare one session with this report without a collector, print the metrics to the terminal:
+
+```bash
+export CLAUDE_CODE_ENABLE_TELEMETRY=1
+export OTEL_METRICS_EXPORTER=console
+export OTEL_METRIC_EXPORT_INTERVAL=10000
+claude
+```
+
+Set these variables in the shell or in `~/.claude/settings.json`: Claude Code ignores them in a repository's `.claude/settings.json` and `.claude/settings.local.json`. For an organisation, point `OTEL_EXPORTER_OTLP_ENDPOINT` at a collector through managed settings.
+
 ## Limits to keep in mind
 
 - Cost is the provider's published on-demand price, not the invoice: discounts, commitments and taxes are outside it. On a subscription plan the organisation is not billed per token at all; use the figure to compare tickets, people and skills.
@@ -305,5 +342,5 @@ For organisation-wide dashboards, Claude Code's OpenTelemetry export is the comp
 
 Neither needs Claude Code, GitHub or Jira.
 
-- `test_usage.py` replays a short session through the hook with a synthetic transcript and runs the report. It checks interaction counts, waiting time, cost by skill and agent, Bedrock pricing, privacy (no prompt or command text on disk), the opt-in rule, the old folder and variable names, old skill names mapped to the new ones, and the in-use table: stale after 90 days, never on too little recording, unaffected by report filters, and correct when the plugin runs from the installed cache. It also replays parallel subagents and checks per-agent attribution, start/end pairing, and the slow and unfinished steps: a killed agent, a hung call, an unanswered permission, a refused one that is not reported, and an events file from before per-agent capture. It also fires hook processes of parallel subagents at the same time and checks that none loses the session's ticket, a subagent's run time or an event. Behind an LLM gateway, it checks that cache writes reported without a split by duration are still priced, and that a background subagent handing its report back is a system turn, not a human prompt or human thinking time.
+- `test_usage.py` replays a short session through the hook with a synthetic transcript and runs the report. It checks interaction counts, waiting time, cost by skill and agent, Bedrock pricing, privacy (no prompt or command text on disk), the opt-in rule, the old folder and variable names, old skill names mapped to the new ones, and the in-use table: stale after 90 days, never on too little recording, unaffected by report filters, and correct when the plugin runs from the installed cache. It also replays parallel subagents and checks per-agent attribution, start/end pairing, and the slow and unfinished steps: a killed agent, a hung call, an unanswered permission, a refused one that is not reported, and an events file from before per-agent capture; Claude Code's internal agents are neither shown there nor counted as subagent runs. It also fires hook processes of parallel subagents at the same time and checks that none loses the session's ticket, a subagent's run time or an event. Behind an LLM gateway, it checks that cache writes reported without a split by duration are still priced, and that a background subagent handing its report back is a system turn, not a human prompt or human thinking time.
 - `test_delivery.py` runs the four delivery metrics on fixtures. It checks medians and intervals, review waits with draft, bot, dismissed and post-merge reviews, follow-up and revert detection, cycle time across a weekend, backward moves, blocked time, and targets: which keys are accepted, how a verdict is reached, and that a malformed target is refused.
