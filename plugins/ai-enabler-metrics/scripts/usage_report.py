@@ -824,7 +824,7 @@ def build_sections(overall, dims, session_meta, pricing, args, n_files):
               ["Questions answered (AskUserQuestion)", num(s["questions_answered"])],
               ["Tool calls interrupted", num(s["interrupts"])],
               ["Total human interactions", num(s["human_interactions"])],
-              ["Turns started by the system (background task notifications)", num(s["system_turns"])],
+              ["Turns started by the system (background task notifications, subagent hand-backs)", num(s["system_turns"])],
               ["Tool calls", num(s["tool_calls"])],
               ["Tool failures", num(s["tool_failures"])],
               ["Context compactions", num(s["compactions"])],

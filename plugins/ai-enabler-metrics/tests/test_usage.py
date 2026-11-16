@@ -607,6 +607,47 @@ def regressions(tmp, base_env):
     assert SLASH_COMMAND.match("/ai-enabler:delivery-run") and SLASH_COMMAND.match("/clear")
     assert not SLASH_COMMAND.match("/home/acme/payroll.py")
     assert HARNESS_PROMPT.match("<task-notification>") and not HARNESS_PROMPT.match("<div class='x'> why")
+    assert HARNESS_PROMPT.match('Another Claude session sent a message:\n<agent-message from="a1">')
+    assert HARNESS_PROMPT.match('<agent-message from="a1">') and not HARNESS_PROMPT.match("Another day, same bug")
+
+    # Behind an LLM gateway the cache-write split can be all zeros while the
+    # total is set, and a background subagent hands its report back as a prompt.
+    sid = "66666666-2222-3333-4444-555555555555"
+    project = os.path.join(tmp, "gateway-project")
+    metrics_dir = os.path.join(project, ".enabler", "metrics")
+    os.makedirs(metrics_dir)
+    transcript = os.path.join(tmp, "transcripts", sid + ".jsonl")
+    open(transcript, "w").close()
+    env = dict(base_env, CLAUDE_PROJECT_DIR=project)
+
+    def fire_gateway(event, **fields):
+        payload = dict({"hook_event_name": event, "session_id": sid, "cwd": project,
+                        "transcript_path": transcript, "prompt_id": "p1"}, **fields)
+        out = subprocess.run([sys.executable, HOOK], input=json.dumps(payload), text=True,
+                             capture_output=True, env=env)
+        assert out.returncode == 0 and out.stderr == "", out.stderr
+
+    fire_gateway("SessionStart", source="startup")
+    fire_gateway("UserPromptSubmit", prompt="/ai-enabler:delivery-run PROJ-3")
+    with open(transcript, "a") as fh:
+        fh.write(assistant("g1", "claude-opus-5-5", {
+            "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 1000000,
+            "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 0}}))
+    fire_gateway("Stop")
+    time.sleep(1.1)
+    fire_gateway("UserPromptSubmit", prompt_id="p2", prompt='Another Claude session sent a message:\n'
+                 '<agent-message from="a1">\n[Subagent hand-back] all tests pass\n</agent-message>')
+    fire_gateway("Stop", prompt_id="p2")
+    raw = open(os.path.join(metrics_dir, "events", "dev@example.com", sid + ".jsonl")).read()
+    prompts = [e for e in map(json.loads, raw.splitlines()) if e["ev"] == "prompt"]
+    assert [p["kind"] for p in prompts] == ["command", "system"] and "idle_s" not in prompts[1], prompts
+    out_dir = os.path.join(tmp, "gateway-report")
+    run = subprocess.run([sys.executable, REPORT, "--metrics-dir", metrics_dir, "--out-dir", out_dir, "--quiet"],
+                         capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    o = json.load(open(os.path.join(out_dir, "usage.json")))["overall"]
+    assert abs(o["cost_usd"] - 5.0) < 1e-6, o["cost_usd"]                   # 1M written at 4 * 1.25
+    assert o["human_prompts"] == 0 and o["system_turns"] == 1 and o["human_think_seconds"] == 0, o
 
     # Opting in mid-session: what was spent before is the baseline, not this turn's cost.
     sid = "77777777-2222-3333-4444-555555555555"
