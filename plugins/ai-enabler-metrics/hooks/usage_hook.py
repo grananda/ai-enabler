@@ -65,9 +65,11 @@ NOT_TICKETS = {
 }
 # A slash command is "/name" or "/plugin:name"; "/home/me/file.py is broken" is not.
 SLASH_COMMAND = re.compile(r"^/[A-Za-z][\w-]*(:[\w-]+)*$")
-# Prompts the harness submits on its own, not a person.
+# Prompts the harness submits on its own, not a person. A subagent that runs in
+# the background hands its report back as a prompt from "another Claude session".
 HARNESS_PROMPT = re.compile(
-    r"^<(task-notification|system-reminder|local-command-[a-z]+|command-[a-z]+|bash-[a-z]+)\b")
+    r"^(<(task-notification|system-reminder|agent-message|local-command-[a-z]+|command-[a-z]+|bash-[a-z]+)\b"
+    r"|Another Claude session sent a message:)")
 WRITE_TOOLS = {"write", "edit", "multiedit", "notebookedit"}
 QUESTION_TOOLS = {"askuserquestion"}
 AGENT_TOOLS = {"agent", "task"}
@@ -352,11 +354,11 @@ USAGE_FIELDS = ("in", "out", "cr", "cw5", "cw1", "web")
 def _usage_of(message):
     u = message.get("usage") or {}
     cc = u.get("cache_creation") or {}
-    cw5 = cc.get("ephemeral_5m_input_tokens")
-    cw1 = cc.get("ephemeral_1h_input_tokens")
-    if cw5 is None and cw1 is None:
-        # Older transcripts only carry the total; price it as the 5-minute tier.
-        cw5, cw1 = u.get("cache_creation_input_tokens") or 0, 0
+    cw5 = cc.get("ephemeral_5m_input_tokens") or 0
+    cw1 = cc.get("ephemeral_1h_input_tokens") or 0
+    # Older transcripts carry only the total, and behind an LLM gateway the
+    # split by duration can be all zeros: price what it leaves out as 5-minute.
+    cw5 += max(0, (u.get("cache_creation_input_tokens") or 0) - cw5 - cw1)
     stu = u.get("server_tool_use") or {}
     return {
         "in": u.get("input_tokens") or 0,

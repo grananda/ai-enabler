@@ -1,0 +1,20 @@
+{
+  "summary": "The usage report no longer under-counts cost and over-counts people behind an LLM gateway or with background subagents: cache writes reported as a total without a split by duration are priced as 5-minute writes instead of dropped, and a subagent handing its report back to the session is counted as a system turn, so it no longer adds human prompts, human interactions or human thinking time. Applies to sessions recorded from this version on.",
+  "category": "Fixed",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler-metrics": "patch"
+  },
+  "assets": {
+    "plugins/ai-enabler-metrics/agents/metrics-jira-collector.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-cycle-time/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-delivery-report/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-pr-size/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-review-wait/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-rework/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-stale-assets/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-init/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-report/SKILL.md": "patch"
+  },
+  "migration": ""
+}
