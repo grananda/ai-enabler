@@ -41,8 +41,8 @@ Why subagents: each stage reads a lot (the ticket and its links, the repository,
 2. Load `.enabler/config.json` if present and apply the defaults for everything else. Flags override it.
 3. For a Jira key, find the connected Jira MCP server. With none, follow "When there is no Jira MCP server" in the reference. With several and no `jira.server` configured, ask once which to use.
 4. Confirm you are in a git repository with a clean enough working tree (see the safety rules). A repository is required; a remote is only required at the ship stage.
-5. If `.enabler/runs/<KEY>/state.json` exists, this is a **resume**: report the stage it stopped at and continue from there, reusing the files already written. Look at `deltas` first: one that is written but not approved goes back to its gate, and one that is approved but not applied is carried out before anything else ("Going back", situation 3). A run that `/ai-enabler:delivery-plan` started is resumed the same way; if `test_order` is missing from its state, derive it as the "Test order" section of the reference says. `--from <stage>` restarts from an earlier stage; `--refresh` re-runs intake and scout even if their files exist; `--relearn` also studies the repository again from scratch ("Repository profile" in the reference). A run with `profile_notes` left in its state turns them into deltas first. A run whose `repo-context.md` was written before the repository profile existed keeps that file: at Step 2 run the check as usual, without the `ticket` task.
-6. Otherwise create the run directory and `state.json`.
+5. Run `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py" init .enabler/runs/<KEY> --key <KEY> --source jira|file --base <base branch>`. It creates the run directory and `state.json`, or, when they exist, leaves them as they are and says `"resumed": true`. On a **resume**, report the stage it stopped at and continue from there, reusing the files already written. Look at `deltas` first: one that is written but not approved goes back to its gate, and one that is approved but not applied is carried out before anything else ("Going back", situation 3). A run that `/ai-enabler:delivery-plan` started is resumed the same way; if `test_order` is missing from its state, `run_state.py intake` derives it. `--from <stage>` restarts from an earlier stage; `--refresh` re-runs intake and scout even if their files exist; `--relearn` also studies the repository again from scratch ("Repository profile" in the reference). A run with `profile_notes` left in its state turns them into deltas first. A run whose `repo-context.md` was written before the repository profile existed keeps that file: at Step 2 run the check as usual, without the `ticket` task.
+6. **Bookkeeping goes through the script.** Every change to `state.json` in this skill — a stage done, a value set, a counter added to, an intervention recorded, a profile note — is one call to `run_state.py update .enabler/runs/<KEY>` with all of that transition's changes together (`--done <stage>`, `--set path=value`, `--add gate_rounds.plan=1`, `--intervene <kind> "<note>"`, `--note`, `--status`). It stamps the time and prints the state back. Never edit, write or reread `state.json` yourself.
 7. Check for local-only mode ("When the person says no to the remote" in the safety rules): `.enabler/local-only` exists, `git.local_only` is true, or `--local` was passed (then write the marker now). In that mode the run goes all the way to a local result and never further; say so once at the start. If the person says at any later point that nothing should be uploaded, apply the same rule on the spot.
 8. **External sources** — other repositories, sibling folders or documents the work depends on ("External sources" in the reference). Run `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/sources.py" status`. Each `--context <url|path>` adds one with `sources.py add` before anything else. If `asked` is false and a person is there (`gates` is not empty), ask the single question in "Adding" of `${CLAUDE_PLUGIN_ROOT}/skills/delivery-sources/SKILL.md`, offering the repositories `sources.py siblings` finds next to the project, and record the answer: `sources.py add` for each source named, or `sources.py none`. Ask it once per project, never again after an answer.
 
@@ -64,7 +64,7 @@ When intake is run again on purpose (`--refresh`, or `--from intake`), the analy
 
 If the refiner fails, go on with the analyst's `requirements.json` and say so in the final report: refinement improves a ticket, it is not a condition for delivering it.
 
-Then read `requirements.json`. Set `test_order` in `state.json` from `acceptance_criteria_quality` — the verdict after refinement — as the "Test order" table in the reference says (`sufficient` → `before`, `scarce` → `mixed`, `missing` → `after`; `tests.order: after` forces `after`). Then act on `readiness`:
+Then run `run_state.py intake .enabler/runs/<KEY>` (with `--order after` when `tests.order` is `after`) instead of reading `requirements.json`: it prints the verdicts after refinement, the counts, the blocking questions in full, and `test_order`, which it records — `sufficient` → `before`, `scarce` → `mixed`, `missing` → `after`, as the "Test order" table in the reference says. Then act on `readiness`:
 
 - `ready` — continue.
 - `ready_with_assumptions` — continue; the assumptions will be shown at the plan gate.
@@ -96,33 +96,13 @@ When a later stage reports that the profile was wrong or incomplete — the impl
 
 ## Step 3 — Plan, and the plan gate
 
-Launch `ai-enabler:delivery-solution-planner` with the run directory and `test_order`. When it returns, read `plan.md`.
+Launch `ai-enabler:delivery-solution-planner` with the run directory and `test_order`. It returns the plan gate ready to show; do not read `plan.md` to build it.
 
-If `plan` is in `gates`, present this — compact, because the human should be able to decide in two minutes — and wait:
-
-```
-PLAN — <KEY>: <title>
-Approach    : <the plan's summary, two or three sentences>
-Changes     : <n> steps · <n> files to create · <n> to modify
-              CREATE <path>          <one line per file, from the plan's steps;
-              MODIFY <path> (<what>)  beyond fifteen, the first fifteen and a count>
-Tests       : <n> planned (<levels>) · <n> written before the code, from <n> stated criteria
-              <only when test_order is mixed or after: why some or all tests come after the code>
-Decisions   : <each decision in one line>
-Refinement  : <n> requirements and <n> criteria added to the ticket, <n> sharpened — or "ticket taken as written"
-              <each addition in one line, with its id>
-Sources     : <each external source the plan relies on, with what it imposes, in one line — or "none">
-Assumptions : <each assumption in one line, or "none">
-Questions   : <blocking questions, or "none">
-Full plan   : .enabler/runs/<KEY>/plan.md
-<only when refinement.md exists> What was added to the ticket, and why: .enabler/runs/<KEY>/refinement.md
-
-Approve this plan? (approve / adjust: <what to change> / cancel)
-```
+If `plan` is in `gates`, show the block the planner returned — compact, because the human should be able to decide in two minutes — add, when `refinement.md` exists, `What was added to the ticket, and why: .enabler/runs/<KEY>/refinement.md`, end with `Approve this plan? (approve / adjust: <what to change> / cancel)`, and wait. Read `plan.md`, or the part of it the person asks about, only when they ask about a step, or when the planner's block is missing one of its lines (Approach, Changes, Tests, Decisions, Refinement, Sources, Assumptions, Questions).
 
 This gate is the review of the change before it exists: what will be built, in which files, with which tests. The person can ask about any step, read or edit `plan.md` directly, and adjust as often as the round limit allows; nothing has been written outside the run directory yet. After approval the plan only changes through a delta.
 
-- **approve** — set `plan_approved` and continue.
+- **approve** — `run_state.py update` with `--done plan --set plan_approved=true --intervene approval "<one line>"`, and continue.
 - **adjust** — the plan is not approved yet, so it is simply revised. Check "Rounds at a gate" in the reference first (`--max-rounds` overrides the limit for this run); then relaunch the planner with the feedback, record the intervention, add one to `gate_rounds.plan`, and present the new plan.
 - **adjust that rejects something refinement added** ("drop AC-7", "no pagination") — the same round, with one more thing to do first: in `requirements.json`, mark each rejected requirement or criterion `"removed_by": "plan-gate"` (never delete or renumber) — a rejected requirement takes with it the criteria that cover only that requirement — and pass the rejection to the planner as feedback. If no refined criterion is left in force and `as_received` exists, set `acceptance_criteria_quality` and `test_order` again from `as_received.acceptance_criteria_quality`.
 - **cancel** — set `status` to `stopped`, leave the run directory in place, and stop. Nothing was written outside the run directory, so there is nothing to undo.
@@ -149,7 +129,7 @@ Stages 4 to 7 all run tests. Where they run, what a brief to the test engineer m
 
 ## Step 6 — Coverage, after the code
 
-Launch `ai-enabler:delivery-test-engineer` with `mode: coverage`, the run directory, `tests.coverage_target`, `tests.coverage_minimum`, `tests.levels`, `tests.full_suite_runs` and `tests.mutation` — those values and nothing else: no extra verification of your own ("What a brief may ask for" in the reference). It runs the acceptance tests and the whole suite (at most `tests.full_suite_runs` times), writes the tests still missing — for derived criteria, for requirements that had no criterion, and for uncovered lines and branches — measures coverage of the changed code, and, unless `tests.mutation.enabled` is false, runs mutation testing on the changed code that decides something, adding tests for the mutants that survive.
+Launch `ai-enabler:delivery-test-engineer` with `mode: coverage`, the run directory, `tests.coverage_target`, `tests.coverage_minimum`, `tests.levels`, `tests.full_suite_runs` and `tests.mutation` — those values and nothing else: no extra verification of your own ("What a brief may ask for" in the reference). It runs the acceptance tests and the whole suite (at most `tests.full_suite_runs` times), writes the tests still missing — for derived criteria, for requirements that had no criterion, and for uncovered lines and branches — measures coverage of the changed code, and, unless `tests.mutation.enabled` is false, runs mutation testing on the changed code that decides something, adding tests for the mutants that survive. It writes `test-report.md` itself and returns the figures: act on its return, and do not read or rewrite the report.
 
 - `defects found` — each defect is a failing test that exposes wrong production code. Send the list to `ai-enabler:delivery-code-implementer` in `fix` mode, then launch the test engineer in `verify` mode on the affected tests. This shares the `review.max_fix_rounds` budget. Settle defects before looking at coverage. Defects still failing when the budget is spent are not hidden and do not stop the run: continue to the review, list them as open in the delivery report, and treat the result as not ready to ship.
 - coverage `met` (at or above the target) — continue.
@@ -281,6 +261,7 @@ End with a short summary: the pull-request URL (or the branch, if held), criteri
 
 ## Rules for the orchestrator
 
+- **Your context is the costliest part of the run.** Everything you read stays in it, and is read again on every later turn. Read a run file only when a step tells you to, or when a subagent's return lacks a figure you need — and then the part you need. The returns carry what the next decision needs; the files hold the detail for the person and for the next subagent. Do not load skills, references or templates this file does not name: no other plugin's skills and no artifact or page publishing — a skill, once loaded, is carried to the end of the run.
 - **Delegate the reading and the writing; keep the judgement.** You do not write production code or tests yourself, and you do not review the diff yourself — except to verify a blocker before spending a fix round on it.
 - **Briefs are complete.** A subagent knows only what you tell it and what is in the run directory. Always pass the run directory and the mode; never assume it saw the conversation.
 - **Trust, then check.** A subagent's report is a claim. Before the ship gate, confirm the basics yourself: `git status`, `git diff --stat`, and that the files it says it wrote exist.

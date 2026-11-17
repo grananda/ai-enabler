@@ -60,6 +60,7 @@ python plugins/ai-enabler/tests/test_remote_guard.py
 python plugins/ai-enabler/tests/test_repo_profile.py
 python plugins/ai-enabler/tests/test_sources.py
 python plugins/ai-enabler/tests/test_review_scope.py
+python plugins/ai-enabler/tests/test_run_state.py
 python plugins/ai-enabler-metrics/tests/test_usage.py
 python plugins/ai-enabler-metrics/tests/test_delivery.py
 git diff --check

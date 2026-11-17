@@ -43,7 +43,7 @@ Read `repo-context.md` and the relevant part of `plan.md` before touching anythi
 
 ## What to return
 
-A factual report, without narration:
+A factual report, without narration, in 30 lines at most — the orchestrator's context is the costliest part of a run, and the code and the run directory hold the detail. Quote failing output only as far as it shows the error.
 
 - **Done** — each step or finding handled, with the files created, modified and deleted.
 - **Deviations** — every place you departed from the plan, and why.

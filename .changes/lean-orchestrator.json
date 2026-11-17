@@ -1,0 +1,29 @@
+{
+  "summary": "The orchestrator of delivery-run reads far less, which makes a run cheaper since everything it reads is carried to the end: a new script keeps state.json (one call per transition, times stamped) and summarises requirements.json, the planner returns the plan gate ready to show instead of the orchestrator reading plan.md, the test engineer and the implementer return short reports and the orchestrator no longer rewrites test-report.md, and it loads no skill the pipeline does not name.",
+  "category": "Changed",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler": "minor"
+  },
+  "assets": {
+    "plugins/ai-enabler/agents/delivery-code-implementer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-code-reviewer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-repo-scout.md": "patch",
+    "plugins/ai-enabler/agents/delivery-solution-planner.md": "minor",
+    "plugins/ai-enabler/agents/delivery-source-scout.md": "patch",
+    "plugins/ai-enabler/agents/delivery-test-engineer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-ticket-analyst.md": "patch",
+    "plugins/ai-enabler/agents/delivery-ticket-refiner.md": "patch",
+    "plugins/ai-enabler/skills/delivery-doctor/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-implement/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-plan/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-review/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-run/SKILL.md": "minor",
+    "plugins/ai-enabler/skills/delivery-ship/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-sources/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-test/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-ticket-create/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-ticket-refine/SKILL.md": "patch"
+  },
+  "migration": ""
+}
