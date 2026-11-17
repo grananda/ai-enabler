@@ -3,6 +3,8 @@ name: delivery-source-scout
 description: "Learns the external sources of context a project depends on - other repositories (by URL or already cloned next to the project), folders and documents (Markdown, text, PDF, HTML, Word) - and keeps that knowledge between runs, the way delivery-repo-scout does for the project itself. Writes one short profile per source once, complements it with a delta when the source changes, and for each ticket writes only what the sources say that matters to it into `.enabler/runs/<KEY>/external-context.md`. Never writes to a source."
 tools: Read, Grep, Glob, Bash, Write
 model: sonnet
+maxTurns: 120
+omitClaudeMd: true
 color: cyan
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"

@@ -1,9 +1,11 @@
 ---
 name: delivery-ticket-refiner
 description: Refines a ticket the way a product owner and a business analyst would before a sprint - finds what the definition leaves unsaid (unhappy paths, limits, permissions, data, scope) and closes each gap as a marked addition, an assumption or a question. In the delivery pipeline it runs after the delivery-ticket-analyst and strengthens `requirements.json` before planning; stand-alone it writes an improved ticket as a local Markdown file from a Jira issue, a requirements file or a short brief. Never writes to Jira and never changes the meaning of what the author stated.
-disallowedTools: Edit, NotebookEdit
+disallowedTools: Edit, NotebookEdit, Skill, TodoWrite, WebSearch, Agent
 model: opus
 effort: high
+maxTurns: 60
+omitClaudeMd: true
 color: blue
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"

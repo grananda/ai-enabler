@@ -4,6 +4,7 @@ description: Independent, read-only code reviewer for the ai-enabler delivery pi
 tools: Read, Grep, Glob, Bash
 model: opus
 effort: high
+maxTurns: 120
 color: red
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"

@@ -3,6 +3,8 @@ name: delivery-repo-scout
 description: Stage 2 of the ai-enabler delivery pipeline. Learns how this team writes code and keeps that knowledge between runs. It writes the repository profile once (stack, build and test commands, layering, conventions, project rules), complements it with a small delta when something changed or was learned, and for each ticket writes only the existing code closest to it into `.enabler/runs/<KEY>/repo-context.md`. Strictly read-only towards the project. Use it before planning or generating code so the result looks like it was written by the team.
 tools: Read, Grep, Glob, Bash, Write
 model: sonnet
+maxTurns: 120
+omitClaudeMd: true
 color: cyan
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"

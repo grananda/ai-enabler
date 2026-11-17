@@ -1,7 +1,9 @@
 ---
 name: delivery-test-engineer
 description: Test stages of the ai-enabler delivery pipeline. In `acceptance` mode it writes the tests for the ticket's acceptance criteria before any production code exists; in `coverage` mode, after the code is written, it runs the suite, adds the tests needed to bring coverage of the changed code to the 80 % target (70 % is the minimum acceptable) and checks them with mutation testing on the code that decides, within a budget of whole-suite runs. Writes `.enabler/runs/<KEY>/test-report.md`. Works on a pipeline run or on any set of changed files. Never edits production code to make a test pass.
+disallowedTools: NotebookEdit, Skill, TodoWrite, WebSearch, Agent
 model: sonnet
+maxTurns: 200
 color: yellow
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"

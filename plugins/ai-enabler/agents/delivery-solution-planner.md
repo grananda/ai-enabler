@@ -4,6 +4,8 @@ description: Stage 3 of the ai-enabler delivery pipeline. Turns `requirements.js
 tools: Read, Grep, Glob, Bash, Write
 model: opus
 effort: high
+maxTurns: 100
+omitClaudeMd: true
 color: purple
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
