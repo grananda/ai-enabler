@@ -4,7 +4,7 @@ description: "Machine-driven delivery of a Jira ticket, end to end. Reads the ti
 argument-hint: "<JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--lane S|M|L] [--max-rounds 3] [--ship] [--local] [--context <url|path>] [--no-refine] [--refresh] [--relearn] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.5.2"
+  version: "1.6.0"
 ---
 
 # ai-enabler:delivery-run — from a Jira ticket to a pull request

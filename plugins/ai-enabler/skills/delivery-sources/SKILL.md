@@ -4,7 +4,7 @@ description: "Manages the external sources of context the ai-enabler pipeline re
 argument-hint: "[add <url|path> [--name N] [--about TEXT] [--paths GLOB,GLOB] [--ref REF] | list | refresh [NAME] | relearn NAME | remove NAME]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.1.2"
+  version: "1.1.3"
 ---
 
 # ai-enabler:delivery-sources — what else the pipeline should read
