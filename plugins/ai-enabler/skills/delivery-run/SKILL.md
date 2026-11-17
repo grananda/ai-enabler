@@ -1,7 +1,7 @@
 ---
 name: delivery-run
 description: "Machine-driven delivery of a Jira ticket, end to end. Reads the ticket through the Jira MCP server, analyses the repository, plans, implements, tests, reviews and fixes with dedicated subagents, then opens a pull request and updates Jira. The human decides at two gates — the plan and the ship — and is asked again only when a decision is theirs to make: a ticket that cannot be implemented as written, a change to the approved plan, coverage below the minimum. Use when the user says \"deliver PROJ-123\", \"implement this ticket\", \"take this Jira issue to a PR\", \"from Jira to code\", \"work on PROJ-123\", or passes a Jira key or a requirements Markdown file and wants the work done rather than advice. Also resumes an interrupted run for the same key."
-argument-hint: "<JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--max-rounds 3] [--ship] [--local] [--context <url|path>] [--no-refine] [--refresh] [--relearn] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]"
+argument-hint: "<JIRA-KEY | requirements.md> [--gates plan,ship|plan|ship|none] [--lane S|M|L] [--max-rounds 3] [--ship] [--local] [--context <url|path>] [--no-refine] [--refresh] [--relearn] [--from intake|scout|plan|acceptance-tests|implement|coverage|review|ship]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
   version: "1.5.2"
@@ -13,7 +13,7 @@ You are the orchestrator of the delivery pipeline. The machine does the work; th
 
 Before anything else, read these two files and follow them throughout:
 
-- `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` — the run directory, `state.json`, and `.enabler/config.json` with its defaults.
+- `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` — the run directory, `state.json`, and `.enabler/config.json` with its defaults. It points to four more references, each read only when a step below says so: `repo-profile.md`, `external-sources.md`, `deltas.md` and `tests-protocol.md`.
 - `${CLAUDE_PLUGIN_ROOT}/references/git-and-jira-safety.md` — the rules for every git and Jira action.
 
 ## The pipeline
@@ -23,10 +23,10 @@ Before anything else, read these two files and follow them throughout:
 | 1 | intake | `ai-enabler:delivery-ticket-analyst`, then `ai-enabler:delivery-ticket-refiner` | `requirements.json`, strengthened by refinement, and `refinement.md` | only if the ticket is blocked |
 | 2 | scout | `ai-enabler:delivery-repo-scout`, and `ai-enabler:delivery-source-scout` in parallel when the project has external sources (it learns the sources during intake) | the repository profile (once) or a delta to it, and `repo-context.md` for this ticket | — |
 | 3 | plan | `ai-enabler:delivery-solution-planner` | `plan.md` | **plan** |
-| 4 | acceptance-tests | `ai-enabler:delivery-test-engineer` (`acceptance`) | tests for the ticket's criteria, `acceptance-tests.md` | — |
+| 4 | acceptance-tests | `ai-enabler:delivery-test-engineer` (`acceptance`) | tests for the ticket's criteria, `acceptance-tests.json` (rendered as `acceptance-tests.md`) | — |
 | 5 | implement | `ai-enabler:delivery-code-implementer` | code on a feature branch that makes those tests pass | — |
-| 6 | coverage | `ai-enabler:delivery-test-engineer` (`coverage`) | remaining tests, coverage (target 80 %, minimum 70 %), `test-report.md` | only if coverage is below the minimum |
-| 7 | review | `ai-enabler:delivery-code-reviewer`, one instance per lens or group of lenses the change needs, in parallel | `review-pack.md`, `review.md` | — |
+| 6 | coverage | `ai-enabler:delivery-test-engineer` (`coverage`), and beside it, when the review has one reviewer per lens, the correctness, security and quality reviewers | remaining tests, coverage (target 80 %, minimum 70 %), `test-report.json` (rendered as `test-report.md`) | only if coverage is below the minimum |
+| 7 | review | `ai-enabler:delivery-code-reviewer`, one instance per lens or group of lenses the change needs, in parallel — only the tests lens when the others ran in stage 6 | `review-pack.md`, `review.md` | — |
 | 8 | ship | this skill, following `ai-enabler:delivery-ship` | commit, push, PR, Jira update | **ship** |
 
 Tests come before the code. A test written from the ticket says what the code must do; a test written from the code only confirms what it already does, errors included. Stage 4 therefore runs whenever the ticket states acceptance criteria worth testing against, and the ticket decides how much it can cover — read "Test order" in the run-and-config reference. Stage 6 always runs, whatever the order: it aims at 80 % coverage of the changed code, accepts 70 % or more, and below that hands the decision to the person ("Coverage" in the same reference).
@@ -41,10 +41,10 @@ Why subagents: each stage reads a lot (the ticket and its links, the repository,
 2. Load `.enabler/config.json` if present and apply the defaults for everything else. Flags override it.
 3. For a Jira key, find the connected Jira MCP server. With none, follow "When there is no Jira MCP server" in the reference. With several and no `jira.server` configured, ask once which to use.
 4. Confirm you are in a git repository with a clean enough working tree (see the safety rules). A repository is required; a remote is only required at the ship stage.
-5. Run `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py" init .enabler/runs/<KEY> --key <KEY> --source jira|file --base <base branch>`. It creates the run directory and `state.json`, or, when they exist, leaves them as they are and says `"resumed": true`. On a **resume**, report the stage it stopped at and continue from there, reusing the files already written. Look at `deltas` first: one that is written but not approved goes back to its gate, and one that is approved but not applied is carried out before anything else ("Going back", situation 3). A run that `/ai-enabler:delivery-plan` started is resumed the same way; if `test_order` is missing from its state, `run_state.py intake` derives it. `--from <stage>` restarts from an earlier stage; `--refresh` re-runs intake and scout even if their files exist; `--relearn` also studies the repository again from scratch ("Repository profile" in the reference). A run with `profile_notes` left in its state turns them into deltas first. A run whose `repo-context.md` was written before the repository profile existed keeps that file: at Step 2 run the check as usual, without the `ticket` task.
+5. Run `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py" init .enabler/runs/<KEY> --key <KEY> --source jira|file --base <base branch>`. It creates the run directory and `state.json`, or, when they exist, leaves them as they are and says `"resumed": true`. On a **resume**, report the stage it stopped at and continue from there, reusing the files already written. Look at `deltas` first: one that is written but not approved goes back to its gate, and one that is approved but not applied is carried out before anything else ("Going back", situation 3). A run that `/ai-enabler:delivery-plan` started is resumed the same way; if `test_order` or `settings` is missing from its state (a run started by an earlier version, or by `delivery-plan`), `run_state.py intake` derives them. `--from <stage>` restarts from an earlier stage; `--refresh` re-runs intake and scout even if their files exist; `--relearn` also studies the repository again from scratch ("Repository profile" in the reference). A run with `profile_notes` left in its state turns them into deltas first. A run whose `repo-context.md` was written before the repository profile existed keeps that file: at Step 2 run the check as usual, without the `ticket` task.
 6. **Bookkeeping goes through the script.** Every change to `state.json` in this skill — a stage done, a value set, a counter added to, an intervention recorded, a profile note — is one call to `run_state.py update .enabler/runs/<KEY>` with all of that transition's changes together (`--done <stage>`, `--set path=value`, `--add gate_rounds.plan=1`, `--intervene <kind> "<note>"`, `--note`, `--status`). It stamps the time and prints the state back. Never edit, write or reread `state.json` yourself.
 7. Check for local-only mode ("When the person says no to the remote" in the safety rules): `.enabler/local-only` exists, `git.local_only` is true, or `--local` was passed (then write the marker now). In that mode the run goes all the way to a local result and never further; say so once at the start. If the person says at any later point that nothing should be uploaded, apply the same rule on the spot.
-8. **External sources** — other repositories, sibling folders or documents the work depends on ("External sources" in the reference). Run `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/sources.py" status`. Each `--context <url|path>` adds one with `sources.py add` before anything else. If `asked` is false and a person is there (`gates` is not empty), ask the single question in "Adding" of `${CLAUDE_PLUGIN_ROOT}/skills/delivery-sources/SKILL.md`, offering the repositories `sources.py siblings` finds next to the project, and record the answer: `sources.py add` for each source named, or `sources.py none`. Ask it once per project, never again after an answer.
+8. **External sources** — other repositories, sibling folders or documents the work depends on. Run `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/sources.py" status`. When it lists sources, when `asked` is false and a person is there (`gates` is not empty), or when `--context` was passed, read `external-sources.md` next to this file and follow it here and at Steps 1 and 2. Otherwise the project has none and was already asked: skip everything about sources in this run.
 
 Print one line per stage as you go (`[2/8] scout — analysing repository conventions`). Do not narrate beyond that; the human is not watching every step.
 
@@ -52,11 +52,12 @@ Print one line per stage as you go (`[2/8] scout — analysing repository conven
 
 Launch `ai-enabler:delivery-ticket-analyst` with the source and the run directory. For a Jira key, tell it which Jira MCP server to use (the one found in preflight).
 
-**Learn the external sources at the same time.** When the project has sources, run `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/sources.py" check` now, `sources.py fetch <name>` for each with `needs_fetch`, and launch `ai-enabler:delivery-source-scout` **in the same message as the analyst**, with the task its status calls for per source — `missing`: `profile`; `stale`: `delta`, with the path from `sources.py next-delta <name> "<what changed>"` and `recorded_commit` from the check, so the scout can diff from there; `unrecorded`: nothing to learn, only `sources.py record <name>`; `fresh`: nothing, and then no launch at all. These tasks do not need the ticket, and doing them here means the refiner, which comes next, already has the source profiles to work with. Afterwards, `sources.py record <name> --expect <path>` for each profile or delta written, or plain `record` when the scout reports that no delta was needed. A source that is `unreachable` is used as last learned when `usable` is true; when it is false (never learned), it is left out of this run. Say either once, and in the final report. **Wait for both the analyst and the source scout, and the `record` calls, before refining**: the refiner reads the source profiles.
+**When the project has sources**, learn them in parallel with the analyst, as `external-sources.md` says, and wait for that before refining: the refiner reads the source profiles.
 
-**Refine.** A ticket is usually clear about the happy path and silent about the rest, and the machine implements exactly what the definition says. So, once the analyst has written `requirements.json`, launch `ai-enabler:delivery-ticket-refiner` with `mode: pipeline` and the run directory. It closes the gaps in the definition — each as a marked addition, an assumption or a question — updates `requirements.json` and writes `refinement.md`. Record `"refined": true` in `state.json`. Skip this step, and record `"refined": false`, when:
+**The lane.** Once the analyst has written `requirements.json`, run `run_state.py intake .enabler/runs/<KEY>`, adding `--lane`, `--gates` and `--no-refine` when they were passed and `--order after` when `tests.order` is `after`. Besides the verdicts it prints the **lane** — `S`, `M` or `L`, from the analyst's `size` and `risk_areas`: any risk area makes a ticket at least `M`, authentication, permissions or personal data make it `L` — and the **settings** that lane gives this run: `gates`, `refine`, `review.select_lenses`, `review.group_below_lines`, `tests.full_suite_runs` and `tests.mutation`. It records both in `state.json`. **From here on use those settings, not the configuration file**, wherever this skill names one of those keys: the script has already applied the configuration and the flags to them ("Lanes" in the run-and-config reference). A small ticket then gets a lighter run — refinement only when the analyst found gaps, two reviewers, one whole-suite run, fewer mutants, and no plan gate only when the project opted out of it for small tickets (the plan is then shown at the ship gate) — and a risky one the full treatment.
 
-- `--no-refine` was passed or `refine.enabled` is false;
+**Refine** when the intake says `needs_refinement`. A ticket is usually clear about the happy path and silent about the rest, and the machine implements exactly what the definition says. So launch `ai-enabler:delivery-ticket-refiner` with `mode: pipeline` and the run directory. It closes the gaps in the definition — each as a marked addition, an assumption or a question — updates `requirements.json` and writes `refinement.md`. Record `"refined": true` in `state.json`. Skip this step, and record `"refined": false`, when the intake says `needs_refinement: false` — `--no-refine`, `refine.enabled` false, or an `S` ticket the analyst found ready with sufficient criteria and no open question — or when:
+
 - the source is a file that was already refined (`source.refined` is true in `requirements.json`: it came from `/ai-enabler:delivery-ticket-refine` or `/ai-enabler:delivery-ticket-create`);
 - the run is resumed and intake was already done: `requirements.json` is reused as it is, with whatever refinement and plan-gate rejections it holds.
 
@@ -64,17 +65,17 @@ When intake is run again on purpose (`--refresh`, or `--from intake`), the analy
 
 If the refiner fails, go on with the analyst's `requirements.json` and say so in the final report: refinement improves a ticket, it is not a condition for delivering it.
 
-Then run `run_state.py intake .enabler/runs/<KEY>` (with `--order after` when `tests.order` is `after`) instead of reading `requirements.json`: it prints the verdicts after refinement, the counts, the blocking questions in full, and `test_order`, which it records — `sufficient` → `before`, `scarce` → `mixed`, `missing` → `after`, as the "Test order" table in the reference says. Then act on `readiness`:
+Then run `run_state.py intake` again, with the same flags, instead of reading `requirements.json`: it prints the verdicts after refinement, the lane again (refinement may have raised it), the counts, the blocking questions in full, and `test_order`, which it records — `sufficient` → `before`, `scarce` → `mixed`, `missing` → `after`, as the "Test order" table in the reference says. Then act on `readiness`:
 
 - `ready` — continue.
 - `ready_with_assumptions` — continue; the assumptions will be shown at the plan gate.
-- `blocked` — stop the pipeline here. Show the blocking questions, each with the options and the suggestion the refiner gave when there are any, and ask the human to answer them, or to confirm you should proceed on stated assumptions. Record the intervention in `state.json`. If they answer, add the answers to `requirements.json` (as requirements or assumptions) and continue. Offer to post the questions as a Jira comment only if they ask for it.
+- `blocked` — stop the pipeline here. Run `run_state.py gate .enabler/runs/<KEY> blocked`, then show **all** the blocking questions in one message, numbered, each with the options and the suggestion the refiner gave when there are any, so that the person answers them together, and ask the human to answer them, or to confirm you should proceed on stated assumptions. Record the intervention in `state.json`. If they answer, add the answers to `requirements.json` (as requirements or assumptions) and continue. Offer to post the questions as a Jira comment only if they ask for it.
 
 If no Jira MCP server is connected, follow "When there is no Jira MCP server" in the run-and-config reference.
 
 ## Step 2 — Scout
 
-The repository is learned once and then only kept up to date; read "Repository profile" in the run-and-config reference and follow it.
+The repository is learned once and then only kept up to date; read `${CLAUDE_PLUGIN_ROOT}/references/repo-profile.md` and follow it.
 
 1. Ask whether the profile still holds: `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/repo_profile.py" check`. It prints `root` and the absolute path of the profile; the run directory lives under the same `root`. With `--relearn`, have the scout read the existing profile and deltas, run `repo_profile.py reset`, and go on as `missing`.
 2. Launch `ai-enabler:delivery-repo-scout` once, with the tasks the status calls for and absolute paths:
@@ -83,12 +84,10 @@ The repository is learned once and then only kept up to date; read "Repository p
    - `fresh` — `ticket` only;
    - `stale` — `delta` and `ticket`. Get the delta's path with `repo_profile.py next-delta "<what changed>"` and pass it with the `summary` lines of the check — never the full `changed`, `added` and `removed` lists, which after a large merge run to hundreds of paths. If the scout wrote the delta, `repo_profile.py record --expect <delta path>`; if it reports that nothing in the profile is affected and wrote no file, `repo_profile.py record`.
 
-   The `ticket` task always gets the run directory and the path to `requirements.json`.
+   The `ticket` task always gets the run directory and the path to `requirements.json`, and the `provisional` list of the check when it is not empty.
 3. Read the warnings the scout returns: no test command, no coverage tool or a dirty tree change how later stages behave, and belong in the final report. If `suggest_relearn` in the check is not empty, or the scout says the profile and its deltas no longer fit together, mention once that `--relearn` would rebuild it; do not do it unasked.
 
-**External sources, in parallel.** When the project has sources, launch `ai-enabler:delivery-source-scout` with the `ticket` task — the run directory, `requirements.json` (refined by now) and, per source, the fields `sources.py check` prints — **in the same message as the repository scout**, so that both run at once. The sources were learned during intake; if one is still `missing` or `stale` (intake was skipped on resume, or it changed since), add its `profile` or `delta` task to this launch and `record` it afterwards as described there. It writes `external-context.md`. Then store in `state.json`, under `external_context`, the fingerprint of every source the file was written from (`fingerprint` in the check). A source contradicting the ticket is a question for the plan gate.
-
-**Keeping `external-context.md` current.** Before the plan, the acceptance tests, the implementation, the coverage stage and the review — whenever a run is resumed, restarted with `--from`, or a skill reuses an earlier run directory — run `sources.py check` and compare with `external_context` in `state.json`. If the project has sources and the file is missing, a source was added or removed, or a fingerprint differs, bring the sources up to date (Step 1) and launch the scout with the `ticket` task again before going on. After the plan is approved, a change in what a source imposes is shown to the person: if it changes behaviour, it is a delta.
+**When the project has sources**, the source scout runs in the same message as the repository scout, and `external-context.md` is kept current before each later stage, as `external-sources.md` says.
 
 Stages 1 and 2 need nothing from the human. When the source is a file, or the ticket is plainly ready, you may start the scout as soon as intake has written `requirements.json`.
 
@@ -98,25 +97,26 @@ When a later stage reports that the profile was wrong or incomplete — the impl
 
 Launch `ai-enabler:delivery-solution-planner` with the run directory and `test_order`. It returns the plan gate ready to show; do not read `plan.md` to build it.
 
-If `plan` is in `gates`, show the block the planner returned — compact, because the human should be able to decide in two minutes — add, when `refinement.md` exists, `What was added to the ticket, and why: .enabler/runs/<KEY>/refinement.md`, end with `Approve this plan? (approve / adjust: <what to change> / cancel)`, and wait. Read `plan.md`, or the part of it the person asks about, only when they ask about a step, or when the planner's block is missing one of its lines (Approach, Changes, Tests, Decisions, Refinement, Sources, Assumptions, Questions).
+If `plan` is in `gates`, run `run_state.py gate .enabler/runs/<KEY> plan` (it records that the run waits, so a notification can reach a person who stepped away), then show the block the planner returned — compact, because the human should be able to decide in two minutes — add the lane in one line — `Lane        : <S|M|L> (size <size>; risks: <risk areas, or none>) — adjust: lane S|M|L to change it`, and, when the person chose a lane below the one the risk areas call for, say so in the same line — and, when `refinement.md` exists, `What was added to the ticket, and why: .enabler/runs/<KEY>/refinement.md`, end with `Approve this plan? (approve / adjust: <what to change> / cancel)`, and wait. Read `plan.md`, or the part of it the person asks about, only when they ask about a step, or when the planner's block is missing one of its lines (Approach, Changes, Criteria, Tests, Decisions, Refinement, Sources, Assumptions, Questions).
 
 This gate is the review of the change before it exists: what will be built, in which files, with which tests. The person can ask about any step, read or edit `plan.md` directly, and adjust as often as the round limit allows; nothing has been written outside the run directory yet. After approval the plan only changes through a delta.
 
 - **approve** — `run_state.py update` with `--done plan --set plan_approved=true --intervene approval "<one line>"`, and continue.
+- **adjust: lane S|M|L** — not a round and no new plan: run `run_state.py intake --lane <lane>` and use its settings for the stages still to come; when the new lane is below the one the risk areas call for, say so once and go on, it is the person's call. Show the gate again with the new lane.
 - **adjust** — the plan is not approved yet, so it is simply revised. Check "Rounds at a gate" in the reference first (`--max-rounds` overrides the limit for this run); then relaunch the planner with the feedback, record the intervention, add one to `gate_rounds.plan`, and present the new plan.
 - **adjust that rejects something refinement added** ("drop AC-7", "no pagination") — the same round, with one more thing to do first: in `requirements.json`, mark each rejected requirement or criterion `"removed_by": "plan-gate"` (never delete or renumber) — a rejected requirement takes with it the criteria that cover only that requirement — and pass the rejection to the planner as feedback. If no refined criterion is left in force and `as_received` exists, set `acceptance_criteria_quality` and `test_order` again from `as_received.acceptance_criteria_quality`.
 - **cancel** — set `status` to `stopped`, leave the run directory in place, and stop. Nothing was written outside the run directory, so there is nothing to undo.
 
 A plan with a blocking question cannot be auto-approved: even when `plan` is not in `gates`, stop and ask.
 
-When `plan` is not in `gates`, what refinement added goes in unreviewed. That is the choice the person made by removing the gate, but it must stay visible: the delivery report and the ship gate say which criteria came from refinement and that nobody approved them.
+When `plan` is not in `gates`, what refinement added goes in unreviewed. That is the choice the person made by removing the gate — or the lane made for a small ticket — but it must stay visible: the delivery report and the ship gate say which criteria came from refinement and that nobody approved them. In that case record `plan_approved` without an intervention, keep the planner's `Approach` and `Changes` lines to show above the ship gate, and go on.
 
 ## Step 4 — Acceptance tests, before the code
 
-Stages 4 to 7 all run tests. Where they run, what a brief to the test engineer may contain, and what is done with a test that runs and does not pass, is one protocol for all of them: "Tests: where they run, and when they fail" in the run-and-config reference. The steps below apply it. A brief to the test engineer carries the configuration values and the scope only.
+Stages 4 to 7 all run tests. Where they run, what a brief to the test engineer may contain, and what is done with a test that runs and does not pass, is one protocol for all of them, in `${CLAUDE_PLUGIN_ROOT}/references/tests-protocol.md`. The steps below apply it; read that file when a test fails for a reason the steps do not settle. A brief to the test engineer carries the configuration values and the scope only.
 
 1. Create the feature branch from the base branch, per the safety rules and `git.branch_pattern`. Record it in `state.json`.
-2. If `test_order` is `before` or `mixed`, launch `ai-enabler:delivery-test-engineer` with `mode: acceptance` and the run directory. It writes the tests for the criteria the ticket states and `acceptance-tests.md`; no production code exists yet, so the tests are expected to fail or not to build.
+2. If `test_order` is `before` or `mixed`, launch `ai-enabler:delivery-test-engineer` with `mode: acceptance` and the run directory. It writes the tests for the criteria the ticket states and `acceptance-tests.json` (your next `run_state.py update` renders `acceptance-tests.md` from it); no production code exists yet, so the tests are expected to fail or not to build.
 3. Read what it returns. A criterion it could not turn into a test without guessing is not a reason to stop: it moves to the after-code stage and is named in the delivery report.
 4. If `test_order` is `after`, the branch is still created but no tests are written yet: skip items 2 and 3 and say so in one line, with the reason (the ticket states no acceptance criteria, or the configuration asks for it).
 
@@ -127,14 +127,16 @@ Stages 4 to 7 all run tests. Where they run, what a brief to the test engineer m
 3. If the implementer disputes an acceptance test, settle it yourself against the ticket and the plan — not against the code. If the test is right, send it back as a fix. If the test contradicts the ticket or the plan, launch the test engineer in `repair` mode for that test, with the correction as guidance, and record the change and its reason in the delivery report. Never let the implementer edit a test to match its code.
 4. If the implementer stopped because the plan is wrong in a way that changes scope, do not let it improvise and do not patch the plan in place: the plan was approved, so the change is a **delta**. Follow "Going back" below, with the implementer's explanation as the change.
 
-## Step 6 — Coverage, after the code
+## Step 6 — Coverage, after the code, and the review of the production code beside it
 
-Launch `ai-enabler:delivery-test-engineer` with `mode: coverage`, the run directory, `tests.coverage_target`, `tests.coverage_minimum`, `tests.levels`, `tests.full_suite_runs` and `tests.mutation` — those values and nothing else: no extra verification of your own ("What a brief may ask for" in the reference). It runs the acceptance tests and the whole suite (at most `tests.full_suite_runs` times), writes the tests still missing — for derived criteria, for requirements that had no criterion, and for uncovered lines and branches — measures coverage of the changed code, and, unless `tests.mutation.enabled` is false, runs mutation testing on the changed code that decides something, adding tests for the mutants that survive. It writes `test-report.md` itself and returns the figures: act on its return, and do not read or rewrite the report.
+**First, see whether the review can start now.** Run `review_scope.py` as in Step 7, item 1. When every entry of `groups` holds one lens — the change is at or above `review.group_below_lines`, or the lane reviews one lens per reviewer — the review of the production code does not have to wait for the tests: launch the test engineer below and, **in the same message**, one reviewer per group except `tests`, as Step 7, item 2 says, with the pack just written. They read the code while the tests are written and run; the test engineer mutates copies, never the working tree, so what they read stays the code under review. When the groups pair lenses (a small change), launch the test engineer alone: the review runs after coverage, as Step 7 says, because splitting the tests lens off would add a reviewer to a review that is quick anyway.
+
+Launch `ai-enabler:delivery-test-engineer` with `mode: coverage`, the run directory, `tests.coverage_target`, `tests.coverage_minimum`, `tests.levels`, `tests.full_suite_runs` and `tests.mutation` — those values and nothing else: no extra verification of your own ("What a brief may ask for" in `tests-protocol.md`). It runs the acceptance tests and the whole suite (at most `tests.full_suite_runs` times), writes the tests still missing — for derived criteria, for requirements that had no criterion, and for uncovered lines and branches — measures coverage of the changed code, and, unless `tests.mutation.enabled` is false, runs mutation testing on the changed code that decides something, adding tests for the mutants that survive. It writes `test-report.json` itself — your next `run_state.py update` renders `test-report.md` from it — and returns the figures: act on its return, and do not read, write or rewrite either file.
 
 - `defects found` — each defect is a failing test that exposes wrong production code. Send the list to `ai-enabler:delivery-code-implementer` in `fix` mode, then launch the test engineer in `verify` mode on the affected tests. This shares the `review.max_fix_rounds` budget. Settle defects before looking at coverage. Defects still failing when the budget is spent are not hidden and do not stop the run: continue to the review, list them as open in the delivery report, and treat the result as not ready to ship.
 - coverage `met` (at or above the target) — continue.
 - coverage `acceptable` (between the minimum and the target) — continue without asking. Carry the figure and what is left uncovered into the delivery report.
-- coverage `below minimum` — **stop and let the person decide.** This is not yours to wave through, whatever `gates` says. Show the figure, the files that fall short and why, and wait:
+- coverage `below minimum` — **stop and let the person decide.** This is not yours to wave through, whatever `gates` says. Run `run_state.py gate .enabler/runs/<KEY> coverage`, then show the figure, the files that fall short and why, and wait:
 
   ```
   COVERAGE BELOW MINIMUM — <KEY>
@@ -152,6 +154,8 @@ Launch `ai-enabler:delivery-test-engineer` with `mode: coverage`, the run direct
 - `could not run` — continue to review, and state clearly in the report that the change is untested and why.
 
 ## Step 7 — Review and fix loop
+
+**When correctness, security and quality were reviewed during the coverage stage**, only the tests lens is left. Run `review_scope.py` with `--lenses tests --no-select` — a fresh pack, which now has the test report — and launch one reviewer with it; if a defect fix in Step 6 changed production code after the first reviewers had read it, add the lenses that reviewed that code to the same launch (`--lenses <those>,tests --no-select`), told which files the fix changed. Then consolidate its findings with those of the first reviewers, from item 3 on. Otherwise, start at item 1.
 
 1. Decide the lenses and write the review pack, with no model involved:
 
@@ -176,7 +180,7 @@ Write `.enabler/runs/<KEY>/delivery-report.md`, following `${CLAUDE_PLUGIN_ROOT}
 
 Then settle which pull-request template the body will follow — "The pull-request body" in `${CLAUDE_PLUGIN_ROOT}/skills/delivery-ship/SKILL.md` — so that the gate can name it. Skip this when no pull request will be opened (local-only mode, `git.pull_request` false).
 
-Then present the ship gate and wait. List exactly what will happen, because approval covers exactly this list:
+Then present the ship gate and wait. Record the review's outcome and the template first — `run_state.py update` with `--set review_result={"fixed": n, "open": n, "highest_open": "<severity or null>", "criteria_met": n}` and `--set pr_template="<the plugin's template | the repository's template (<path>)>"` — then run `run_state.py gate .enabler/runs/<KEY> ship`: it records that the run waits and prints the gate below, filled in from the run's files (diff, criteria, tests, mutants, deltas, lane, and what shipping will do, local-only included). Show it as printed; fill in only a line it marks `?`, and put any not-ready reason it did not see first. Approval covers exactly the list it shows:
 
 ```
 READY TO SHIP — <KEY>
@@ -212,48 +216,7 @@ A result is **not ready** when tests are failing, a defect is open, coverage is 
 
 ## Going back: adjustments, fixes and deltas
 
-Three situations send the run backwards. Handle each the same way every time.
-
-**1. The plan is adjusted before it is approved** (`adjust` at the plan gate). Nothing exists yet but the plan. The planner revises `plan.md` with the feedback and the gate is shown again. No delta.
-
-**2. A correction that leaves the plan true** (`fix` at the ship gate, when what is asked does not change scope, behaviour or acceptance criteria — a bug, a name, a style point, a missed edge case of an existing criterion). In this order:
-
-1. `ai-enabler:delivery-code-implementer` in `fix` mode with the request as its fix list;
-2. `ai-enabler:delivery-test-engineer` in `coverage` mode — the coverage stage again, since code changed: the suite within its budget, any missing tests, mutation testing on what changed, the coverage verdict (and the stop below the minimum, if it comes to that);
-3. a new review pass (`fix_rounds` back to 0) as in Step 7, from `review_scope.py`: the lenses the change needs, with a fresh pack, appended to `review.md`;
-4. the delivery report rewritten, and back to the ship gate.
-
-**3. A change to what is being built** — to scope, behaviour or acceptance criteria — once the plan has been approved. It comes from a `fix` at the ship gate that asks for something different, from an implementer that found the plan wrong, or from a resumed run whose ticket or instructions changed. This is a **delta**; read "Changing course after approval: deltas" in the run-and-config reference and follow it:
-
-1. Take the next delta number and copy `plan.md` and `requirements.json` into `deltas/delta-NN.before/`. Then launch `ai-enabler:delivery-solution-planner` with `mode: delta`, the run directory, the number and the change. It writes `deltas/delta-NN.md` (what is added **and** what is removed), brings `plan.md` up to date and updates the acceptance criteria. Record the delta in `state.json` with `approved: false`, `applied: false`.
-2. Show the delta at the plan gate and wait — a changed plan needs approval like the plan did, **also when `plan` is not in `gates`**: a change of scope is never approved unattended.
-
-   ```
-   DELTA NN — <KEY>: <one line>
-   Why         : <reason>
-   Criteria    : +<added> · ~<changed> · −<removed>
-   Tests       : +<to add> · ~<to change> · −<to remove: names>
-   Code        : +<files to create> · ~<to modify> · −<to delete: paths>
-   Full delta  : .enabler/runs/<KEY>/deltas/delta-NN.md
-
-   Approve this delta? (approve / adjust: <what to change> / cancel)
-   ```
-
-   - **adjust** — a round at the plan gate (check the limit, add one to `gate_rounds.plan`). Restore `plan.md` and `requirements.json` from `delta-NN.before/`, then relaunch the planner in delta mode with the same number and the feedback.
-   - **cancel** — restore the two files from `delta-NN.before/`, delete `delta-NN.md` and the `.before` folder, remove the delta from `state.json`, and return to where the run was. Code and tests already written stay as they were; only the proposed change is dropped.
-   - **approve** — set `approved: true` and `stage` to `acceptance-tests`.
-3. Carry it out, in the usual order:
-   - `ai-enabler:delivery-test-engineer` in `acceptance` mode with the delta: tests for the added and changed criteria are written, and the tests the delta lists as obsolete are removed. This runs even if the run's `test_order` was `after` for lack of criteria in the ticket; only a configured `tests.order: after` skips it;
-   - `ai-enabler:delivery-code-implementer` in `implement` mode with the delta: the new tests are made to pass and the code the delta lists is deleted. Then set the delta's `applied: true`;
-   - the coverage stage;
-   - a new review pass (`fix_rounds` back to 0) as in Step 7, from `review_scope.py` with a fresh pack, giving the reviewers the run directory so they read `deltas/`;
-   - the delivery report, with the delta under "Changes after the plan was approved", and the ship gate.
-
-Criteria marked `removed_by` are no longer in force: leave them out of "criteria met" at the ship gate and show them in the report only under the delta that removed them, or, for the ones marked `plan-gate`, in one line under "What refinement added to the ticket" as rejected at the plan gate.
-
-When you cannot tell a correction from a delta, ask yourself whether an acceptance criterion or a step of `plan.md` becomes false. If one does, it is a delta. When still in doubt, treat it as a delta: an unneeded approval costs a minute, a silent change of scope costs the trust the plan gate exists for.
-
-Do not leave the past lying around. After a delta, no test asserts behaviour that was dropped and no code serves an approach that was abandoned — and both removals are on record in the delta, not just gone.
+Three situations send the run backwards: an `adjust` at the plan gate before approval, a `fix` at the ship gate that leaves the plan true (a correction), and a change to what is being built after the plan was approved (a **delta**, whatever asked for it). When one happens — or a resumed run has a delta pending — read `going-back.md` next to this file and follow it. When you cannot tell a correction from a delta, ask whether an acceptance criterion or a step of `plan.md` becomes false; if one does, or you are still in doubt, it is a delta.
 
 ## Closing
 
@@ -268,5 +231,6 @@ End with a short summary: the pull-request URL (or the branch, if held), criteri
 - **No means no.** A refusal to upload is final for the run and for the project until the person lifts it by hand. See "When the person says no to the remote" in the safety rules.
 - **A change to an approved plan is a delta.** It is written down, approved, and carried out tests first; it says what is removed as well as what is added. Never rewrite an approved plan in place, and never let a "fix" change scope unannounced.
 - **Two gates, not ten.** Do not ask for confirmation between stages, do not ask the human to choose things the configuration or the repository already decides, and do not stop on warnings. Stop for: a blocked ticket, the plan gate (for the plan, and for every delta whatever `gates` says), coverage below the minimum, the ship gate, the round limit at a gate, and anything the safety rules say to stop for.
+- **Stop at a gate with nothing in your head only.** Before you show a gate, every decision and figure a later turn needs is in `state.json` or the run directory — `run_state.py gate` records the wait. The person may leave for hours, or `/compact` the conversation, and the run must go on from the files.
 - **Report failures as they are.** A stage that failed, a threshold that was missed, a finding left open — all go in the report in plain words.
 - **The human can take over at any point.** If they say so, record a `takeover` intervention, tell them the state of the working tree and which stages are left, and stop. A later `/ai-enabler:delivery-run <KEY>` resumes and treats their edits as part of the change.

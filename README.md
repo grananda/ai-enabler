@@ -201,9 +201,11 @@ plugins/
                  review_scope.py (which review lenses a change needs, and the review pack),
                  run_state.py (the run's state.json bookkeeping and intake summary)
     hooks/       hooks.json, remote_guard.py (blocks uploads when the project is local-only),
-                 source_guard.py (keeps external sources read-only)
+                 source_guard.py (keeps external sources read-only), scout_guard.py,
+                 output_trim.py (failures-only test and build output for the pipeline's subagents),
+                 gate_notify.py (a desktop notification when a run waits at a gate)
     tests/       test_remote_guard.py, test_repo_profile.py, test_sources.py, test_review_scope.py,
-                 test_run_state.py
+                 test_run_state.py, test_output_trim.py, test_gate_notify.py
   ai-enabler-metrics/
     .claude-plugin/plugin.json
     hooks/       hooks.json, usage_hook.py
@@ -240,6 +242,8 @@ python -m unittest discover -s tools/tests -v            # release governance te
 /bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_sources.py        # external sources and their read-only guard
 /bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_review_scope.py   # review lenses, grouping and the review pack
 /bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_run_state.py      # state.json bookkeeping and the intake summary
+/bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_output_trim.py    # failures-only output for the pipeline's subagents
+/bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_gate_notify.py    # the notification when a run waits at a gate
 /bin/bash plugins/ai-enabler/scripts/run-python.sh plugins/ai-enabler/tests/test_remote_guard.py  # what local-only mode blocks and allows
 ```
 

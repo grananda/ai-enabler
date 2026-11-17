@@ -1,0 +1,19 @@
+{
+  "summary": "Each pipeline subagent is sized to its job: a maxTurns cap against runaway loops (about twice the most any stage needed on the benchmark tickets), the tools it never uses removed together with their descriptions (skills, to-do lists, web search, subagents, notebooks), and the analyst, refiner, scouts and planner start without the CLAUDE.md files, since they work from their brief and the repository profile.",
+  "category": "Changed",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler": "patch"
+  },
+  "assets": {
+    "plugins/ai-enabler/agents/delivery-code-implementer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-code-reviewer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-repo-scout.md": "patch",
+    "plugins/ai-enabler/agents/delivery-solution-planner.md": "patch",
+    "plugins/ai-enabler/agents/delivery-source-scout.md": "patch",
+    "plugins/ai-enabler/agents/delivery-test-engineer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-ticket-analyst.md": "patch",
+    "plugins/ai-enabler/agents/delivery-ticket-refiner.md": "patch"
+  },
+  "migration": ""
+}

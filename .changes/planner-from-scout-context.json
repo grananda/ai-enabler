@@ -1,0 +1,13 @@
+{
+  "summary": "The solution planner works from the scout's context instead of exploring the repository again: the repository scout now puts in repo-context.md the fragments a plan depends on (signatures, routes, wiring, the test to imitate, with path:line), and the planner opens at most ten source files of its own, planning on a stated assumption or a question when that does not settle something.",
+  "category": "Changed",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler": "patch"
+  },
+  "assets": {
+    "plugins/ai-enabler/agents/delivery-repo-scout.md": "patch",
+    "plugins/ai-enabler/agents/delivery-solution-planner.md": "patch"
+  },
+  "migration": ""
+}

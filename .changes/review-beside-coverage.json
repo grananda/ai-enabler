@@ -1,0 +1,12 @@
+{
+  "summary": "The review of the production code no longer waits for the tests: when a change gets one reviewer per lens, the correctness, security and quality reviewers start in parallel with the coverage stage, and only the tests lens waits for the test report, so the review stops adding its full length to the wall-clock time of a run. Small changes, reviewed in pairs, keep the order. The test engineer mutates copies, never the working tree.",
+  "category": "Changed",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler": "minor"
+  },
+  "assets": {
+    "plugins/ai-enabler/skills/delivery-run/SKILL.md": "minor"
+  },
+  "migration": ""
+}

@@ -1,0 +1,13 @@
+{
+  "summary": "The test budget adapts to the change: mutation testing plans about two mutants per decision point changed (capped by tests.mutation.max_mutants) and none when the change decides nothing; the whole suite runs once instead of twice when CI already runs it on every merge request; between runs only the affected tests run, with the project's affected-tests, per-module coverage and incremental or parallel mutation modes when the repository has them configured, which the repository scout now records. Mutants are always made on a copy, never in the working tree.",
+  "category": "Changed",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler": "minor"
+  },
+  "assets": {
+    "plugins/ai-enabler/agents/delivery-repo-scout.md": "patch",
+    "plugins/ai-enabler/agents/delivery-test-engineer.md": "minor"
+  },
+  "migration": ""
+}

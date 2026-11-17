@@ -96,7 +96,112 @@ def main():
     assert [q["question"] for q in out["blocking_questions"]] == ["Which currency?"]
     assert state(run_dir)["test_order"] == "mixed"
     assert run("intake", run_dir, "--order", "after")["test_order"] == "after"
-    print("ok — run state: init, resume, transitions, interventions, notes, intake")
+
+    # Reports: the test engineer writes JSON, the script writes the Markdown people and later stages read.
+    report = {"mode": "coverage", "verdict": "defects found", "coverage_verdict": "acceptable",
+              "suite": {"passed": 40, "failed": 1, "skipped": 0},
+              "coverage": {"line_percent": 75, "branch_percent": 70, "target": 80, "minimum": 70,
+                           "files": [{"file": "src/a.py", "line_percent": 75, "uncovered": "l. 9 | 12"}]},
+              "criteria": [{"id": "AC-1", "tests": ["test_ac1"], "written": "before code", "status": "failing"}],
+              "mutation": {"decision_points": 3, "mutants": 6, "killed": 5,
+                           "surviving": [{"where": "src/a.py:9", "mutant": "< to <=", "reason": "equivalent"}]},
+              "defects": [{"test": "test_ac1", "expected": "422", "actual": "500", "suspect": "src/a.py:9"}],
+              "an_unplanned_field": {"kept": True}}
+    with open(os.path.join(run_dir, "test-report.json"), "w", encoding="utf-8") as fh:
+        json.dump(report, fh)
+    out = run("update", run_dir, "--add", "fix_rounds=1")
+    assert out["rendered"] == ["test-report.md"], out
+    with open(os.path.join(run_dir, "test-report.md"), encoding="utf-8") as fh:
+        md = fh.read()
+    for expected in ("**Verdict:** defects found", "**Coverage:** acceptable", "40 passed, 1 failed",
+                     "Line 75 % · branch 70 % (target 80 % · minimum 70 %)", "l. 9 \\| 12", "| AC-1 | test_ac1 |",
+                     "< to <=", "| test_ac1 |", "An unplanned field", "Edit the JSON"):
+        assert expected in md, (expected, md)
+    assert "rendered" not in run("update", run_dir, "--add", "fix_rounds=1")      # up to date: not written again
+    with open(os.path.join(run_dir, "acceptance-tests.json"), "w", encoding="utf-8") as fh:
+        json.dump({"verdict": "written", "tests": [{"criterion": "AC-1", "file": "t.py", "tests": ["a", "b"]}],
+                   "not_tested": [{"criterion": "AC-2", "reason": "needs a browser"}]}, fh)
+    out = run("render", run_dir)
+    assert out == {"rendered": ["acceptance-tests.md"], "errors": []}, out
+    with open(os.path.join(run_dir, "acceptance-tests.md"), encoding="utf-8") as fh:
+        md = fh.read()
+    assert "| AC-1 | t.py | a, b |" in md and "needs a browser" in md, md
+    with open(os.path.join(run_dir, "test-report.json"), "w", encoding="utf-8") as fh:
+        fh.write("[1, 2")
+    out = run("render", run_dir, "--force")
+    assert out["errors"] and out["errors"][0].startswith("test-report.json"), out   # reported, not raised
+
+    # Lanes: the size and risk areas decide what the run spends; a person's choice wins.
+    def lane_case(size, risks, readiness="ready", quality="sufficient", config=None, *extra):
+        with open(os.path.join(run_dir, "requirements.json"), "w", encoding="utf-8") as fh:
+            json.dump({"readiness": readiness, "acceptance_criteria_quality": quality, "size": size,
+                       "risk_areas": risks, "acceptance_criteria": [{"id": "AC-1"}]}, fh)
+        cfg = os.path.join(os.path.dirname(os.path.dirname(run_dir)), "config.json")
+        if config is None:
+            if os.path.exists(cfg):
+                os.remove(cfg)
+        else:
+            with open(cfg, "w", encoding="utf-8") as fh:
+                json.dump(config, fh)
+        return run("intake", run_dir, *extra)
+
+    run("update", run_dir, "--set", "lane=null")
+    out = lane_case("S", [])
+    assert out["lane"]["name"] == "S" and out["settings"]["gates"] == ["plan", "ship"] and out["needs_refinement"] is False, out
+    assert out["settings"]["tests"]["full_suite_runs"] == 1 and out["settings"]["tests"]["mutation"]["max_mutants"] == 10
+    assert state(run_dir)["lane"]["name"] == "S" and state(run_dir)["settings"]["review"]["group_below_lines"] == 400
+    assert lane_case("S", [], "ready_with_assumptions")["needs_refinement"] is True        # S refines only gaps
+    out = lane_case("S", ["external_input"])
+    assert out["lane"]["name"] == "M" and out["settings"]["gates"] == ["plan", "ship"] and out["needs_refinement"], out
+    out = lane_case("M", ["personal_data"])
+    assert out["lane"]["name"] == "L" and out["settings"]["review"] == {"select_lenses": False, "group_below_lines": 0}
+    out = lane_case("M", ["personal_data"], "ready", "sufficient", None, "--lane", "S")
+    assert out["lane"]["name"] == "S" and out["lane"]["below_minimum"] is True and out["lane"]["forced"] is True
+    assert lane_case("M", ["personal_data"])["lane"]["name"] == "S"                      # the choice is kept on resume
+    run("update", run_dir, "--set", "lane=null")
+    defaults_file = {"gates": ["plan", "ship"], "refine": {"enabled": True},
+                     "tests": {"full_suite_runs": 2, "mutation": {"enabled": True, "max_mutants": 40}}}
+    assert lane_case("S", [], "ready", "sufficient", defaults_file)["settings"]["tests"]["full_suite_runs"] == 1   # defaults don't pin
+    out = lane_case("S", [], "ready", "sufficient", {"lanes": {"S": {"gates": ["ship"]}}})                # opt out of the plan gate
+    assert out["settings"]["gates"] == ["ship"], out
+    out = lane_case("S", [], "ready", "sufficient", {"tests": {"mutation": {"max_mutants": 5}}, "refine": {"enabled": False}})
+    assert out["settings"]["tests"]["mutation"]["max_mutants"] == 5 and out["settings"]["refine"] == "never", out
+    out = lane_case("S", [], "ready", "sufficient", {"lanes": {"enabled": False}})
+    assert out["lane"]["name"] is None and out["settings"]["gates"] == ["plan", "ship"], out
+    out = lane_case("S", [], "ready", "sufficient", {"lanes": {"S": {"gates": ["ship"]}}}, "--gates", "none")
+    assert out["settings"]["gates"] == [], out
+    assert lane_case("L", [], "ready", "sufficient", {"lanes": {"S": {"gates": ["ship"]}}})["settings"]["gates"] == ["plan", "ship"]
+
+    # Gates: waiting is recorded for the notification hook and cleared by the decision; the ship gate is composed.
+    out = run("gate", run_dir, "plan")
+    assert out["waiting"] == "plan" and state(run_dir)["waiting"]["gate"] == "plan", out
+    run("update", run_dir, "--stage", "plan")
+    run("update", run_dir, "--done", "plan", "--intervene", "approval", "ok")
+    assert "waiting" not in state(run_dir)
+    assert state(run_dir)["human_interventions"][-1]["stage"] == "plan"    # stamped before --done moves on
+    with open(os.path.join(run_dir, "requirements.json"), "w", encoding="utf-8") as fh:
+        json.dump({"acceptance_criteria": [{"id": "AC-1"}, {"id": "AC-2", "refined": True},
+                                           {"id": "AC-3", "removed_by": "delta-01"}]}, fh)
+    with open(os.path.join(run_dir, "test-report.json"), "w", encoding="utf-8") as fh:
+        json.dump({"verdict": "green", "coverage_verdict": "below minimum",
+                   "suite": {"passed": 12, "failed": 0}, "coverage": {"line_percent": 60},
+                   "criteria": [{"id": "AC-1", "status": "covered"}, {"id": "AC-2", "status": "covered"}],
+                   "mutation": {"mutants": 4, "killed": 3,
+                                "surviving": [{"where": "a.py:3", "reason": "equivalent"}]}}, fh)
+    run("update", run_dir, "--set", 'review_result={"fixed": 1, "open": 0}', "--set", "pr_template=the plugin's",
+        "--set", "source=file")
+    proc = subprocess.run([sys.executable, SCRIPT, "gate", run_dir, "ship"], capture_output=True,
+                          env=dict(os.environ, PYTHONIOENCODING="cp1252"))      # a Windows console
+    assert proc.returncode == 0, proc.stderr
+    gate = proc.stdout.decode("utf-8")
+    for expected in ("NOT READY — coverage below the minimum, not accepted", "READY TO SHIP — PROJ-7",
+                     "Criteria  : 2/2 met · 1 of them added by refinement", "12 passed, 0 failed",
+                     "coverage 60 % line (target 80 % · minimum 70 %) — BELOW MINIMUM",
+                     "mutants: 3 of 4 killed · 1 surviving", "a.py:3 — equivalent", "Review    : 1 fixed · 0 open",
+                     "Deltas    : 1 since the plan was approved", "PR body   : the plugin's", "Ship it?"):
+        assert expected in gate, (expected, gate)
+    assert "comment on" not in gate and state(run_dir)["waiting"]["gate"] == "ship"    # a file source: no Jira
+    print("ok — run state: init, resume, transitions, interventions, notes, intake, reports, lanes, gates")
 
 
 if __name__ == "__main__":

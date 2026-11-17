@@ -45,7 +45,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` for the run directory 
 6. **Present** the verdict, the counts, and the critical and high findings in full; give the path for the rest.
 7. **Fix, only if asked.** Fixing happens when `--fix` was passed or when the human says so after seeing the report — never by default. (`review.auto_fix` in the configuration belongs to `/ai-enabler:delivery-run`, whose fix loop runs inside an approved pipeline; it does not authorise this skill.) With `--fix` and no further instruction, fix `critical` and `high`. Then:
    - send the selected findings to `ai-enabler:delivery-code-implementer` in `fix` mode;
-   - run the affected tests (launch `ai-enabler:delivery-test-engineer` in `verify` mode on them);
+   - run the affected tests (launch `ai-enabler:delivery-test-engineer` in `verify` mode on them; it adds the result to `test-report.json`, and `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py" render <run directory>` brings `test-report.md` up to date);
    - re-run only the lenses that had findings: `review_scope.py` again with `--lenses <those lenses> --no-select` for a fresh pack, and the reviewers told which files the fix changed;
    - append a "Fix round" section to the report: fixed, disputed by the implementer (with its reason), still open.
 
@@ -53,8 +53,8 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` for the run directory 
 
 ## Rules
 
-- **The test engineer gets the configuration and the scope, nothing more.** No extra mutation passes, whole-suite runs beyond `tests.full_suite_runs`, or stability re-runs ("What a brief may ask for" in the run-and-config reference).
-- **What was learned about the repository is kept.** When a subagent reports that the repository profile was wrong or incomplete (a command that does not work here, a convention the code does not follow, a rule nobody had written down), append one line to `profile_notes` in the run's `state.json` in pipeline mode, or turn it into a delta at the end in stand-alone mode; "When something was learned" in the run-and-config reference says how it becomes a delta to the profile. Never edit `profile.md` for it.
+- **The test engineer gets the configuration and the scope, nothing more.** No extra mutation passes, whole-suite runs beyond `tests.full_suite_runs`, or stability re-runs ("What a brief may ask for" in `${CLAUDE_PLUGIN_ROOT}/references/tests-protocol.md`).
+- **What was learned about the repository is kept.** When a subagent reports that the repository profile was wrong or incomplete (a command that does not work here, a convention the code does not follow, a rule nobody had written down), append one line to `profile_notes` in the run's `state.json` in pipeline mode, or turn it into a delta at the end in stand-alone mode; "When something was learned" in `${CLAUDE_PLUGIN_ROOT}/references/repo-profile.md` says how it becomes a delta to the profile. Never edit `profile.md` for it.
 - You do not review the diff in your own context and you do not edit code yourself; reviewers review, the implementer fixes. Your part is consolidation and verification of blockers.
 - Never post review comments to a pull request, approve it, or request changes on it unless the human asks for exactly that.
 - Do not pad the report. No findings is a valid result; say what was checked.

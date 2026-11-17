@@ -12,12 +12,12 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
 | `requirements.json` | `delivery-ticket-analyst`, then `delivery-ticket-refiner`; the planner updates its acceptance criteria when a delta changes them | Normalised ticket and readiness verdict. What refinement added is marked `"refined": true`; the verdicts on the ticket as it arrived are kept under `as_received` |
 | `external-context.md` | `delivery-source-scout` | What the project's external sources impose on this ticket: contracts, schemas, rules, components, each with its source and path. Absent when the project has no sources |
 | `refinement.md` | `delivery-ticket-refiner` | What refinement added to the ticket and why, and its questions. Absent when refinement was skipped |
-| `repo-context.md` | `delivery-repo-scout` | Only what this ticket adds to the repository profile: the existing code closest to it |
+| `repo-context.md` | `delivery-repo-scout` | Only what this ticket adds to the repository profile: the existing code closest to it, with the fragments the plan depends on (signatures, routes, wiring, the test to imitate), so the planner opens few files of its own |
 | `plan.md` | `delivery-solution-planner` | The implementation plan as it stands now: the approved plan with every approved delta folded in |
 | `deltas/delta-NN.md` | `delivery-solution-planner` (delta mode) | One file per change made after the plan was approved: why, what is added, what is removed |
 | `deltas/delta-NN.before/` | the orchestrating skill | Copies of `plan.md` and `requirements.json` taken before the planner writes delta NN, so the delta can be revised or cancelled |
-| `acceptance-tests.md` | `delivery-test-engineer` (acceptance mode) | The tests written before the code, one row per acceptance criterion |
-| `test-report.md` | `delivery-test-engineer` (coverage mode) | Commands run and how long each took, suite result, coverage against the target and the minimum, acceptance-criteria table, mutation results |
+| `acceptance-tests.json`, `acceptance-tests.md` | `delivery-test-engineer` (acceptance mode) writes the JSON; `scripts/run_state.py` renders the Markdown from it | The tests written before the code, one row per acceptance criterion |
+| `test-report.json`, `test-report.md` | `delivery-test-engineer` (coverage mode) writes the JSON, and adds each `verify` re-run to it; `scripts/run_state.py` renders the Markdown from it | Commands run and how long each took, suite result, coverage against the target and the minimum, acceptance-criteria table, mutation results |
 | `review-pack.md` | `scripts/review_scope.py`, before each review pass | What every reviewer of the pass reads first: files changed and their kind, the lenses and why, the criteria in force, the test report, and the diff of the code |
 | `review.md` | the orchestrating skill (`delivery-run` or `delivery-review`), in the format the `delivery-review` skill defines | Consolidated findings and what was fixed |
 | `delivery-report.md` | the `delivery-run` skill | What the human reads at the ship gate, written after the plugin's pull-request template |
@@ -36,6 +36,8 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
   "status": "active | held | stopped",
   "refined": true,
   "test_order": "before | mixed | after",
+  "lane": { "name": "S | M | L", "size": "S | M | L", "risk_areas": [], "forced": false },
+  "settings": { "gates": ["plan", "ship"], "refine": "always | gaps | never", "review": {}, "tests": {} },
   "stages_done": ["intake", "scout"],
   "plan_approved": false,
   "fix_rounds": 0,
@@ -45,79 +47,26 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
   "external_context": { "contracts": "git:4f2a…:9c1e…" },
   "profile_notes": ["the coverage report is in build/reports/jacoco, not target/site"],
   "human_interventions": [{ "at": "", "stage": "plan", "kind": "approval | adjustment | fix | delta | question | takeover | coverage_accepted | hold | local | ship | cancel | stop", "note": "" }],
+  "waiting": { "gate": "plan | ship | delta | coverage | blocked", "since": "" },
+  "review_result": { "fixed": 0, "open": 0, "highest_open": null, "criteria_met": 0 },
+  "pr_template": "",
   "pr_url": ""
 }
 ```
 
-`gate_rounds` and `deltas` are explained under "Rounds at a gate" and "Changing course after approval"; `profile_notes` (absent or empty most of the time) under "Repository profile". `refined` says whether the ticket went through refinement in this run; a run started before refinement existed has no such key and is resumed as it is. `stage` is the stage to run next, using exactly the names above; they are also the values `--from` accepts. `status` is `held` when the run waits at the ship gate, `stopped` when a person cancelled or stopped it (the note of the last intervention says where and why), `active` otherwise.
+`gate_rounds` is explained under "Rounds at a gate", `deltas` in `deltas.md` and `profile_notes` (absent or empty most of the time) in `repo-profile.md`, both next to this file. `waiting` is present only while the run waits for a person: `run_state.py gate` writes it, the next decision recorded clears it, and the gate notification hook reads it. `review_result` and `pr_template` are what the ship gate needs from the review and the ship stage; `run_state.py gate <run_dir> ship` composes that gate from them and from the run's files. `lane` and `settings` are written by `run_state.py intake` (see "Lanes"): the lane the run follows and what it gives this run, which the orchestrating skill uses instead of the configuration file for those keys. `refined` says whether the ticket went through refinement in this run; a run started before refinement existed has no such key and is resumed as it is. `stage` is the stage to run next, using exactly the names above; they are also the values `--from` accepts. `status` is `held` when the run waits at the ship gate, `stopped` when a person cancelled or stopped it (the note of the last intervention says where and why), `active` otherwise.
 
-Update `state.json` whenever a stage completes and whenever the human steps in, through `scripts/run_state.py` (`init`, `update`, `intake`, `show`), never by editing the file: one call per transition records every change of that transition and stamps the time. `human_interventions` is the pipeline's own record of where a person had to act; keep each note to one line. Its kinds are `approval`, `adjustment`, `fix`, `delta`, `question`, `takeover`, `coverage_accepted`, `hold`, `local`, `ship`, `cancel` and `stop`.
+Update `state.json` whenever a stage completes and whenever the human steps in, through `scripts/run_state.py` (`init`, `update`, `intake`, `gate`, `show`), never by editing the file: one call per transition records every change of that transition and stamps the time. The same calls render `test-report.md` and `acceptance-tests.md` from the test engineer's JSON whenever it is newer (`run_state.py render` does only that, for a skill that keeps no `state.json`). Subagents are told not to write report or summary Markdown files, so the test engineer's results are data that a script turns into Markdown, not documents it writes. `human_interventions` is the pipeline's own record of where a person had to act; keep each note to one line. Its kinds are `approval`, `adjustment`, `fix`, `delta`, `question`, `takeover`, `coverage_accepted`, `hold`, `local`, `ship`, `cancel` and `stop`.
 
 `.enabler/runs/`, `.enabler/repo-profile/`, `.enabler/tickets/` and `.enabler/sources/` hold working files and stay out of commits. `repo_profile.py check` sees to it without touching any file of the project: it puts a `.gitignore` containing `*` inside each of them. Do not add lines to the project's own `.gitignore` for them. A skill that writes a run directory without going through the scout stage runs `check` once for the same reason.
 
 ## Repository profile
 
-A repository is learned once, not once per ticket. What the pipeline knows about it lives outside the runs, in `.enabler/repo-profile/`, and stays on this machine:
-
-| File | Content |
-|---|---|
-| `profile.md` | What the repository is: stack, the commands that work here, structure, conventions, hard rules, git conventions. Written once by the scout, about 150 lines at most, and not rewritten by the pipeline afterwards |
-| `deltas/delta-NNN-<slug>.md` | One small complement each: what changed, or what was learned. About 30 lines at most. A later delta overrides an earlier one and the profile |
-| `profile.json`, `pending.json` | Fingerprints of the files the profile was derived from. Written by the script, never by an agent |
-
-The profile grows by complements, never by rewriting: a document that is extended on every run becomes too long to read, and then it is skimmed and trusted less. The base says what the repository is; each delta says what is different now.
-
-Every abbreviated `repo_profile.py ...` or `sources.py ...` command in this reference and the delivery skills means `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/<script>.py" ...`. Keep script paths and path arguments quoted; on Windows use native paths such as `C:/work/project` for path arguments. Use this launcher, not an ad hoc interpreter fallback. If it fails, report the failure and stop the dependent step.
-
-At the scout stage, ask the script whether the profile still holds — it compares a hash of each build manifest, CI and lint configuration file, the root README and the rules files (`CLAUDE.md`, `AGENTS.md`, contribution guides, ADRs) with what it recorded; lock files and source code are not watched:
-
-```
-/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/repo_profile.py" check
-```
-
-It prints JSON. `root` is the folder whose `.enabler/` is in use, and `profile` the absolute path of `profile.md`; the run directories belong under the same `root`. Pass the scout the absolute paths the script prints, never a relative one.
-
-| `status` | Meaning | Scout `tasks` | Then |
-|---|---|---|---|
-| `missing` | The repository has not been learned yet | `profile`, `ticket` | `record --expect <profile path>` |
-| `unrecorded` | There is a `profile.md` but no usable fingerprints: written or restored by hand | `ticket` | `record`. Never overwrite that profile |
-| `fresh` | Nothing the profile was derived from has changed | `ticket` | — |
-| `stale` | Some watched files changed, appeared or disappeared (the script lists them, and summarises them under `summary`) | `delta`, `ticket` | see below |
-
-**When the profile is stale.** Get the delta's path with `repo_profile.py next-delta "<a few words on what changed>"` (they only become a file name: two or three nouns such as `"test runner"`, not a sentence and not the name of a command) and pass it to the scout with the `summary` lines of the check. `summary` names every file when a dozen or fewer changed; beyond that it gives one line per kind of file (`rules`, `ci`, `build`, `lint`, `docs`) and top-level folder, with counts, file names and two examples, and still names each file at the root of the project. Never pass the full `changed`, `added` and `removed` lists: after a large merge they run to hundreds of paths, and the scout would open them one by one. The scout answers one of two things:
-
-- it wrote the delta — run `repo_profile.py record --expect <delta path>`. The script refuses if that file is not there, so a change is never marked as seen with nothing describing it;
-- nothing the profile or its deltas say is affected (a dependency bump, a reformat) and it wrote no file — run `repo_profile.py record`. No empty delta is kept.
-
-`record` stores the files as they were when `check` saw them, so a watched file edited in the meantime is found by the next check instead of being swallowed.
-
-**When something was learned.** (The same holds for an external source: a note that starts with `source <name>: ` becomes a delta of that source; see "External sources".) A later stage may report that the profile was wrong or incomplete: a command that does not work here, a convention the code does not follow, a rule nobody had written down. Append it at once to `profile_notes` in `state.json`, one line each, so it survives a resume. At the next pause — a gate, or the end of the run, never the middle of a stage — and for each note: `next-delta`, launch the scout with the task `delta` and the note as its `learned` reason, `record --expect <delta path> --keep`, and remove the note from `state.json`. `--keep` leaves the fingerprints alone: a learned delta says nothing about which files changed.
-
-**Starting again: `--relearn`.** Run `repo_profile.py reset` and treat the profile as `missing`: the repository is studied from scratch and every delta is dropped, learned ones included, so the scout reads the old profile and deltas *before* the reset and carries over what still holds. Never do it unasked. Suggest it, once, when `suggest_relearn` in the check is not empty (the profile has outgrown its size, there are more than ten deltas, or deltas run long), or when the scout says the profile and its deltas no longer fit together. `--refresh` does not touch the profile: it re-runs the stages of one ticket.
-
-The person may correct `profile.md` or add a delta by hand; the pipeline itself never edits what is written. Nothing in `.enabler/repo-profile/` is committed, and none of it is copied into `CLAUDE.md`, `AGENTS.md` or any other project file.
-
-**A run started before the profile existed** has a `repo-context.md` that holds everything, written by an earlier version. On resume, run `check` like any other run (Step 2), but do not ask for the `ticket` task: keep that file as it is. Agents read the profile, the deltas and it together.
+In `repo-profile.md`, next to this file. How the repository is learned once and kept current: `repo_profile.py check`, its statuses, deltas when it is stale or when a stage learned something, and `--relearn`. Read it at the scout stage, and when a run has `profile_notes` to turn into deltas.
 
 ## External sources
 
-The project being changed is rarely the whole story: the API contracts are in another repository, the components in a design system, the business rules in a Word document. An external source tells the pipeline where else to look. It is learned once, like the project, and complemented by deltas.
-
-| Kind | What | Read from |
-|---|---|---|
-| `repo` | A repository given by URL | A shallow, private copy in `.enabler/sources/<name>/checkout/`, updated with `sources.py fetch` |
-| `folder` | A folder on this machine — most often another repository already cloned next to the project, or a folder of specifications | Where it is. A URL whose clone is already next to the project becomes this kind, so nothing is cloned twice |
-| `doc` | A document: `.md`, `.txt`, `.pdf`, `.html`, `.docx`, `.rst`, `.adoc` | Where it is. A `.docx` is read through `sources.py text`, which turns it into Markdown with the standard library |
-
-Everything is in `.enabler/sources/`: `sources.json` (the list, and whether the person was asked), and per source `profile.md`, `deltas/`, `state.json` and `pending.json`, like the repository profile. All of it is local and kept out of git.
-
-**Adding one is meant to be easy.** The preflight of `delivery-run` and `delivery-plan` asks once per project, offering the repositories it finds next to the project (`sources.py siblings`); `--context <url|path>` adds one on any run; `/ai-enabler:delivery-sources` adds, lists, refreshes and removes them. Each source has an `about` — one sentence on what it is for — which is how the scout decides whether it matters for a ticket, and optionally `paths`, the part of a large repository that matters.
-
-**When they are read.** Twice, without adding waiting. During intake, in parallel with the analyst, each source is learned or brought up to date (a profile once, a delta when it changed), so that the refiner already has them. At the scout stage, in parallel with the repository scout, the scout writes what applies to this ticket. `sources.py check` says per source whether it is `missing` (not learned), `unrecorded` (learned, but the run stopped before `record`: just record it), `fresh`, `stale` (a new commit on the followed branch, an edit in the source's folder and `paths` — not elsewhere in its repository —, a changed document) or `unreachable` (used as last learned if `usable`, left out otherwise). `external_context` in `state.json` remembers which fingerprints `external-context.md` was written from, so a resumed run notices a source that changed or was added since. `delivery-source-scout` writes a profile for a missing source, a delta for a stale one, and for every ticket `external-context.md` with what the sources say that matters to it. `record --expect` follows each profile or delta, exactly as for the repository profile. Every agent that reads the repository context reads `external-context.md` too, and, outside a pipeline run, the source profiles themselves; the refiner reads the source profiles. The plan gate names the sources the plan relies on; the delivery report and the pull request name them too, by their URL or document name, never by a local path. What a later stage finds wrong about a source becomes a delta of that source, the way a finding about the project becomes a delta of its profile ("When something was learned").
-
-**Sources are read-only.** No agent writes to one, and the plugin's source guard — a hook that is always on — refuses edits inside a registered source (best effort: it judges what the command line shows): a file tool, a redirection, `rm`, `mv`, `sed -i`, a copy into it, a git command that changes it. Copying from a source into the project is allowed. If a ticket can only be done by changing a source, it is out of scope for this project's pipeline, and the person is told.
-
-**Credentials** are the ones git already has on this machine. The pipeline never asks for a token or writes one; a URL given with one has it removed before it is stored. A `ref` is a branch or a tag, followed exactly; a commit id cannot be followed. A source that cannot be reached is used as last learned, and the person is told.
+In `external-sources.md`, next to this file. Other repositories, sibling folders and documents the project depends on: how they are added, learned, kept current and read. Read it only when the project has sources (`sources.py status` lists any) or the person adds one.
 
 ## Project configuration
 
@@ -159,7 +108,10 @@ Optional file `.enabler/config.json`. Like the rest of `.enabler/`, it is a loca
     "min_confidence": 80,
     "auto_fix": ["critical", "high"],
     "max_fix_rounds": 2
-  }
+  },
+  "output_trim": { "enabled": true, "max_chars": 6000 },
+  "notify": { "gates": true },
+  "lanes": { "enabled": true, "S": {}, "M": {}, "L": {} }
 }
 ```
 
@@ -173,70 +125,39 @@ Optional file `.enabler/config.json`. Like the rest of `.enabler/`, it is a loca
 - `tests.coverage_target` and `tests.coverage_minimum` — line and branch coverage of the changed code. The test engineer aims for the target (80); the minimum (70) is the lowest result the pipeline accepts on its own. At or above the target it is `met`. Between the minimum and the target it is `acceptable`: the run continues and the figure is reported. Below the minimum it is `below minimum`, and a person decides whether to proceed. See "Coverage" below.
 - `tests.order` — `auto` writes the tests for the ticket's acceptance criteria before the code whenever the ticket states usable criteria, and falls back to writing tests after the code when it does not (see "Test order" below). `after` always writes them after the code. There is no setting that skips the coverage stage.
 - `refine.enabled` — after intake, the ticket refiner closes the gaps in the definition before anything is planned (see "Ticket refinement" below). `false`, or `--no-refine` for one run, takes the ticket as written.
-- `tests.full_suite_runs` — how many times the test engineer may run the whole suite in one coverage stage: once to surface regressions, once to measure. Default 2. In between it runs only the tests it created or changed. See "Effort budget" in the test engineer.
-- `tests.mutation` — mutation testing, **on by default**: it is what shows whether the tests would notice a wrong decision. It is kept to the code the ticket changed that decides something (business rules, permissions, validations, calculations, security and privacy), each mutant runs against the feature's tests only, in one pass, at most `max_mutants` (40). `enabled: false` turns it off for the project. See "Mutation testing" in the test engineer.
+- `tests.full_suite_runs` — how many times the test engineer may run the whole suite in one coverage stage: once to surface regressions, once to measure. Default 2. In between it runs only the tests the change affects. When the repository profile says CI runs the whole suite on every merge request, it runs it once, whatever this allows. See "Effort budget" in the test engineer.
+- `tests.mutation` — mutation testing, **on by default**: it is what shows whether the tests would notice a wrong decision. It is kept to the code the ticket changed that decides something (business rules, permissions, validations, calculations, security and privacy), each mutant runs against the feature's tests only, in one pass: about two per decision point changed (condition, comparison, branch, validation, boundary), at most `max_mutants` (40), and none when the change decides nothing. `enabled: false` turns it off for the project. See "Mutation testing" in the test engineer.
 - `review.lenses` — the lenses a review may use. Within them, `scripts/review_scope.py` decides what each change needs.
 - `review.select_lenses` — `true` leaves the security lens out when the change touches no external input, I/O, process execution, query, HTML rendering, authentication, secret, configuration, dependency or sensitive path; correctness, quality and tests always run. The review report says when security was left out and why. `false` runs every lens of `review.lenses` on every change.
 - `review.group_below_lines` — under this many changed lines (150), two reviewers carry two lenses each (correctness with tests, security with quality) instead of one reviewer per lens. `0` always launches one per lens.
 - `review.sensitive_paths` — path patterns (`src/billing/*`, `**/Payments/**`) whose change always brings the security lens, whatever is in it.
 - `review.auto_fix` — severities `/ai-enabler:delivery-run` fixes on its own inside its fix loop. Everything else is reported and left for the human. The stand-alone `/ai-enabler:delivery-review` ignores this key: there it fixes only with `--fix` or when the person says so.
+- `output_trim` — a hook that shows the pipeline's subagents only the failures and the summary of a long test or build run (`dotnet test`, Maven, Gradle, npm, Jest, Vitest, pytest, `go test`, `cargo test`): the lines that fail with their assertion messages and first stack frames, the summary lines, and the first and last lines. Output under `max_chars` (6000) is left alone, the full output is saved in `.enabler/tmp/output/` and the trimmed text names the file, the command itself is unchanged, and the person's own sessions are never trimmed. `enabled: false` turns it off.
+- `notify.gates` — when a run waits at a gate (the plan, the ship, a delta, coverage below the minimum, a blocked ticket) and Claude Code has been idle for about a minute, a desktop notification names the run and the gate, once per wait. `false` turns it off.
+- `lanes` — what a run spends depends on the ticket's lane, `S`, `M` or `L`; see "Lanes" below. `enabled: false` gives every ticket the same treatment, the defaults above. `S`, `M` and `L` each take the same keys as the table there (`gates`, `refine`, `review`, `tests`) to change what that lane does.
 
 Command-line flags on a skill override the file for that run.
 
+## Lanes
+
+A one-line fix and a new payment flow should not cost the same. The analyst gives each ticket a `size` (`S`, `M`, `L`) and its `risk_areas` (authentication, permissions, personal data, money, external input, dependencies, migrations, concurrency), the refiner may raise them, and `run_state.py intake` turns them into the run's lane and the settings that lane gives it:
+
+| Setting | S | M | L |
+|---|---|---|---|
+| `refine` — refinement | only when the analyst found gaps (not ready, criteria not sufficient, open questions, requirements without a criterion) | always | always |
+| `gates` | `plan`, `ship` | `plan`, `ship` | `plan`, `ship` |
+| `review` | by the diff, two reviewers below 400 changed lines | by the diff (the defaults above) | every lens, one reviewer each (`select_lenses: false`, `group_below_lines: 0`) |
+| `tests.full_suite_runs` | 1 | 2 | 2 |
+| `tests.mutation.max_mutants` | 10 | 25 | 40 |
+
+- **Risk sets a floor.** Any risk area makes a ticket at least `M`; authentication, permissions or personal data make it `L`.
+- **The person decides.** `--lane S|M|L` on `delivery-run`, or `adjust: lane S|M|L` at the plan gate, sets the lane for the run (it is kept on resume). A lane below the floor the risk areas set is allowed, and said at the gate and in the delivery report.
+- **What comes first.** The flags of the run; then a key set in `.enabler/config.json` to something other than its default — a choice the person made for every ticket, such as `tests.mutation.max_mutants: 5` or `gates: ["ship"]`; then the lane; then the defaults. A configuration file that only repeats the defaults, as `/ai-enabler:delivery-doctor --init` writes it, changes nothing. To skip the plan gate on small tickets, set `"lanes": {"S": {"gates": ["ship"]}}`: the plan is then shown at the ship gate, and what refinement added goes in unreviewed (the ship gate says so).
+- **Not by lane:** the models and their effort, which are fixed per agent so that a run never invalidates the prompt cache by switching them.
+
 ## Changing course after approval: deltas
 
-Once a plan is approved, it is not rewritten quietly. A change to what is being built — to the scope, the behaviour or the acceptance criteria — is made as a **delta**: a small, approved change to the plan that says what is added and what is removed, and is carried out in the same order as the original work.
-
-A delta is needed when:
-
-- the person asks at the ship gate for something that changes behaviour, scope or acceptance criteria;
-- the implementer stops because the plan is wrong in a way that changes scope;
-- a run is resumed and the ticket, or the person's instructions, have changed.
-
-A delta is **not** needed for a correction that leaves the plan true: a bug in the implementation, a naming or style point, a review finding. Those are fix lists for the implementer.
-
-What a delta is, on disk — `deltas/delta-NN.md`, numbered from 01:
-
-```markdown
-# Delta NN — <KEY>: <what changes, in one line>
-
-**Trigger:** who asked for it or what revealed it, and when.
-**Why:** the reason, in two or three sentences.
-
-## Acceptance criteria
-| AC | Change (added / changed / removed) | Before | After |
-
-## Tests
-| Test | Action (add / change / remove) | File | Covers | Why |
-
-## Code
-| File | Action (create / modify / delete) | What |
-
-## Plan steps affected
-Which steps of plan.md change, are added, or are dropped.
-
-## Risks and impact
-```
-
-Both sides are always written down: what the delta adds and what it takes away. A test that no longer describes wanted behaviour is listed under "remove"; so is code that the new approach makes dead. Nothing is deleted that the delta does not name.
-
-How a delta is carried out — the same order as the pipeline, acceptance criteria first:
-
-1. **Safety copy.** Before the planner runs, the orchestrating skill copies `plan.md` and `requirements.json` into `deltas/delta-NN.before/`. The planner is about to overwrite both, and the run directory is not under version control, so this copy is the only way back.
-2. **Plan.** The planner, in `delta` mode, writes `deltas/delta-NN.md`, updates `plan.md` so that it describes the work as it now stands (with a "Change history" table at the top, one row per delta), and updates the acceptance criteria in `requirements.json`: new ones get new ids, a removed one is kept and marked `"removed_by": "delta-NN"`, ids are never reused. The skill records the delta in `state.json` with `approved: false`, `applied: false`.
-3. **Approval.** The delta is shown at the plan gate, in the same compact form as a plan, and needs the same approval — **always**, whatever `gates` says: an unattended run does not approve a change of scope by itself. No test or code changes before that.
-   - *adjust* — restore the two files from `delta-NN.before/` and relaunch the planner in delta mode with the feedback; it rewrites the same `delta-NN.md`, it does not open a new number.
-   - *cancel* — restore the two files from `delta-NN.before/`, delete `delta-NN.md` and the `.before` folder, and remove the delta from `state.json`. The run is back where it was.
-   - *approve* — set `approved: true` and set `stage` to `acceptance-tests`.
-4. **Acceptance tests.** The test engineer, in `acceptance` mode with the delta, writes the tests for added and changed criteria and removes the tests the delta lists as obsolete — those and no others — then updates `acceptance-tests.md` (creating it if the run had none). This step runs even when the run's `test_order` was `after` because the ticket stated no criteria: the criteria of a delta come from a person's request, so they can be tested first. It is skipped only when `tests.order: after` is configured.
-5. **Implementation.** The implementer makes the new tests pass and deletes the code the delta lists for deletion. When it returns, set `applied: true`.
-6. **Coverage, then review** of the lenses the change touches, and back to the ship gate.
-
-A delta that is approved but not applied is unfinished work. Any skill that resumes a run looks for one first and carries it out before anything else; a delta that is written but not approved is shown at its gate again.
-
-**Removed criteria are not in force.** A criterion marked `removed_by` is kept for the record only: no test is written for it, the review does not count it as unmet, and totals such as "criteria met" leave it out. A test removal that a delta lists is not a "deleted test" finding.
-
-`state.json` records each delta. The delivery report lists them under "Changes after the plan was approved", so the pull request shows not only the result but how it got there.
+In `deltas.md`, next to this file. When a change to an approved plan is a delta, its file format, and how it is approved and carried out. Read it only when a delta is needed or one is pending in `state.json`.
 
 ## Rounds at a gate
 
@@ -260,37 +181,7 @@ Refined criteria count as stated for the test order: once the plan is approved t
 
 ## Tests: where they run, and when they fail
 
-**Where.** On this machine, in the working tree, on the feature branch, with the commands the repository profile names — the project's own, never ones assumed from the stack. The pipeline does not run tests in CI, does not wait for CI and does not read its result; what CI says after the push is for the person and the reviewers of the pull request. Nothing is installed or reconfigured to make tests run: a missing tool is reported.
-
-| Stage | Who runs them | What is run | What is expected |
-|---|---|---|---|
-| 4 acceptance tests | test engineer, `acceptance` | The new acceptance tests | **Red**: they fail because the code does not exist. A test that fails for another reason (typo, broken setup) is fixed here |
-| 5 implement | implementer | Build, linter, the acceptance tests | The acceptance tests go **green** without being edited |
-| 6 coverage | test engineer, `coverage` | The changed tests; the whole suite at most `tests.full_suite_runs` times (once for regressions, once to measure); mutation testing on the changed code that decides, against the feature's tests | Green; coverage at the target, or at least the minimum; no surviving mutant left without a reason |
-| 7 review, fix loop | test engineer, `verify` | The tests of the area a fix touched — never the whole suite when a scope is known | Still green after each fix |
-| 8 ship | nobody | Nothing is re-run: the gate reports the last result | — |
-
-**What a brief may ask for.** A skill that launches the test engineer passes it the mode, the configuration values — `tests.coverage_target`, `tests.coverage_minimum`, `tests.levels`, `tests.full_suite_runs`, `tests.mutation` — and the scope of the run. It adds no verification of its own: no extra mutation passes, no extra runs of the whole suite, no repeated runs to check stability, no coverage goals per file. More assurance than the configuration gives is the person's decision, taken at a gate and recorded under `human_interventions` in `state.json`; an agent does not take it because it seems safer. The time it costs is real: on one project, mutation runs against the whole suite and repeated whole-suite runs in every round made the test stage more than half of the whole delivery time.
-
-**When a test runs and does not pass,** the first thing is to say why. Nobody edits a test to make it agree with the code, and nobody weakens, skips or deletes a test to get a green run.
-
-| Cause | Who decides it is that | What happens |
-|---|---|---|
-| The test is wrong: bad setup, a mistake in the test itself | test engineer | It fixes its own test and runs again |
-| The test contradicts the ticket or the plan | the orchestrating skill, against the ticket and the plan — never against the code | The test engineer corrects that test in `repair` mode; the change and its reason go in the delivery report |
-| The code is wrong (a defect) | test engineer | The test stays as it is. The implementer fixes the code in `fix` mode, then the test engineer runs it again in `verify` mode |
-| It failed before this change | test engineer | Reported as pre-existing. Not fixed, not skipped, not counted against this change |
-| The tests could not be run: no command, missing tool, broken environment | whoever tried | Reported as `could not run`, with the reason. The change is stated to be untested; it is not presented as passing |
-
-**How long it goes on.** Fixing is bounded, so that a run cannot loop: one extra implementer pass at stage 5, and `review.max_fix_rounds` (2) rounds shared by the coverage stage and the review. When the budget is spent, the failures are not hidden and the run is not abandoned: it continues to the review, because a review of failing code is still worth having.
-
-**What a failure left open means at the end.** The result is **not ready**:
-
-- the delivery report and the pull-request body list every failing test with its cause;
-- the ship gate says so first, and recommends holding or opening the pull request as a draft. The person may still ship: it is their decision, made with the failures in front of them;
-- without a person at the gate (`--ship` on an unattended run), nothing is shipped. The run holds and says what blocks it.
-
-Coverage below the minimum follows its own rule: the run stops for the person at stage 6, whatever `gates` says.
+In `tests-protocol.md`, next to this file. Where tests run at each stage, what a brief to the test engineer may contain, and what is done with a test that does not pass. Read it when a stage's tests fail, or before briefing the test engineer outside `delivery-run`.
 
 ## Test order
 

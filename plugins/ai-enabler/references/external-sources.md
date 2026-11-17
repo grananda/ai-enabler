@@ -1,0 +1,21 @@
+# External sources
+
+Shared by the `ai-enabler` skills and agents; split out of `run-and-config.md`, which is read at the start of every skill, because most runs never need it.
+
+The project being changed is rarely the whole story: the API contracts are in another repository, the components in a design system, the business rules in a Word document. An external source tells the pipeline where else to look. It is learned once, like the project, and complemented by deltas.
+
+| Kind | What | Read from |
+|---|---|---|
+| `repo` | A repository given by URL | A shallow, private copy in `.enabler/sources/<name>/checkout/`, updated with `sources.py fetch` |
+| `folder` | A folder on this machine — most often another repository already cloned next to the project, or a folder of specifications | Where it is. A URL whose clone is already next to the project becomes this kind, so nothing is cloned twice |
+| `doc` | A document: `.md`, `.txt`, `.pdf`, `.html`, `.docx`, `.rst`, `.adoc` | Where it is. A `.docx` is read through `sources.py text`, which turns it into Markdown with the standard library |
+
+Everything is in `.enabler/sources/`: `sources.json` (the list, and whether the person was asked), and per source `profile.md`, `deltas/`, `state.json` and `pending.json`, like the repository profile. All of it is local and kept out of git.
+
+**Adding one is meant to be easy.** The preflight of `delivery-run` and `delivery-plan` asks once per project, offering the repositories it finds next to the project (`sources.py siblings`); `--context <url|path>` adds one on any run; `/ai-enabler:delivery-sources` adds, lists, refreshes and removes them. Each source has an `about` — one sentence on what it is for — which is how the scout decides whether it matters for a ticket, and optionally `paths`, the part of a large repository that matters.
+
+**When they are read.** Twice, without adding waiting. During intake, in parallel with the analyst, each source is learned or brought up to date (a profile once, a delta when it changed), so that the refiner already has them. At the scout stage, in parallel with the repository scout, the scout writes what applies to this ticket. `sources.py check` says per source whether it is `missing` (not learned), `unrecorded` (learned, but the run stopped before `record`: just record it), `fresh`, `stale` (a new commit on the followed branch, an edit in the source's folder and `paths` — not elsewhere in its repository —, a changed document) or `unreachable` (used as last learned if `usable`, left out otherwise). `external_context` in `state.json` remembers which fingerprints `external-context.md` was written from, so a resumed run notices a source that changed or was added since. `delivery-source-scout` writes a profile for a missing source, a delta for a stale one, and for every ticket `external-context.md` with what the sources say that matters to it. `record --expect` follows each profile or delta, exactly as for the repository profile. Every agent that reads the repository context reads `external-context.md` too, and, outside a pipeline run, the source profiles themselves; the refiner reads the source profiles. The plan gate names the sources the plan relies on; the delivery report and the pull request name them too, by their URL or document name, never by a local path. What a later stage finds wrong about a source becomes a delta of that source, the way a finding about the project becomes a delta of its profile ("When something was learned" in `repo-profile.md`).
+
+**Sources are read-only.** No agent writes to one, and the plugin's source guard — a hook that is always on — refuses edits inside a registered source (best effort: it judges what the command line shows): a file tool, a redirection, `rm`, `mv`, `sed -i`, a copy into it, a git command that changes it. Copying from a source into the project is allowed. If a ticket can only be done by changing a source, it is out of scope for this project's pipeline, and the person is told.
+
+**Credentials** are the ones git already has on this machine. The pipeline never asks for a token or writes one; a URL given with one has it removed before it is stored. A `ref` is a branch or a tag, followed exactly; a commit id cannot be followed. A source that cannot be reached is used as last learned, and the person is told.

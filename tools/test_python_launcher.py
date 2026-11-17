@@ -101,7 +101,7 @@ class LauncherTests(unittest.TestCase):
         for plugin in PLUGINS:
             config = json.loads((plugin / "hooks/hooks.json").read_text())
             count = sum(len(group["hooks"]) for groups in config["hooks"].values() for group in groups)
-            self.assertEqual(count, 3 if plugin.name == "ai-enabler" else 14)
+            self.assertEqual(count, 5 if plugin.name == "ai-enabler" else 14)
         doctor = (PLUGINS[0] / "skills/delivery-doctor/SKILL.md").read_text(encoding="utf-8")
         status = (PLUGINS[1] / "skills/metrics-usage-init/SKILL.md").read_text(encoding="utf-8")
         for text in (doctor, status):
@@ -193,7 +193,8 @@ class LauncherTests(unittest.TestCase):
                         self.assertIn('exec /bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh"', command)
                         self.assertEqual(hook["shell"], "bash")
                         if original.name == "ai-enabler":
-                            self.assertEqual(hook["onFailure"], "block")
+                            # Guards block on failure; the output trim and gate notification only help, so they never do.
+                            self.assertEqual(hook["onFailure"], "block" if event == "PreToolUse" else "continue")
                         self.env["CLAUDE_PLUGIN_ROOT"] = shell_path(plugin)
                         if original.name == "ai-enabler-metrics":
                             metrics = project / ".enabler/metrics"

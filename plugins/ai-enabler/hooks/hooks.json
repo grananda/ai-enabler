@@ -1,5 +1,5 @@
 {
-  "description": "Remote guard. When the project is local-only (.enabler/local-only exists, or git.local_only is true in .enabler/config.json) it blocks git push, gh/glab writes, write requests to GitHub, GitLab and Bitbucket, and writes through GitHub, GitLab, Bitbucket, Jira or Confluence MCP tools. Does nothing otherwise. Source guard, always on: refuses edits inside the external sources registered in .enabler/sources/sources.json, which the pipeline only reads. Scout guard, always on: refuses a background command from delivery-repo-scout or delivery-source-scout, which run every command in the foreground.",
+  "description": "Remote guard. When the project is local-only (.enabler/local-only exists, or git.local_only is true in .enabler/config.json) it blocks git push, gh/glab writes, write requests to GitHub, GitLab and Bitbucket, and writes through GitHub, GitLab, Bitbucket, Jira or Confluence MCP tools. Does nothing otherwise. Source guard, always on: refuses edits inside the external sources registered in .enabler/sources/sources.json, which the pipeline only reads. Scout guard, always on: refuses a background command from delivery-repo-scout or delivery-source-scout, which run every command in the foreground. Output trim, for the delivery subagents only: when a test or build runner prints more than output_trim.max_chars, saves the full output under .enabler/tmp/output/ and shows the agent the failures with their context, the summary, the first and the last lines, and the path of the full log; never blocks. Gate notification: when Claude Code has been idle for about a minute and a delivery run in this project waits at a gate (plan, ship, delta, coverage, blocked), raises one desktop notification per wait; never blocks; notify.gates: false turns it off.",
   "hooks": {
     "PreToolUse": [
       {
@@ -34,6 +34,34 @@
             "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/scout_guard.py\"",
             "shell": "bash",
             "onFailure": "block",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/output_trim.py\"",
+            "shell": "bash",
+            "onFailure": "continue",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/gate_notify.py\"",
+            "shell": "bash",
+            "onFailure": "continue",
             "timeout": 10
           }
         ]

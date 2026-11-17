@@ -1,0 +1,14 @@
+{
+  "summary": "Lanes by ticket size and risk: the analyst sizes each ticket (S, M, L) and names its risk areas, and run_state.py intake turns them into the run's lane and settings. An S ticket is refined only when the analyst found gaps and gets two reviewers, one whole-suite run and at most 10 mutants; M at most 25 mutants; L every lens with one reviewer each. Any risk area raises a ticket to at least M; authentication, permissions or personal data to L. Both gates stay by default in every lane; lanes.S.gates set to ship only skips the plan gate on small tickets. The lane is shown at the gates and can be changed with --lane or 'adjust: lane X'; a configuration key that differs from its default still applies to every lane.",
+  "category": "Added",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler": "minor"
+  },
+  "assets": {
+    "plugins/ai-enabler/agents/delivery-ticket-analyst.md": "minor",
+    "plugins/ai-enabler/agents/delivery-ticket-refiner.md": "patch",
+    "plugins/ai-enabler/skills/delivery-run/SKILL.md": "minor"
+  },
+  "migration": ""
+}

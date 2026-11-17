@@ -1,9 +1,11 @@
 ---
 name: delivery-ticket-refiner
 description: Refines a ticket the way a product owner and a business analyst would before a sprint - finds what the definition leaves unsaid (unhappy paths, limits, permissions, data, scope) and closes each gap as a marked addition, an assumption or a question. In the delivery pipeline it runs after the delivery-ticket-analyst and strengthens `requirements.json` before planning; stand-alone it writes an improved ticket as a local Markdown file from a Jira issue, a requirements file or a short brief. Never writes to Jira and never changes the meaning of what the author stated.
-disallowedTools: Edit, NotebookEdit
+disallowedTools: Edit, NotebookEdit, Skill, TodoWrite, WebSearch, Agent
 model: opus
 effort: high
+maxTurns: 60
+omitClaudeMd: true
 color: blue
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
@@ -51,7 +53,7 @@ Update `<run_dir>/requirements.json` in place, keeping everything the analyst wr
 - A criterion the analyst derived (`"derived": true`) that you can now state precisely keeps its id; rewrite its text, add `"refined": true` and set `"derived": false`: it is now a criterion precise enough to write a test from before the code, like the ones you add.
 - Add to `constraints`, `out_of_scope`, `assumptions` and `open_questions`; start each added line with `[refined] ` (for a question, the `question` text). Give each question you add `"options"` and `"suggested"`.
 - Recompute `requirements_without_criteria`.
-- Before changing them, copy the analyst's verdicts to `"as_received": { "acceptance_criteria_quality": "", "readiness": "" }`; then set `acceptance_criteria_quality` and `readiness` to your verdicts on the refined ticket. A ticket with a blocking question is still `blocked`.
+- Before changing them, copy the analyst's verdicts to `"as_received": { "acceptance_criteria_quality": "", "readiness": "" }`; then set `acceptance_criteria_quality` and `readiness` to your verdicts on the refined ticket. A ticket with a blocking question is still `blocked`. When what you added makes the ticket larger or touches a risk area the analyst did not name, update `size`, `risk_areas` and `risk_notes` the same way (the analyst's values go into `as_received` too); never make a ticket smaller than the analyst judged it.
 - Add `"refinement": { "at": "<ISO date>", "requirements_added": n, "criteria_added": n, "criteria_sharpened": n, "assumptions_added": n, "questions_added": n }`.
 
 Then write `<run_dir>/refinement.md`: one short paragraph on the state the ticket arrived in, and the table "What refinement added" (kind, item, why) from the reference, with the questions in full underneath. This is what the person reads at the plan gate to accept or reject each addition, so every row must be understandable on its own.
