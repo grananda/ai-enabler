@@ -100,13 +100,14 @@ The path you wrote, then the plan gate exactly as the person will see it, filled
 
 ```
 PLAN — <KEY>: <title>
-Approach    : <the plan's summary, two or three sentences>
+Approach    : <what will be done, which files, which risk — three lines at most>
 Changes     : <n> steps · <n> files to create · <n> to modify
               CREATE <path>          <one line per file, from the steps;
               MODIFY <path> (<what>)  beyond fifteen, the first fifteen and a count>
+Criteria    : <one line per criterion in force: AC-n — the test that will check it (before | after code)>
 Tests       : <n> planned (<levels>) · <n> written before the code, from <n> stated criteria
               <only when test_order is mixed or after: why some or all tests come after the code>
-Decisions   : <each decision in one line>
+Decisions   : <each decision in one line; "none" when the ticket left nothing open>
 Refinement  : <n> requirements and <n> criteria added to the ticket, <n> sharpened — or "ticket taken as written"
               <each addition in one line, with its id>
 Sources     : <each external source the plan relies on, with what it imposes, in one line — or "none">

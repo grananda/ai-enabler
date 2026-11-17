@@ -169,7 +169,35 @@ def main():
     out = lane_case("S", [], "ready", "sufficient", {"lanes": {"S": {"gates": ["plan", "ship"]}}}, "--gates", "none")
     assert out["settings"]["gates"] == [], out
     assert lane_case("L", [], "ready", "sufficient", {"lanes": {"S": {"gates": ["plan", "ship"]}}})["lane"]["name"] == "L"
-    print("ok — run state: init, resume, transitions, interventions, notes, intake, reports, lanes")
+
+    # Gates: waiting is recorded for the notification hook and cleared by the decision; the ship gate is composed.
+    out = run("gate", run_dir, "plan")
+    assert out["waiting"] == "plan" and state(run_dir)["waiting"]["gate"] == "plan", out
+    run("update", run_dir, "--intervene", "approval", "ok")
+    assert "waiting" not in state(run_dir)
+    with open(os.path.join(run_dir, "requirements.json"), "w", encoding="utf-8") as fh:
+        json.dump({"acceptance_criteria": [{"id": "AC-1"}, {"id": "AC-2", "refined": True},
+                                           {"id": "AC-3", "removed_by": "delta-01"}]}, fh)
+    with open(os.path.join(run_dir, "test-report.json"), "w", encoding="utf-8") as fh:
+        json.dump({"verdict": "green", "coverage_verdict": "below minimum",
+                   "suite": {"passed": 12, "failed": 0}, "coverage": {"line_percent": 60},
+                   "criteria": [{"id": "AC-1", "status": "covered"}, {"id": "AC-2", "status": "covered"}],
+                   "mutation": {"mutants": 4, "killed": 3,
+                                "surviving": [{"where": "a.py:3", "reason": "equivalent"}]}}, fh)
+    run("update", run_dir, "--set", 'review_result={"fixed": 1, "open": 0}', "--set", "pr_template=the plugin's",
+        "--set", "source=file")
+    proc = subprocess.run([sys.executable, SCRIPT, "gate", run_dir, "ship"], capture_output=True, text=True,
+                          encoding="utf-8")
+    assert proc.returncode == 0, proc.stderr
+    gate = proc.stdout
+    for expected in ("NOT READY — coverage below the minimum, not accepted", "READY TO SHIP — PROJ-7",
+                     "Criteria  : 2/2 met · 1 of them added by refinement", "12 passed, 0 failed",
+                     "coverage 60 % line (target 80 % · minimum 70 %) — BELOW MINIMUM",
+                     "mutants: 3 of 4 killed · 1 surviving", "a.py:3 — equivalent", "Review    : 1 fixed · 0 open",
+                     "Deltas    : 1 since the plan was approved", "PR body   : the plugin's", "Ship it?"):
+        assert expected in gate, (expected, gate)
+    assert "comment on" not in gate and state(run_dir)["waiting"]["gate"] == "ship"    # a file source: no Jira
+    print("ok — run state: init, resume, transitions, interventions, notes, intake, reports, lanes, gates")
 
 
 if __name__ == "__main__":

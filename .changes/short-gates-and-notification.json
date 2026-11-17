@@ -1,0 +1,13 @@
+{
+  "summary": "Shorter gates, and a notification when a run waits at one: the plan gate gives what will be done, in which files and with which risk in three lines, and each criterion with its planned test; \run_state.py gate records that a run waits (plan, ship, delta, coverage below the minimum, a blocked ticket) and composes the ship gate from the run's files, so the orchestrator no longer reads them or types it out; a Notification hook raises a desktop notification naming the run and the gate after about a minute idle (\notify.gates turns it off); the questions that block a ticket come in one message.",
+  "category": "Added",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler": "minor"
+  },
+  "assets": {
+    "plugins/ai-enabler/agents/delivery-solution-planner.md": "minor",
+    "plugins/ai-enabler/skills/delivery-run/SKILL.md": "minor"
+  },
+  "migration": ""
+}

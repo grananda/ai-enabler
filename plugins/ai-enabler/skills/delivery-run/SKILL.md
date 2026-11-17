@@ -69,7 +69,7 @@ Then run `run_state.py intake` again, with the same flags, instead of reading `r
 
 - `ready` — continue.
 - `ready_with_assumptions` — continue; the assumptions will be shown at the plan gate.
-- `blocked` — stop the pipeline here. Show the blocking questions, each with the options and the suggestion the refiner gave when there are any, and ask the human to answer them, or to confirm you should proceed on stated assumptions. Record the intervention in `state.json`. If they answer, add the answers to `requirements.json` (as requirements or assumptions) and continue. Offer to post the questions as a Jira comment only if they ask for it.
+- `blocked` — stop the pipeline here. Run `run_state.py gate .enabler/runs/<KEY> blocked`, then show **all** the blocking questions in one message, numbered, each with the options and the suggestion the refiner gave when there are any, so that the person answers them together, and ask the human to answer them, or to confirm you should proceed on stated assumptions. Record the intervention in `state.json`. If they answer, add the answers to `requirements.json` (as requirements or assumptions) and continue. Offer to post the questions as a Jira comment only if they ask for it.
 
 If no Jira MCP server is connected, follow "When there is no Jira MCP server" in the run-and-config reference.
 
@@ -97,7 +97,7 @@ When a later stage reports that the profile was wrong or incomplete — the impl
 
 Launch `ai-enabler:delivery-solution-planner` with the run directory and `test_order`. It returns the plan gate ready to show; do not read `plan.md` to build it.
 
-If `plan` is in `gates`, show the block the planner returned — compact, because the human should be able to decide in two minutes — add the lane in one line — `Lane        : <S|M|L> (size <size>; risks: <risk areas, or none>) — adjust: lane S|M|L to change it`, and, when the person chose a lane below the one the risk areas call for, say so in the same line — and, when `refinement.md` exists, `What was added to the ticket, and why: .enabler/runs/<KEY>/refinement.md`, end with `Approve this plan? (approve / adjust: <what to change> / cancel)`, and wait. Read `plan.md`, or the part of it the person asks about, only when they ask about a step, or when the planner's block is missing one of its lines (Approach, Changes, Tests, Decisions, Refinement, Sources, Assumptions, Questions).
+If `plan` is in `gates`, run `run_state.py gate .enabler/runs/<KEY> plan` (it records that the run waits, so a notification can reach a person who stepped away), then show the block the planner returned — compact, because the human should be able to decide in two minutes — add the lane in one line — `Lane        : <S|M|L> (size <size>; risks: <risk areas, or none>) — adjust: lane S|M|L to change it`, and, when the person chose a lane below the one the risk areas call for, say so in the same line — and, when `refinement.md` exists, `What was added to the ticket, and why: .enabler/runs/<KEY>/refinement.md`, end with `Approve this plan? (approve / adjust: <what to change> / cancel)`, and wait. Read `plan.md`, or the part of it the person asks about, only when they ask about a step, or when the planner's block is missing one of its lines (Approach, Changes, Criteria, Tests, Decisions, Refinement, Sources, Assumptions, Questions).
 
 This gate is the review of the change before it exists: what will be built, in which files, with which tests. The person can ask about any step, read or edit `plan.md` directly, and adjust as often as the round limit allows; nothing has been written outside the run directory yet. After approval the plan only changes through a delta.
 
@@ -109,7 +109,7 @@ This gate is the review of the change before it exists: what will be built, in w
 
 A plan with a blocking question cannot be auto-approved: even when `plan` is not in `gates`, stop and ask.
 
-When `plan` is not in `gates`, what refinement added goes in unreviewed. That is the choice the person made by removing the gate — or the lane made for a small ticket — but it must stay visible: the delivery report and the ship gate say which criteria came from refinement and that nobody approved them. In that case record `plan_approved` without an intervention, keep the planner's block for the ship gate, and go on.
+When `plan` is not in `gates`, what refinement added goes in unreviewed. That is the choice the person made by removing the gate — or the lane made for a small ticket — but it must stay visible: the delivery report and the ship gate say which criteria came from refinement and that nobody approved them. In that case record `plan_approved` without an intervention, keep the planner's `Approach` and `Changes` lines to show above the ship gate, and go on.
 
 ## Step 4 — Acceptance tests, before the code
 
@@ -136,7 +136,7 @@ Launch `ai-enabler:delivery-test-engineer` with `mode: coverage`, the run direct
 - `defects found` — each defect is a failing test that exposes wrong production code. Send the list to `ai-enabler:delivery-code-implementer` in `fix` mode, then launch the test engineer in `verify` mode on the affected tests. This shares the `review.max_fix_rounds` budget. Settle defects before looking at coverage. Defects still failing when the budget is spent are not hidden and do not stop the run: continue to the review, list them as open in the delivery report, and treat the result as not ready to ship.
 - coverage `met` (at or above the target) — continue.
 - coverage `acceptable` (between the minimum and the target) — continue without asking. Carry the figure and what is left uncovered into the delivery report.
-- coverage `below minimum` — **stop and let the person decide.** This is not yours to wave through, whatever `gates` says. Show the figure, the files that fall short and why, and wait:
+- coverage `below minimum` — **stop and let the person decide.** This is not yours to wave through, whatever `gates` says. Run `run_state.py gate .enabler/runs/<KEY> coverage`, then show the figure, the files that fall short and why, and wait:
 
   ```
   COVERAGE BELOW MINIMUM — <KEY>
@@ -180,7 +180,7 @@ Write `.enabler/runs/<KEY>/delivery-report.md`, following `${CLAUDE_PLUGIN_ROOT}
 
 Then settle which pull-request template the body will follow — "The pull-request body" in `${CLAUDE_PLUGIN_ROOT}/skills/delivery-ship/SKILL.md` — so that the gate can name it. Skip this when no pull request will be opened (local-only mode, `git.pull_request` false).
 
-Then present the ship gate and wait. List exactly what will happen, because approval covers exactly this list:
+Then present the ship gate and wait. Record the review's outcome and the template first — `run_state.py update` with `--set review_result={"fixed": n, "open": n, "highest_open": "<severity or null>", "criteria_met": n}` and `--set pr_template="<the plugin's template | the repository's template (<path>)>"` — then run `run_state.py gate .enabler/runs/<KEY> ship`: it records that the run waits and prints the gate below, filled in from the run's files (diff, criteria, tests, mutants, deltas, lane, and what shipping will do, local-only included). Show it as printed; fill in only a line it marks `?`, and put any not-ready reason it did not see first. Approval covers exactly the list it shows:
 
 ```
 READY TO SHIP — <KEY>

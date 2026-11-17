@@ -118,12 +118,14 @@ Any risk area makes a ticket at least `M`; authentication, permissions or person
 
 What the human sees at each gate:
 
-- **Plan gate** — this is where you review the change before it exists. The approach in three sentences, the steps, every file that will be created or modified by path, the planned tests, the technical decisions taken, the assumptions made about the ticket. Answer `approve`, `adjust: ...` or `cancel`.
+- **Plan gate** — this is where you review the change before it exists. What will be done, in which files and with which risk, in three lines, each acceptance criterion with the test that will check it, the steps, every file that will be created or modified by path, the planned tests, the technical decisions taken, the assumptions made about the ticket. Answer `approve`, `adjust: ...` or `cancel`.
 - **Ship gate** — the diff size, acceptance criteria met, test results and coverage against the 80 % target and the 70 % minimum, how many criteria had their test written before the code, findings fixed and still open, and the exact list of outward actions (push, pull request, Jira comment, transition). Answer `ship`, `local` (commit on your machine only; nothing leaves it), `hold` or `fix: ...`.
 
 At the plan gate nothing has been written outside the run folder, so reviewing is cheap: ask about any step, read `plan.md` in full, edit it by hand, or send it back with `adjust`. Once approved, the plan only changes through a delta.
 
 A delta is shown at Gate 1 like a plan. The pipeline also stops when the ticket is not implementable as written (the analyst returns the questions that unblock it), when the plan turns out to be wrong in a way that changes scope, and when coverage of the changed code ends up under the minimum. Apart from those, it asks only what it cannot work out — which Jira server to use when several are connected — and stops where the safety rules require it, such as unrelated changes in the working tree.
+
+**The gates are short, and written by script where they can be.** The planner hands over the plan gate ready to show; `scripts/run_state.py gate` composes the ship gate from the run's files — diff, criteria, tests and mutants, review, deltas, lane, and exactly what shipping will do — so the orchestrator neither reads those files nor types the gate out. All the questions that block a ticket come in one message, to be answered together.
 
 **You do not have to watch the terminal.** When a run stops at any of those points and Claude Code has been idle for about a minute, a hook raises a desktop notification naming the run and what it waits for ("AI4IT-36 is waiting at the plan gate"): a balloon tip on Windows, Notification Center on macOS, `notify-send` on Linux when it is installed. It fires once per wait, names every run that is waiting, and never blocks anything. `"notify": {"gates": false}` in `.enabler/config.json` turns it off.
 

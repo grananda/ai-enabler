@@ -16,7 +16,7 @@ Three situations send the run backwards. Handle each the same way every time.
 **3. A change to what is being built** — to scope, behaviour or acceptance criteria — once the plan has been approved. It comes from a `fix` at the ship gate that asks for something different, from an implementer that found the plan wrong, or from a resumed run whose ticket or instructions changed. This is a **delta**; read "Changing course after approval: deltas" in the run-and-config reference and follow it:
 
 1. Take the next delta number and copy `plan.md` and `requirements.json` into `deltas/delta-NN.before/`. Then launch `ai-enabler:delivery-solution-planner` with `mode: delta`, the run directory, the number and the change. It writes `deltas/delta-NN.md` (what is added **and** what is removed), brings `plan.md` up to date and updates the acceptance criteria. Record the delta in `state.json` with `approved: false`, `applied: false`.
-2. Show the delta at the plan gate and wait — a changed plan needs approval like the plan did, **also when `plan` is not in `gates`**: a change of scope is never approved unattended.
+2. Run `run_state.py gate .enabler/runs/<KEY> delta`, show the delta at the plan gate and wait — a changed plan needs approval like the plan did, **also when `plan` is not in `gates`**: a change of scope is never approved unattended.
 
    ```
    DELTA NN — <KEY>: <one line>
