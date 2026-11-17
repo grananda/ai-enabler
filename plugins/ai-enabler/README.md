@@ -109,12 +109,12 @@ A one-line change and a new payment flow should not cost the same. The analyst s
 | | S | M | L |
 |---|---|---|---|
 | Refinement | only when the analyst found gaps | always | always |
-| Gates | ship only; the plan is shown there | plan and ship | plan and ship |
+| Gates | plan and ship (ship only if you opt in) | plan and ship | plan and ship |
 | Review | by the diff, two reviewers | by the diff | every lens, one reviewer each |
 | Whole-suite runs | 1 | 2 | 2 |
 | Most mutants | 10 | 25 | 40 |
 
-Any risk area makes a ticket at least `M`; authentication, permissions or personal data make it `L`. The lane is shown at the plan gate (and at the ship gate when there was none), and you can change it: `--lane S|M|L` on the run, or `adjust: lane M` at the plan gate. A value you set in `.enabler/config.json` that differs from the default applies to every lane; `"lanes": {"enabled": false}` gives every ticket the same treatment, and `"lanes": {"S": {"gates": ["plan", "ship"]}}` keeps the plan gate on small tickets. The models do not change by lane: switching them mid-run would start the prompt cache again. The full rules are under "Lanes" in [references/run-and-config.md](references/run-and-config.md).
+Any risk area makes a ticket at least `M`; authentication, permissions or personal data make it `L`. The lane is shown at the plan gate and at the ship gate, and you can change it: `--lane S|M|L` on the run, or `adjust: lane M` at the plan gate. A value you set in `.enabler/config.json` that differs from the default applies to every lane; `"lanes": {"enabled": false}` gives every ticket the same treatment, and `"lanes": {"S": {"gates": ["ship"]}}` skips the plan gate on small tickets — the plan is then shown at the ship gate, and what refinement added goes in unreviewed. The models do not change by lane: switching them mid-run would start the prompt cache again. The full rules are under "Lanes" in [references/run-and-config.md](references/run-and-config.md).
 
 What the human sees at each gate:
 

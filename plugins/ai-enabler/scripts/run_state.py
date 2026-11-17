@@ -55,7 +55,7 @@ DEFAULTS = {"gates": ["plan", "ship"], "refine": "always",
             "review": {"select_lenses": True, "group_below_lines": 150},
             "tests": {"full_suite_runs": 2, "mutation": {"enabled": True, "max_mutants": 40}}}
 LANES = {
-    "S": {"gates": ["ship"], "refine": "gaps", "review": {"group_below_lines": 400},
+    "S": {"refine": "gaps", "review": {"group_below_lines": 400},
           "tests": {"full_suite_runs": 1, "mutation": {"max_mutants": 10}}},
     "M": {"tests": {"mutation": {"max_mutants": 25}}},
     "L": {"review": {"select_lenses": False, "group_below_lines": 0}},

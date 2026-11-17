@@ -147,9 +147,9 @@ def main():
 
     run("update", run_dir, "--set", "lane=null")
     out = lane_case("S", [])
-    assert out["lane"]["name"] == "S" and out["settings"]["gates"] == ["ship"] and out["needs_refinement"] is False, out
+    assert out["lane"]["name"] == "S" and out["settings"]["gates"] == ["plan", "ship"] and out["needs_refinement"] is False, out
     assert out["settings"]["tests"]["full_suite_runs"] == 1 and out["settings"]["tests"]["mutation"]["max_mutants"] == 10
-    assert state(run_dir)["lane"]["name"] == "S" and state(run_dir)["settings"]["gates"] == ["ship"]
+    assert state(run_dir)["lane"]["name"] == "S" and state(run_dir)["settings"]["review"]["group_below_lines"] == 400
     assert lane_case("S", [], "ready_with_assumptions")["needs_refinement"] is True        # S refines only gaps
     out = lane_case("S", ["external_input"])
     assert out["lane"]["name"] == "M" and out["settings"]["gates"] == ["plan", "ship"] and out["needs_refinement"], out
@@ -161,14 +161,16 @@ def main():
     run("update", run_dir, "--set", "lane=null")
     defaults_file = {"gates": ["plan", "ship"], "refine": {"enabled": True},
                      "tests": {"full_suite_runs": 2, "mutation": {"enabled": True, "max_mutants": 40}}}
-    assert lane_case("S", [], "ready", "sufficient", defaults_file)["settings"]["gates"] == ["ship"]   # defaults don't pin
+    assert lane_case("S", [], "ready", "sufficient", defaults_file)["settings"]["tests"]["full_suite_runs"] == 1   # defaults don't pin
+    out = lane_case("S", [], "ready", "sufficient", {"lanes": {"S": {"gates": ["ship"]}}})                # opt out of the plan gate
+    assert out["settings"]["gates"] == ["ship"], out
     out = lane_case("S", [], "ready", "sufficient", {"tests": {"mutation": {"max_mutants": 5}}, "refine": {"enabled": False}})
     assert out["settings"]["tests"]["mutation"]["max_mutants"] == 5 and out["settings"]["refine"] == "never", out
     out = lane_case("S", [], "ready", "sufficient", {"lanes": {"enabled": False}})
     assert out["lane"]["name"] is None and out["settings"]["gates"] == ["plan", "ship"], out
-    out = lane_case("S", [], "ready", "sufficient", {"lanes": {"S": {"gates": ["plan", "ship"]}}}, "--gates", "none")
+    out = lane_case("S", [], "ready", "sufficient", {"lanes": {"S": {"gates": ["ship"]}}}, "--gates", "none")
     assert out["settings"]["gates"] == [], out
-    assert lane_case("L", [], "ready", "sufficient", {"lanes": {"S": {"gates": ["plan", "ship"]}}})["lane"]["name"] == "L"
+    assert lane_case("L", [], "ready", "sufficient", {"lanes": {"S": {"gates": ["ship"]}}})["settings"]["gates"] == ["plan", "ship"]
 
     # Gates: waiting is recorded for the notification hook and cleared by the decision; the ship gate is composed.
     out = run("gate", run_dir, "plan")

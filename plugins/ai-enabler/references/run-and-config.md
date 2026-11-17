@@ -145,14 +145,14 @@ A one-line fix and a new payment flow should not cost the same. The analyst give
 | Setting | S | M | L |
 |---|---|---|---|
 | `refine` — refinement | only when the analyst found gaps (not ready, criteria not sufficient, open questions, requirements without a criterion) | always | always |
-| `gates` | `ship`: no plan gate; the plan is shown at the ship gate | `plan`, `ship` | `plan`, `ship` |
+| `gates` | `plan`, `ship` | `plan`, `ship` | `plan`, `ship` |
 | `review` | by the diff, two reviewers below 400 changed lines | by the diff (the defaults above) | every lens, one reviewer each (`select_lenses: false`, `group_below_lines: 0`) |
 | `tests.full_suite_runs` | 1 | 2 | 2 |
 | `tests.mutation.max_mutants` | 10 | 25 | 40 |
 
 - **Risk sets a floor.** Any risk area makes a ticket at least `M`; authentication, permissions or personal data make it `L`.
 - **The person decides.** `--lane S|M|L` on `delivery-run`, or `adjust: lane S|M|L` at the plan gate, sets the lane for the run (it is kept on resume). A lane below the floor the risk areas set is allowed, and said at the gate and in the delivery report.
-- **What comes first.** The flags of the run; then a key set in `.enabler/config.json` to something other than its default — a choice the person made for every ticket, such as `tests.mutation.max_mutants: 5` or `gates: ["ship"]`; then the lane; then the defaults. A configuration file that only repeats the defaults, as `/ai-enabler:delivery-doctor --init` writes it, changes nothing. To keep the plan gate on small tickets, set `"lanes": {"S": {"gates": ["plan", "ship"]}}`.
+- **What comes first.** The flags of the run; then a key set in `.enabler/config.json` to something other than its default — a choice the person made for every ticket, such as `tests.mutation.max_mutants: 5` or `gates: ["ship"]`; then the lane; then the defaults. A configuration file that only repeats the defaults, as `/ai-enabler:delivery-doctor --init` writes it, changes nothing. To skip the plan gate on small tickets, set `"lanes": {"S": {"gates": ["ship"]}}`: the plan is then shown at the ship gate, and what refinement added goes in unreviewed (the ship gate says so).
 - **Not by lane:** the models and their effort, which are fixed per agent so that a run never invalidates the prompt cache by switching them.
 
 ## Changing course after approval: deltas
