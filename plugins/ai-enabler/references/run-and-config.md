@@ -12,7 +12,7 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
 | `requirements.json` | `delivery-ticket-analyst`, then `delivery-ticket-refiner`; the planner updates its acceptance criteria when a delta changes them | Normalised ticket and readiness verdict. What refinement added is marked `"refined": true`; the verdicts on the ticket as it arrived are kept under `as_received` |
 | `external-context.md` | `delivery-source-scout` | What the project's external sources impose on this ticket: contracts, schemas, rules, components, each with its source and path. Absent when the project has no sources |
 | `refinement.md` | `delivery-ticket-refiner` | What refinement added to the ticket and why, and its questions. Absent when refinement was skipped |
-| `repo-context.md` | `delivery-repo-scout` | Only what this ticket adds to the repository profile: the existing code closest to it |
+| `repo-context.md` | `delivery-repo-scout` | Only what this ticket adds to the repository profile: the existing code closest to it, with the fragments the plan depends on (signatures, routes, wiring, the test to imitate), so the planner opens few files of its own |
 | `plan.md` | `delivery-solution-planner` | The implementation plan as it stands now: the approved plan with every approved delta folded in |
 | `deltas/delta-NN.md` | `delivery-solution-planner` (delta mode) | One file per change made after the plan was approved: why, what is added, what is removed |
 | `deltas/delta-NN.before/` | the orchestrating skill | Copies of `plan.md` and `requirements.json` taken before the planner writes delta NN, so the delta can be revised or cancelled |

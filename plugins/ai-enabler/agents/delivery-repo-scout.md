@@ -77,7 +77,8 @@ Write `<run_dir>/repo-context.md` with what this ticket needs and the profile ca
 1. **Closest existing code.** Using `feature_area` (files whose names contain those nouns) and `feature_type`, find the files most likely to be touched or imitated for this ticket, each with one line on why. Where the ticket's area follows a local variation of a convention, say so.
    - Find them by name and by content, never by walking the tree: the Glob tool or `git ls-files '*<noun>*'` for names, the Grep tool or `git grep -l -i '<noun>'` for content, inside the layer directories the profile names when the nouns are common words.
    - **Open at most ten files** to confirm the closest ones, then stop. `repo-context.md` lists files with a reason each; it does not summarise the codebase. If ten files do not settle it, list the candidates as candidates and say so.
-2. **For this run.** Anything true only now: uncommitted changes in the working tree, a branch that already exists for this key.
+2. **What the planner needs from them.** The planner works from this file and opens source files only for what it does not show, so give it the fragments a plan depends on. For each file likely to be modified or imitated: the signature of the class or function that would change, the route and its handler, the place where things are registered or wired, and the existing test that is the pattern to imitate (its name and setup). Each as a short excerpt with `path:line`, a few lines, never the whole file: about fifteen lines per file and a hundred and twenty in all.
+3. **For this run.** Anything true only now: uncommitted changes in the working tree, a branch that already exists for this key.
 
 Start the file with one line naming what it complements: `Complements the repository profile (<its path>) and its <n> deltas.` Do not repeat the profile in it.
 
