@@ -1,6 +1,6 @@
 ---
 name: delivery-review
-description: "Independent multi-lens code review with a severity-ranked report and optional auto-fix. Launches read-only delivery-code-reviewer subagents in parallel (correctness, security, quality, tests), consolidates and filters their findings, writes a Markdown report, and fixes findings only when asked: with `--fix`, or when the person says so after reading the report. Works on an ai-enabler run, a branch against its base, a pull request, or paths. Use when the user says \"review my changes\", \"code review\", \"review PROJ-123\", \"review PR 42\", \"security review of this branch\", \"is this ready to merge\", or \"review and fix\"."
+description: "Independent multi-lens code review with a severity-ranked report and optional auto-fix. Decides which lenses the change needs (correctness, quality and tests always, security when the change touches it), launches read-only delivery-code-reviewer subagents in parallel with one shared review pack, consolidates and filters their findings, writes a Markdown report, and fixes findings only when asked: with `--fix`, or when the person says so after reading the report. Works on an ai-enabler run, a branch against its base, a pull request, or paths. Use when the user says \"review my changes\", \"code review\", \"review PROJ-123\", \"review PR 42\", \"security review of this branch\", \"is this ready to merge\", or \"review and fix\"."
 argument-hint: "[JIRA-KEY | PR number or URL | path ...] [--base <branch>] [--lenses correctness,security,quality,tests] [--fix] [--min-confidence 80]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
@@ -21,9 +21,10 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` for the run directory 
    - paths — those files;
    - nothing — the current branch against the base branch (`--base`, else the remote's default), plus uncommitted changes. If there is nothing to review, say so and stop.
    - **External sources.** When the project has external sources (`/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/sources.py" status`), bring them up to date as Step 1 of `${CLAUDE_PLUGIN_ROOT}/skills/delivery-run/SKILL.md` says under "Learn the external sources at the same time"; in pipeline mode the run's `external-context.md` is used, and outside one the subagents read the source profiles.
-2. **Review in parallel.** Launch one `ai-enabler:delivery-code-reviewer` per lens, **all in one message**. Each gets its lens, the scope, the run directory if there is one, and the path `${CLAUDE_PLUGIN_ROOT}/references/review-checklist.md`. The reviewers have no edit tools; they cannot change the code they judge.
-3. **Consolidate.** Merge findings that share a location and a cause, keeping the highest severity. Drop findings below the confidence floor (`--min-confidence`, else `review.min_confidence`). Open the cited code for every `critical` and `high` finding and confirm it; move anything you cannot confirm to a "to validate" list rather than deleting it. Renumber as `CR-1`, `CR-2`, ... by severity.
-4. **Write the report** to `.enabler/runs/<KEY>/review.md` in pipeline mode, otherwise to `.enabler/runs/adhoc/review-<YYYY-MM-DD>.md`:
+2. **Lenses and pack.** Run `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/review_scope.py"` as Step 7 of `${CLAUDE_PLUGIN_ROOT}/skills/delivery-run/SKILL.md` says: `--base` the base of the scope, `--run-dir` the run directory in pipeline mode, otherwise `--out .enabler/runs/adhoc/review-pack-<YYYY-MM-DD>.md`, and the `review` settings. With `--lenses` given by the person, pass them with `--no-select`: they are run as asked. For a pull request, check out its branch first or review it without a pack, one reviewer per lens. The script prints the reviewer groups, any lens left out and why, and the path of the pack.
+3. **Review in parallel.** Launch one `ai-enabler:delivery-code-reviewer` per group, **all in one message**. Each gets its lenses, the pack, the scope, the run directory if there is one, and the path `${CLAUDE_PLUGIN_ROOT}/references/review-checklist.md`. The reviewers have no edit tools; they cannot change the code they judge.
+4. **Consolidate.** Merge findings that share a location and a cause, keeping the highest severity. Drop findings below the confidence floor (`--min-confidence`, else `review.min_confidence`). Open the cited code for every `critical` and `high` finding and confirm it; move anything you cannot confirm to a "to validate" list rather than deleting it. Renumber as `CR-1`, `CR-2`, ... by severity.
+5. **Write the report** to `.enabler/runs/<KEY>/review.md` in pipeline mode, otherwise to `.enabler/runs/adhoc/review-<YYYY-MM-DD>.md`:
 
    ```markdown
    # Code review — <scope>
@@ -39,12 +40,13 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` for the run directory 
 
    ## To validate
    ## Checked and found sound
+   Which lenses ran, in which reviewer; any lens left out and why.
    ```
-5. **Present** the verdict, the counts, and the critical and high findings in full; give the path for the rest.
-6. **Fix, only if asked.** Fixing happens when `--fix` was passed or when the human says so after seeing the report — never by default. (`review.auto_fix` in the configuration belongs to `/ai-enabler:delivery-run`, whose fix loop runs inside an approved pipeline; it does not authorise this skill.) With `--fix` and no further instruction, fix `critical` and `high`. Then:
+6. **Present** the verdict, the counts, and the critical and high findings in full; give the path for the rest.
+7. **Fix, only if asked.** Fixing happens when `--fix` was passed or when the human says so after seeing the report — never by default. (`review.auto_fix` in the configuration belongs to `/ai-enabler:delivery-run`, whose fix loop runs inside an approved pipeline; it does not authorise this skill.) With `--fix` and no further instruction, fix `critical` and `high`. Then:
    - send the selected findings to `ai-enabler:delivery-code-implementer` in `fix` mode;
    - run the affected tests (launch `ai-enabler:delivery-test-engineer` in `verify` mode on them);
-   - re-run only the lenses that had findings, on the files that changed;
+   - re-run only the lenses that had findings: `review_scope.py` again with `--lenses <those lenses> --no-select` for a fresh pack, and the reviewers told which files the fix changed;
    - append a "Fix round" section to the report: fixed, disputed by the implementer (with its reason), still open.
 
    At most `review.max_fix_rounds` rounds. Without authorisation, the report is the deliverable and the code is untouched.

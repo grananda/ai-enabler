@@ -26,7 +26,7 @@ For manual commands use `/bin/bash "<plugin-root>/scripts/run-python.sh" "<plugi
 | 4 | Acceptance tests | `delivery-test-engineer` | the ticket's acceptance criteria, the plan | tests, `acceptance-tests.md` | — |
 | 5 | Implement | `delivery-code-implementer` | plan, context, the acceptance tests | code on a feature branch that makes them pass | — |
 | 6 | Coverage | `delivery-test-engineer` | the changed code | remaining tests, `test-report.md` | only if coverage is under 70 % |
-| 7 | Review | `delivery-code-reviewer` × 4, in parallel | the diff, the criteria | `review.md` | — |
+| 7 | Review | `delivery-code-reviewer`, one per lens the change needs (two reviewers with two lenses each on a small change), in parallel | the review pack: the code diff, the criteria, the test report | `review-pack.md`, `review.md` | — |
 | 7b | Fix loop | `delivery-code-implementer` | blocking findings | fixes (max 2 rounds) | — |
 | 8 | Ship | the skill itself | `delivery-report.md` | commit, push, PR, Jira update | **Gate 2 — approve the ship** |
 
@@ -89,6 +89,16 @@ No test is edited to agree with the code, and none is weakened, skipped or delet
 Skills pass the test engineer the configuration and the scope, nothing more: asking for more assurance than the configuration gives is your decision, at a gate.
 
 Fixing is bounded so that a run cannot loop: one extra pass at stage 5, and two fix rounds (`review.max_fix_rounds`) shared by the coverage stage and the review. If tests still fail after that, the run goes on to the review and the result is marked **not ready**: the failures are listed with their cause in the report and in the pull request, and the ship gate says so first and recommends holding or a draft pull request. You can still ship it, knowingly. An unattended run never does: it holds.
+
+### A review in proportion to the change
+
+The review costs in proportion to what changed, not the same for every ticket. Before it starts, `scripts/review_scope.py` reads the change — committed, uncommitted and new files — with no model involved, and decides:
+
+- **Which lenses.** Correctness, quality and tests always. Security whenever the change touches external input, I/O, process execution, queries, HTML rendering, authentication, secrets, configuration, dependencies or a path you declared sensitive (`review.sensitive_paths`); when in doubt it is in. It is left out only when none of that appears, and the review report says so and why.
+- **How many reviewers.** Under 150 changed lines (`review.group_below_lines`), two reviewers carry two lenses each — correctness with tests, security with quality. Above, one reviewer per lens, as before.
+- **What they read first.** One review pack, `review-pack.md`, written once for all of them: the files changed and their kind, the acceptance criteria in force, the test report and the diff of the code. Each reviewer still reads around the change — callers, callees, tests — and the tests and documents its lenses need.
+
+The reviewers keep the strongest model and high effort: their independence is part of the quality the pipeline promises. `review.select_lenses: false` runs every lens on every change.
 
 What the human sees at each gate:
 
@@ -244,7 +254,7 @@ Each stage runs in its own context and hands over a file, not a conversation. Th
 | `delivery-solution-planner` | File-level plan with a trace from every criterion to steps and tests; writes the delta when an approved plan changes | `opus`, effort `high` | Read, Grep, Glob, Bash, Write (the plan and deltas; in a delta also the acceptance criteria) |
 | `delivery-code-implementer` | Writes the code in the plan so the acceptance tests pass; applies fix lists | `sonnet` | All; never edits an acceptance test |
 | `delivery-test-engineer` | Acceptance tests before the code; after it, the remaining tests and coverage of the changed code (target 80 %, minimum 70 %) | `sonnet` | All; never edits production code |
-| `delivery-code-reviewer` | One lens per instance: correctness, security, quality, tests | `opus`, effort `high` | Read, Grep, Glob, Bash — no edit tools |
+| `delivery-code-reviewer` | The lenses it is given — correctness, security, quality, tests — one per instance, or two on a small change | `opus`, effort `high` | Read, Grep, Glob, Bash — no edit tools |
 
 ### Which model does what, and why
 
@@ -289,7 +299,8 @@ Optional, in `.enabler/config.json` at the project root — a local file, like e
   "tests": { "coverage_target": 80, "coverage_minimum": 70, "levels": ["unit", "integration"], "order": "auto",
              "full_suite_runs": 2, "mutation": { "enabled": true, "max_mutants": 40 } },
   "refine": { "enabled": true },
-  "review": { "lenses": ["correctness", "security", "quality", "tests"],
+  "review": { "lenses": ["correctness", "security", "quality", "tests"], "select_lenses": true,
+              "group_below_lines": 150, "sensitive_paths": [],
               "min_confidence": 80, "auto_fix": ["critical", "high"], "max_fix_rounds": 2 }
 }
 ```
@@ -314,7 +325,8 @@ Every ticket gets its own folder, `.enabler/runs/<KEY>/`, where `<KEY>` is the J
 | `plan.md` | stage 3, plan | `delivery-solution-planner` | The implementation plan you approve at the first gate, kept current: after a delta it describes the work as it now stands, with a change-history table at the top. Contains the approach, the decisions taken and the alternatives rejected, the ordered steps with the files each one creates or modifies, the test plan (which tests are written before the code), a table tracing every acceptance criterion to steps and tests, risks, assumptions and open questions. |
 | `acceptance-tests.md` | stage 4, before the code | `delivery-test-engineer` | The list of tests written from the ticket's acceptance criteria before any production code existed: for each criterion, the test file, the test names and what each asserts, plus any criterion that could not be turned into a test and why. Absent when the ticket had no usable criteria. |
 | `test-report.md` | stage 6, coverage | `delivery-test-engineer` | The test results after the code: commands run, tests passed and failed, coverage of the changed code per file against the target and the minimum, the acceptance-criteria table (which test covers each, written before or after the code, passing or not), defects found, failures that existed before the change, and the test files added. Also how long each run took, and the mutation results: mutants killed and surviving, with the reason for each survivor. |
-| `review.md` | stage 7, review | the skill, from the reviewers' reports | The consolidated code review: the verdict, the findings numbered by severity with file and line, why each matters and how to fix it, the acceptance-criteria check, the findings still to validate, what was checked and found sound, and one section per fix round saying what was fixed, disputed or left open. |
+| `review-pack.md` | stage 7, before each review pass | `scripts/review_scope.py` | What every reviewer of the pass reads first: the files changed and their kind, which lenses run in which reviewer and why a lens was left out, the acceptance criteria in force, the test report, and the diff of the code. Rewritten for each pass, so it always matches the code being reviewed. |
+| `review.md` | stage 7, review | the skill, from the reviewers' reports | The consolidated code review: the verdict, the findings numbered by severity with file and line, why each matters and how to fix it, the acceptance-criteria check, the findings still to validate, what was checked and found sound — including which lenses ran and any left out, with the reason — and one section per fix round saying what was fixed, disputed or left open. |
 | `delivery-report.md` | stage 8, before the ship gate | the skill | The summary for whoever reviews the pull request: what changed, the changes made after the plan was approved (one entry per delta), the acceptance criteria with their status and evidence, tests and coverage, the review outcome and open findings, deviations from the plan and assumptions, and how to verify. It is used as the pull-request body. |
 | `pull-request.md` | stage 8, on shipping | the skill | The pull-request body exactly as it was sent: the delivery report, in the template you chose. |
 
