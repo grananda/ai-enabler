@@ -1,0 +1,13 @@
+{
+  "summary": "The prompt cache across gates: delivery-doctor reports which cache lifetime applies (subscription, API key, Bedrock or gateway; environment and settings) and, where it helps, suggests promptCacheTtl 1h with its trade-off, since a pause at a gate longer than five minutes otherwise writes the whole conversation to the cache again; the README explains the cost of waiting at a gate and when /compact before a long pause is safe, and delivery-run leaves everything a later turn needs in the run's files before it stops at a gate.",
+  "category": "Added",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler": "minor"
+  },
+  "assets": {
+    "plugins/ai-enabler/skills/delivery-doctor/SKILL.md": "minor",
+    "plugins/ai-enabler/skills/delivery-run/SKILL.md": "patch"
+  },
+  "migration": ""
+}
