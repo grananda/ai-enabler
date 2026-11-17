@@ -6,13 +6,17 @@
     "ai-enabler": "minor"
   },
   "assets": {
-    "plugins/ai-enabler/agents/delivery-test-engineer.md": "minor",
     "plugins/ai-enabler/agents/delivery-solution-planner.md": "patch",
-    "plugins/ai-enabler/skills/delivery-run/SKILL.md": "minor",
+    "plugins/ai-enabler/agents/delivery-test-engineer.md": "minor",
     "plugins/ai-enabler/skills/delivery-implement/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-plan/SKILL.md": "patch",
     "plugins/ai-enabler/skills/delivery-review/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-run/SKILL.md": "minor",
+    "plugins/ai-enabler/skills/delivery-ship/SKILL.md": "patch",
     "plugins/ai-enabler/skills/delivery-sources/SKILL.md": "patch",
-    "plugins/ai-enabler/skills/delivery-test/SKILL.md": "patch"
+    "plugins/ai-enabler/skills/delivery-test/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-ticket-create/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-ticket-refine/SKILL.md": "patch"
   },
   "migration": ""
 }
