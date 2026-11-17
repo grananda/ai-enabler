@@ -173,8 +173,10 @@ def main():
     # Gates: waiting is recorded for the notification hook and cleared by the decision; the ship gate is composed.
     out = run("gate", run_dir, "plan")
     assert out["waiting"] == "plan" and state(run_dir)["waiting"]["gate"] == "plan", out
-    run("update", run_dir, "--intervene", "approval", "ok")
+    run("update", run_dir, "--stage", "plan")
+    run("update", run_dir, "--done", "plan", "--intervene", "approval", "ok")
     assert "waiting" not in state(run_dir)
+    assert state(run_dir)["human_interventions"][-1]["stage"] == "plan"    # stamped before --done moves on
     with open(os.path.join(run_dir, "requirements.json"), "w", encoding="utf-8") as fh:
         json.dump({"acceptance_criteria": [{"id": "AC-1"}, {"id": "AC-2", "refined": True},
                                            {"id": "AC-3", "removed_by": "delta-01"}]}, fh)
@@ -186,10 +188,10 @@ def main():
                                 "surviving": [{"where": "a.py:3", "reason": "equivalent"}]}}, fh)
     run("update", run_dir, "--set", 'review_result={"fixed": 1, "open": 0}', "--set", "pr_template=the plugin's",
         "--set", "source=file")
-    proc = subprocess.run([sys.executable, SCRIPT, "gate", run_dir, "ship"], capture_output=True, text=True,
-                          encoding="utf-8")
+    proc = subprocess.run([sys.executable, SCRIPT, "gate", run_dir, "ship"], capture_output=True,
+                          env=dict(os.environ, PYTHONIOENCODING="cp1252"))      # a Windows console
     assert proc.returncode == 0, proc.stderr
-    gate = proc.stdout
+    gate = proc.stdout.decode("utf-8")
     for expected in ("NOT READY — coverage below the minimum, not accepted", "READY TO SHIP — PROJ-7",
                      "Criteria  : 2/2 met · 1 of them added by refinement", "12 passed, 0 failed",
                      "coverage 60 % line (target 80 % · minimum 70 %) — BELOW MINIMUM",

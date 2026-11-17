@@ -152,6 +152,9 @@ def cmd_init(args):
 
 def cmd_update(args):
     state = load(args.run_dir)
+    at = state.get("stage")             # an intervention belongs to the stage it happened at: --done moves on after it
+    if args.stage:
+        at = args.stage
     if args.done:
         done = state.setdefault("stages_done", [])
         if args.done not in done:
@@ -195,7 +198,7 @@ def cmd_update(args):
         if kind not in KINDS:
             sys.exit("run_state: unknown intervention kind %r (one of %s)" % (kind, ", ".join(KINDS)))
         state.setdefault("human_interventions", []).append(
-            {"at": now(), "stage": args.at_stage or state.get("stage"), "kind": kind, "note": note})
+            {"at": now(), "stage": args.at_stage or at, "kind": kind, "note": note})
     if args.intervene or args.done or args.status:
         state.pop("waiting", None)      # a decision was taken, or the run moved on: nobody is waited for
     notes = state.setdefault("profile_notes", [])
@@ -499,7 +502,7 @@ def ship_gate(run_dir, state):
     met = review.get("criteria_met")
     if met is None and status:
         met = len([c for c in crit if status.get(c.get("id")) == "covered"])
-    approved = "approved at the plan gate" if any(i.get("kind") == "approval" and i.get("stage") == "plan"
+    approved = "approved at the plan gate" if any(i.get("kind") == "approval" and i.get("stage") in ("plan", "acceptance-tests")
                                                   for i in state.get("human_interventions") or []) \
         else "NOT REVIEWED: no plan gate in this run"
     criteria = "%s/%d met" % ("?" if met is None else met, len(crit))
@@ -634,6 +637,8 @@ def main(argv=None):
     p.add_argument("run_dir")
     p.add_argument("--force", action="store_true", help="Render even when the Markdown is newer.")
     args = ap.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")    # the gates print arrows and dashes; Windows consoles default to cp1252
     if args.cmd == "init":
         out = cmd_init(args)
     elif args.cmd == "update":
