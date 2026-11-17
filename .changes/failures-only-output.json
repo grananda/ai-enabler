@@ -1,0 +1,10 @@
+{
+  "summary": "A new hook shows the pipeline's subagents only the failures and the summary of a long test or build run (dotnet, Maven, Gradle, npm, Jest, Vitest, pytest, go test, cargo test): the failing lines with their assertion messages and first stack frames, the summary lines, and the first and last lines, with the full output saved under .enabler/tmp/output/ and named in the text. The command is unchanged, the person's own sessions are never trimmed, and output_trim in .enabler/config.json sets the threshold or turns it off.",
+  "category": "Added",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler": "minor"
+  },
+  "assets": {},
+  "migration": ""
+}

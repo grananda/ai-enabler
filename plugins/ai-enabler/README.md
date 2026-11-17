@@ -85,6 +85,7 @@ No test is edited to agree with the code, and none is weakened, skipped or delet
 - **Coverage stops at the target**, judged on the changed code as a whole, not file by file.
 - **Long commands are waited for**, not polled with fixed sleeps, and a faster form of the test command is used when the repository profile records one. The scout now records how long the suite takes and that faster command.
 - **The test report says where the time went:** the duration of every run.
+- **The agents read failures, not logs.** When one of the pipeline's subagents runs a known test or build runner (`dotnet test`/`build`, Maven, Gradle, npm/yarn/pnpm test, Jest, Vitest, pytest, `go test`, `cargo test`) and the output is longer than `output_trim.max_chars` (6000 characters), a hook saves the full output to `.enabler/tmp/output/` and shows the agent only the failing lines with their assertion messages, expected and actual values and first stack frames, the summary lines, and the first and last lines; each skipped stretch becomes one line naming the saved log, so the agent can open it when it needs more. The command itself is unaffected, your own sessions are never trimmed, and the hook never blocks. `"output_trim": {"enabled": false}` turns it off.
 
 Skills pass the test engineer the configuration and the scope, nothing more: asking for more assurance than the configuration gives is your decision, at a gate.
 
@@ -108,6 +109,8 @@ What the human sees at each gate:
 At the plan gate nothing has been written outside the run folder, so reviewing is cheap: ask about any step, read `plan.md` in full, edit it by hand, or send it back with `adjust`. Once approved, the plan only changes through a delta.
 
 A delta is shown at Gate 1 like a plan. The pipeline also stops when the ticket is not implementable as written (the analyst returns the questions that unblock it), when the plan turns out to be wrong in a way that changes scope, and when coverage of the changed code ends up under the minimum. Apart from those, it asks only what it cannot work out — which Jira server to use when several are connected — and stops where the safety rules require it, such as unrelated changes in the working tree.
+
+**You do not have to watch the terminal.** When a run stops at any of those points and Claude Code has been idle for about a minute, a hook raises a desktop notification naming the run and what it waits for ("AI4IT-36 is waiting at the plan gate"): a balloon tip on Windows, Notification Center on macOS, `notify-send` on Linux when it is installed. It fires once per wait, names every run that is waiting, and never blocks anything. `"notify": {"gates": false}` in `.enabler/config.json` turns it off.
 
 ## Changing course: adjustments, fixes and deltas
 
@@ -303,7 +306,9 @@ Optional, in `.enabler/config.json` at the project root — a local file, like e
   "refine": { "enabled": true },
   "review": { "lenses": ["correctness", "security", "quality", "tests"], "select_lenses": true,
               "group_below_lines": 150, "sensitive_paths": [],
-              "min_confidence": 80, "auto_fix": ["critical", "high"], "max_fix_rounds": 2 }
+              "min_confidence": 80, "auto_fix": ["critical", "high"], "max_fix_rounds": 2 },
+  "output_trim": { "enabled": true, "max_chars": 6000 },
+  "notify": { "gates": true }
 }
 ```
 

@@ -103,7 +103,9 @@ Optional file `.enabler/config.json`. Like the rest of `.enabler/`, it is a loca
     "min_confidence": 80,
     "auto_fix": ["critical", "high"],
     "max_fix_rounds": 2
-  }
+  },
+  "output_trim": { "enabled": true, "max_chars": 6000 },
+  "notify": { "gates": true }
 }
 ```
 
@@ -124,6 +126,8 @@ Optional file `.enabler/config.json`. Like the rest of `.enabler/`, it is a loca
 - `review.group_below_lines` — under this many changed lines (150), two reviewers carry two lenses each (correctness with tests, security with quality) instead of one reviewer per lens. `0` always launches one per lens.
 - `review.sensitive_paths` — path patterns (`src/billing/*`, `**/Payments/**`) whose change always brings the security lens, whatever is in it.
 - `review.auto_fix` — severities `/ai-enabler:delivery-run` fixes on its own inside its fix loop. Everything else is reported and left for the human. The stand-alone `/ai-enabler:delivery-review` ignores this key: there it fixes only with `--fix` or when the person says so.
+- `output_trim` — a hook that shows the pipeline's subagents only the failures and the summary of a long test or build run (`dotnet test`, Maven, Gradle, npm, Jest, Vitest, pytest, `go test`, `cargo test`): the lines that fail with their assertion messages and first stack frames, the summary lines, and the first and last lines. Output under `max_chars` (6000) is left alone, the full output is saved in `.enabler/tmp/output/` and the trimmed text names the file, the command itself is unchanged, and the person's own sessions are never trimmed. `enabled: false` turns it off.
+- `notify.gates` — when a run waits at a gate (the plan, the ship, a delta, coverage below the minimum, a blocked ticket) and Claude Code has been idle for about a minute, a desktop notification names the run and the gate, once per wait. `false` turns it off.
 
 Command-line flags on a skill override the file for that run.
 

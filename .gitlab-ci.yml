@@ -35,6 +35,8 @@ validate:
     - python plugins/ai-enabler/tests/test_sources.py
     - python plugins/ai-enabler/tests/test_review_scope.py
     - python plugins/ai-enabler/tests/test_run_state.py
+    - python plugins/ai-enabler/tests/test_output_trim.py
+    - python plugins/ai-enabler/tests/test_gate_notify.py
     - python plugins/ai-enabler-metrics/tests/test_usage.py
     - python plugins/ai-enabler-metrics/tests/test_delivery.py
     - git diff --check
