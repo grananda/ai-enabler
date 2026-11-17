@@ -1,0 +1,13 @@
+{
+  "summary": "The repository profile no longer learns from unmerged work: in a git repository repo_profile.py compares the watched files at the merge-base with the base branch instead of the working tree (printing what it compared under \u0007gainst), so a run that edits an ADR or a manifest on its feature branch does not make the profile stale; deltas learned during a run record their branch and are listed as provisional until it is merged, and the scout tells later stages not to rely on them. Profile notes describe only what is true on the base branch. Fingerprints now treat CRLF as LF; existing profile.json files keep reading fresh.",
+  "category": "Fixed",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler": "patch"
+  },
+  "assets": {
+    "plugins/ai-enabler/agents/delivery-repo-scout.md": "patch",
+    "plugins/ai-enabler/skills/delivery-run/SKILL.md": "patch"
+  },
+  "migration": ""
+}

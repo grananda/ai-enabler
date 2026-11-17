@@ -5,25 +5,29 @@ nothing recorded that was not written; nothing committed.
     python3 tests/test_repo_profile.py
 """
 
+import hashlib
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 
 SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "repo_profile.py")
+HAS_GIT = shutil.which("git") is not None
 
 
 class Project:
     def __init__(self, git=True):
         self.root = os.path.realpath(tempfile.mkdtemp(prefix="ai-enabler-profile-test-"))
+        self.env = dict(os.environ)
         if git:
             subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
 
     def run(self, *args, ok=True, cwd=None):
         cwd = cwd or self.root
-        env = dict(os.environ, CLAUDE_PROJECT_DIR=cwd)
+        env = dict(self.env, CLAUDE_PROJECT_DIR=cwd)
         out = subprocess.run([sys.executable, SCRIPT] + list(args), cwd=cwd, env=env, capture_output=True, text=True)
         assert (out.returncode == 0) == ok, (args, out.stdout, out.stderr)
         assert "Traceback" not in out.stderr, out.stderr
@@ -31,6 +35,9 @@ class Project:
 
     def check(self, **kw):
         return json.loads(self.run("check", **kw))
+
+    def check_with(self, *args, **kw):
+        return json.loads(self.run("check", *args, **kw))
 
     def path(self, rel):
         return os.path.join(self.root, rel)
@@ -45,6 +52,49 @@ class Project:
         with open(self.path(rel), encoding="utf-8") as fh:
             return fh.read()
 
+
+class Repo(Project):
+    """A git repository with commits, independent of the machine's git configuration."""
+
+    def __init__(self):
+        super().__init__(git=False)
+        self.home = os.path.realpath(tempfile.mkdtemp(prefix="ai-enabler-profile-home-"))
+        config = os.path.join(self.home, "gitconfig")
+        open(config, "w").close()
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        self.env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=config, HOME=self.home)
+        self.git("init", "-q")
+        self.git("config", "user.name", "Test")
+        self.git("config", "user.email", "test@example.invalid")
+        self.git("config", "core.autocrlf", "false")
+        self.git("checkout", "-q", "-b", "main")
+
+    def git(self, *args):
+        out = subprocess.run(["git"] + list(args), cwd=self.root, env=self.env, capture_output=True, text=True)
+        assert out.returncode == 0, (args, out.stdout, out.stderr)
+        return out.stdout.strip()
+
+    def commit(self, message):
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", message)
+        return self.git("rev-parse", "HEAD")
+
+    def write_bytes(self, rel, data):
+        os.makedirs(os.path.dirname(self.path(rel)), exist_ok=True)
+        with open(self.path(rel), "wb") as fh:
+            fh.write(data)
+
+    def cleanup(self):
+        remove(self.root)
+        remove(self.home)
+
+
+def remove(path):
+    """Git writes its objects read-only, which Windows refuses to delete as they are."""
+    for dirpath, _dirs, files in os.walk(path):
+        for name in files:
+            os.chmod(os.path.join(dirpath, name), stat.S_IWRITE | stat.S_IREAD)
+    shutil.rmtree(path, ignore_errors=True)
 
 def basics(p):
     p.write("package.json", '{"scripts": {"test": "jest"}}')
@@ -65,7 +115,8 @@ def basics(p):
 
     p.write(profile, "# Profile\n\n## Commands\nnpm test\n")
     rec = json.loads(p.run("record", "--expect", profile))
-    assert rec == {"recorded": 5, "deltas": 0}, rec
+    assert (rec["recorded"], rec["deltas"]) == (5, 0), rec
+    assert rec["against"] == {"kind": "working tree", "reason": "no commit yet"}, rec
     state = json.loads(p.read(".enabler/repo-profile/profile.json"))
     assert sorted(state["files"]) == [".github/workflows/ci.yml", "CLAUDE.md", "apps/web/package.json",
                                       "package.json", "src/build/pom.xml"], sorted(state["files"])
@@ -261,7 +312,146 @@ def without_git(p):
     p.write(".enabler/repo-profile/profile.md", "# Profile\n")
     assert json.loads(p.run("record"))["recorded"] == 1
     p.write("go.mod", "module y")
-    assert p.check()["changed"] == ["go.mod"]
+    c = p.check()
+    assert c["changed"] == ["go.mod"] and c["provisional"] == [], c
+    assert c["against"] == {"kind": "working tree", "reason": "not a git work tree"}, c
+
+
+def against_base(r):
+    """A run's own edits to watched files, committed or not, do not make the profile stale: it is
+    compared with the merge-base of HEAD and the base branch. Merged into main, they do."""
+    r.write("package.json", "{}")
+    r.write("docs/adr/time.md", "# Time\nUse UTC.\n")
+    r.write("src/a.ts", "x")
+    main = r.commit("initial")
+    r.write(".enabler/repo-profile/profile.md", "# Profile\n")
+    assert json.loads(r.run("record"))["against"] == {"kind": "commit", "ref": main, "base": "main"}
+    assert r.check()["status"] == "fresh"
+
+    # (a) On a feature branch, uncommitted: an ADR edited, one added, a manifest deleted.
+    r.git("checkout", "-q", "-b", "feat/time-boundary")
+    r.write("docs/adr/time.md", "# Time\nUse the local time zone.\n")
+    r.write("docs/adr/http.md", "# HTTP\nOne client.\n")
+    os.remove(r.path("package.json"))
+    c = r.check()
+    assert c["status"] == "fresh" and c["against"] == {"kind": "commit", "ref": main, "base": "main"}, c
+    assert not os.path.exists(r.path(".enabler/repo-profile/pending.json"))
+
+    # (b) Committed on the feature branch: the merge-base is still main.
+    feature = r.commit("time and http boundary")
+    c = r.check()
+    assert c["status"] == "fresh" and c["against"]["ref"] == main, c
+
+    # --base and git.base_branch choose another base; null in the config means "not set".
+    c = r.check_with("--base", "feat/time-boundary")
+    assert c["status"] == "stale" and c["against"] == {"kind": "commit", "ref": feature,
+                                                        "base": "feat/time-boundary"}, c
+    r.write(".enabler/config.json", json.dumps({"git": {"base_branch": "feat/time-boundary"}}))
+    assert r.check()["against"]["base"] == "feat/time-boundary"
+    r.write(".enabler/config.json", json.dumps({"git": {"base_branch": None}}))
+    assert r.check()["against"]["base"] == "main"
+    os.remove(r.path(".enabler/config.json"))
+    assert r.check_with("--base", "no-such-branch")["against"]["base"] == "main"
+
+    # (c) Merged into main: now the profile is stale, and says why.
+    r.git("checkout", "-q", "main")
+    r.git("merge", "-q", "--no-ff", "feat/time-boundary", "-m", "merge")
+    c = r.check()
+    assert (c["status"], c["changed"], c["added"], c["removed"]) == \
+        ("stale", ["docs/adr/time.md"], ["docs/adr/http.md"], ["package.json"]), c
+    assert c["against"]["ref"] == r.git("rev-parse", "HEAD"), c
+
+
+def base_resolution(r):
+    """No main or master: origin/HEAD names the base, and origin's branch stands in for a missing local one."""
+    r.git("checkout", "-q", "-b", "trunk")
+    r.write("pom.xml", "<project/>")
+    head = r.commit("initial")                                 # main was never born: only trunk exists
+    r.write(".enabler/repo-profile/profile.md", "# Profile\n")
+    c = r.check()
+    assert c["against"]["kind"] == "working tree" and "no base branch" in c["against"]["reason"], c
+    r.git("update-ref", "refs/remotes/origin/develop", head)
+    r.git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+    assert r.check()["against"] == {"kind": "commit", "ref": head, "base": "origin/develop"}
+
+
+def provisional_deltas(r):
+    """A delta learned on a branch that is not in main yet is reported as provisional, until merged."""
+    r.write("package.json", "{}")
+    r.write("src/a.ts", "x")
+    r.commit("initial")
+    r.write(".enabler/repo-profile/profile.md", "# Profile\n")
+    r.run("record")
+    on_main = r.run("next-delta", "learned on main")
+    r.write(on_main, "# Delta\nOn main.\n")
+    r.run("record", "--expect", on_main, "--keep")
+
+    # (e) Learned from uncommitted work on a feature branch.
+    r.git("checkout", "-q", "-b", "feat/rule")
+    r.write("src/a.ts", "y")
+    delta = r.run("next-delta", "time boundary")
+    r.write(delta, "# Delta\nAll time goes through Clock.\n")
+    r.run("record", "--expect", delta, "--keep")
+    learned = json.loads(r.read(".enabler/repo-profile/profile.json"))["learned"]
+    name = os.path.basename(delta)
+    assert learned[name]["branch"] == "feat/rule" and learned[name]["base"] == "main", learned
+    expected = [{"delta": name, "branch": "feat/rule", "reason": "learned on feat/rule, not merged into main"}]
+    c = r.check()
+    assert c["status"] == "fresh" and c["provisional"] == expected, c
+    r.commit("rule")
+    r.git("checkout", "-q", "main")
+    assert r.check()["provisional"] == expected
+
+    # A branch deleted without being merged stays provisional.
+    r.git("checkout", "-q", "-b", "feat/held")
+    held = r.run("next-delta", "held")
+    r.write(held, "# Delta\nHeld.\n")
+    r.run("record", "--expect", held, "--keep")
+    r.git("checkout", "-q", "main")
+    r.git("branch", "-D", "feat/held")
+    assert [d["delta"] for d in r.check()["provisional"]] == [name, os.path.basename(held)]
+
+    # Merged: no longer provisional. The delta files are never touched.
+    r.git("merge", "-q", "--no-ff", "feat/rule", "-m", "merge")
+    c = r.check()
+    assert c["provisional"] == [{"delta": os.path.basename(held), "branch": "feat/held",
+                                 "reason": "learned on feat/held, which no longer exists"}], c
+    assert r.read(delta) == "# Delta\nAll time goes through Clock.\n"
+
+
+def legacy_fingerprints(r):
+    """(f) A profile.json fingerprinted the old way (raw bytes of a clean working tree) stays fresh
+    after the upgrade, even when that working tree had CRLF for files committed with LF."""
+    lf = b"# Rules\nUse UTC.\n"
+    r.write_bytes("CLAUDE.md", lf)
+    r.write_bytes("package.json", b"{}\n")
+    r.commit("initial")
+    r.write_bytes("CLAUDE.md", lf.replace(b"\n", b"\r\n"))     # what a core.autocrlf checkout writes
+    r.write(".enabler/repo-profile/profile.md", "# Profile\n")
+    old = {"schema": 1, "created": "2026-01-01T00:00:00+00:00", "recorded": "2026-01-01T00:00:00+00:00",
+           "files": {"CLAUDE.md": hashlib.sha256(lf.replace(b"\n", b"\r\n")).hexdigest(),
+                     "package.json": hashlib.sha256(b"{}\n").hexdigest()}, "deltas": 0}
+    r.write(".enabler/repo-profile/profile.json", json.dumps(old))
+    c = r.check()
+    assert c["status"] == "fresh" and c["against"]["kind"] == "commit", c
+
+    # The old comparison does not hide a real change.
+    r.write_bytes("CLAUDE.md", b"# Rules\nUse local time.\n")
+    r.commit("rules")
+    assert r.check()["changed"] == ["CLAUDE.md"]
+    r.run("record")
+    state = json.loads(r.read(".enabler/repo-profile/profile.json"))
+    assert state["hash"] == "sha256-lf" and r.check()["status"] == "fresh", state
+
+    # Without git the working tree is read: the same old profile.json with CRLF is fresh too.
+    remove(r.path(".git"))
+    r.write_bytes("CLAUDE.md", lf.replace(b"\n", b"\r\n"))
+    r.write(".enabler/repo-profile/profile.json", json.dumps(old))
+    c = r.check()
+    assert c["status"] == "fresh" and c["against"]["kind"] == "working tree", c
+    r.run("record")
+    r.write_bytes("CLAUDE.md", lf)                                # only the line endings: still fresh
+    assert r.check()["status"] == "fresh"
 
 
 def main():
@@ -273,7 +463,17 @@ def main():
             case(p)
         finally:
             shutil.rmtree(p.root, ignore_errors=True)
-    print("ok — repository profile bookkeeping (%d cases)" % len(cases))
+    repo_cases = [against_base, base_resolution, provisional_deltas, legacy_fingerprints]
+    if not HAS_GIT:
+        print("skipped — %d cases need git on PATH" % len(repo_cases))
+        repo_cases = []
+    for case in repo_cases:
+        r = Repo()
+        try:
+            case(r)
+        finally:
+            r.cleanup()
+    print("ok — repository profile bookkeeping (%d cases)" % (len(cases) + len(repo_cases)))
 
 
 if __name__ == "__main__":

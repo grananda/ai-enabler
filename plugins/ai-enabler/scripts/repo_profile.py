@@ -4,10 +4,13 @@
     repo_profile.py check             missing, unrecorded, fresh or stale? (JSON on stdout; `summary` is what
                                       changed, in a few lines whatever the number of files: hand that to the
                                       scout, not the full `changed`/`added`/`removed` lists)
+        --base BRANCH                 the branch to compare against (see "What is compared" below)
     repo_profile.py record            remember the state of the watched files
         --expect PATH                 refuse unless PATH (the profile or the delta just asked for) was written
         --keep                        keep the fingerprints as they are (a delta about something learned,
-                                      not about a changed file)
+                                      not about a changed file); with --expect, also remember where the
+                                      delta was learned (branch, base branch, base commit)
+        --base BRANCH                 as for check
     repo_profile.py next-delta SLUG   print the path the next delta must be written to
     repo_profile.py list              print the files that make up the profile, in reading order
     repo_profile.py reset             forget the profile and all its deltas (used by --relearn)
@@ -24,6 +27,35 @@ The profile lives in <project>/.enabler/repo-profile/ and never leaves the machi
 The repository is learned once. Afterwards a run only asks this script whether
 anything the profile was derived from has changed. The comparison is a hash of
 each watched file, so it is exact and costs nothing; no model is involved.
+Line endings do not count: CRLF is read as LF before hashing, so a Windows
+checkout and the committed file have the same fingerprint.
+
+What is compared. The profile is shared by every run in the project, so it must
+describe the base branch, not the unmerged work of one run. Inside a git work
+tree, `check` and `record` read the watched files (which ones exist, and their
+content) from the merge-base of HEAD and the base branch, never from the working
+tree: a run that edits an ADR or package.json on its feature branch, committed or
+not, leaves the profile fresh; once that change is merged into the base branch,
+the next check reports it. The base branch is the first that exists of: `--base`,
+`git.base_branch` in <project>/.enabler/config.json, the target of
+refs/remotes/origin/HEAD, `main`, `master` (the local branch, else origin's).
+Without git, without a commit, without a base branch or when git fails, the
+working tree is read, as before. Both commands print what they compared:
+
+    "against": {"kind": "commit", "ref": "<sha of the merge-base>", "base": "<branch>"}
+    "against": {"kind": "working tree", "reason": "<why not a commit>"}
+
+Learned deltas (`record --keep --expect DELTA`) can only come from the run's own
+branch. `check` lists in `provisional` each one learned on a branch that is not
+the base branch and has not been merged into it (or no longer exists), as
+{"delta", "branch", "reason"}: what it says is unconfirmed until that work lands.
+A branch counts as merged once it has commits beyond the point it was learned
+from and its tip is in the base branch. Nothing is deleted or rewritten; deltas
+recorded without that information are never provisional.
+
+Fingerprints recorded before line endings were normalised (no "hash" key in
+profile.json) are still compared the old way, so upgrading does not make a
+profile stale; the next `record` rewrites them the new way.
 
 The folders the pipeline writes to (repo-profile, runs, tickets, sources) get a .gitignore of their own that ignores
 everything in them, so nothing is committed and no file of the project is touched.
@@ -45,6 +77,10 @@ import sys
 from datetime import datetime, timezone
 
 SCHEMA = 1
+# How fingerprints are taken: sha256 of the content with CRLF read as LF. Stored in profile.json;
+# files without it were hashed from the raw bytes and are compared the old way.
+HASH = "sha256-lf"
+BASE_FALLBACKS = ("main", "master")
 # What is watched, by what it tells the profile. The kind only labels the change summary.
 WATCHED_KINDS = [
     ("rules", [
@@ -191,16 +227,136 @@ def change_summary(changed, added, removed):
     return lines
 
 
-def fingerprints(root):
-    prints = {}
+def digest(content):
+    return hashlib.sha256(content.replace(b"\r\n", b"\n")).hexdigest()
+
+
+def legacy_digests(content):
+    """What a fingerprint taken the old way (raw bytes of the working tree) may be for this content:
+    the bytes as they are, with LF, or with CRLF as a Windows checkout writes them."""
+    lf = content.replace(b"\r\n", b"\n")
+    return {hashlib.sha256(c).hexdigest() for c in (content, lf, lf.replace(b"\n", b"\r\n"))}
+
+
+def key(path):
+    return path.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
+
+
+def git(root, *args, data=None):
+    """(return code, stdout bytes) of a git command; (None, b"") when git cannot be run."""
+    try:
+        out = subprocess.run(["git"] + list(args), cwd=root, input=data, capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None, b""
+    return out.returncode, out.stdout
+
+
+def git_text(root, *args):
+    code, out = git(root, *args)
+    return out.decode("utf-8", "surrogateescape").strip() if code == 0 else None
+
+
+def config_base(root):
+    try:
+        with open(os.path.join(root, ".enabler", "config.json"), encoding="utf-8") as fh:
+            config = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    section = config.get("git") if isinstance(config, dict) else None
+    name = section.get("base_branch") if isinstance(section, dict) else None
+    return name.strip() if isinstance(name, str) and name.strip() else None
+
+
+def branch_commit(root, name):
+    """(name shown, commit) of a branch: the local one, else origin's remote-tracking one."""
+    for ref, shown in (("refs/heads/" + name, name), ("refs/remotes/origin/" + name, "origin/" + name),
+                       ("refs/remotes/" + name, name)):
+        sha = git_text(root, "rev-parse", "--verify", "--quiet", ref + "^{commit}")
+        if sha:
+            return shown, sha
+    return None
+
+
+def base_names(root, requested):
+    yield requested
+    yield config_base(root)
+    origin_head = git_text(root, "symbolic-ref", "-q", "refs/remotes/origin/HEAD")
+    if origin_head and origin_head.startswith("refs/remotes/origin/"):
+        yield origin_head[len("refs/remotes/origin/"):]
+    yield from BASE_FALLBACKS
+
+
+def reference(root, requested=None):
+    """What the watched files are read from: (against, tip of the base branch or None)."""
+    if git_text(root, "rev-parse", "--is-inside-work-tree") != "true":
+        return {"kind": "working tree", "reason": "not a git work tree"}, None
+    if not git_text(root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"):
+        return {"kind": "working tree", "reason": "no commit yet"}, None
+    base = next((b for b in (branch_commit(root, n) for n in base_names(root, requested) if n) if b), None)
+    if base is None:
+        return {"kind": "working tree", "reason": "no base branch (tried --base, git.base_branch, "
+                                                  "origin/HEAD, main, master)"}, None
+    name, tip = base
+    ref = git_text(root, "merge-base", "HEAD", tip)
+    if not ref:
+        return {"kind": "working tree", "reason": "HEAD and %s have no common history" % name}, tip
+    return {"kind": "commit", "ref": ref, "base": name}, tip
+
+
+def committed(root, ref):
+    """Content of the watched files at a commit: one ls-tree, one cat-file. None if git fails."""
+    code, out = git(root, "ls-tree", "-r", "-z", ref)
+    if code != 0:
+        return None
+    blobs = {}
+    for entry in out.split(b"\0"):
+        meta, _, name = entry.partition(b"\t")
+        parts = meta.split()
+        path = name.decode("utf-8", "surrogateescape")
+        if len(parts) == 3 and parts[1] == b"blob" and kind_of(path):
+            blobs[key(path)] = parts[2].decode("ascii")
+    wanted = sorted(set(blobs.values()))
+    if not wanted:
+        return {}
+    code, out = git(root, "cat-file", "--batch", data=("\n".join(wanted) + "\n").encode("ascii"))
+    if code != 0:
+        return None
+    content, pos = {}, 0
+    try:
+        for sha in wanted:
+            end = out.index(b"\n", pos)
+            header = out[pos:end].split()
+            if len(header) != 3:
+                return None
+            size = int(header[2])
+            content[sha] = out[end + 1:end + 1 + size]
+            pos = end + 1 + size + 1
+    except ValueError:
+        return None
+    return {path: content[sha] for path, sha in blobs.items()}
+
+
+def contents(root, against):
+    """Content of the watched files, read from the commit in `against` or from the working tree.
+    When git cannot read the commit, `against` is changed to say the working tree was read."""
+    if against.get("kind") == "commit":
+        found = committed(root, against["ref"])
+        if found is not None:
+            return found
+        against.clear()
+        against.update({"kind": "working tree", "reason": "git could not read the base commit"})
+    found = {}
     for path in watched(root):
         try:
             with open(os.path.join(root, path).encode("utf-8", "surrogateescape"), "rb") as fh:
-                prints[path.encode("utf-8", "surrogateescape").decode("utf-8", "replace")] = \
-                    hashlib.sha256(fh.read()).hexdigest()
+                found[key(path)] = fh.read()
         except OSError:
             continue
-    return prints
+    return found
+
+
+def fingerprints(root, against):
+    return {path: digest(c) for path, c in contents(root, against).items()}
 
 
 def paths(root):
@@ -253,13 +409,49 @@ def line_count(path):
         return 0
 
 
-def check(root):
+def provisional(root, state, names, base_tip, against):
+    """Learned deltas whose branch has not been merged into the base branch."""
+    learned = state.get("learned") if isinstance(state.get("learned"), dict) else {}
+    if not learned or base_tip is None:
+        return []
+    base_name = against.get("base") or ""
+    base_short = base_name[len("origin/"):] if base_name.startswith("origin/") else base_name
+    found = []
+    for name in names:
+        info = learned.get(name)
+        if not isinstance(info, dict):
+            continue
+        branch = info.get("branch")
+        if branch and branch in (info.get("base"), base_name, base_short):
+            continue
+        if branch:
+            hit = branch_commit(root, branch)
+            if hit is None:
+                found.append({"delta": name, "branch": branch,
+                              "reason": "learned on %s, which no longer exists" % branch})
+                continue
+            tip = hit[1]
+        else:
+            tip = info.get("commit")
+            branch = "a detached HEAD (%s)" % (tip or "?")[:12]
+        in_base = bool(tip) and git(root, "merge-base", "--is-ancestor", tip, base_tip)[0] == 0
+        # Learned from uncommitted work on a branch that never got past its fork point: nothing landed.
+        moved = not info.get("base_ref") or \
+            git(root, "merge-base", "--is-ancestor", tip, info["base_ref"])[0] != 0
+        if not (in_base and moved):
+            found.append({"delta": name, "branch": info.get("branch") or branch,
+                          "reason": "learned on %s, not merged into %s" % (branch, base_name)})
+    return found
+
+
+def check(root, base_branch=None):
     base, profile, _state, delta_dir = paths(root)
     keep_local(root)
     state = load_state(root)
     names = deltas(root)
+    against, base_tip = reference(root, base_branch)
     result = {"status": "missing", "root": root, "profile": profile, "deltas": len(names),
-              "changed": [], "added": [], "removed": [], "summary": []}
+              "changed": [], "added": [], "removed": [], "summary": [], "against": against, "provisional": []}
     if not os.path.isfile(profile):
         return result
     result["profile_lines"] = line_count(profile)
@@ -277,13 +469,19 @@ def check(root):
         # bookkeeping was lost. It is adopted with `record`, never overwritten.
         result["status"] = "unrecorded"
         return result
-    now, then = fingerprints(root), state["files"]
-    result["changed"] = sorted(p for p in now if p in then and now[p] != then[p])
+    now_content, then = contents(root, against), state["files"]
+    now = {p: digest(c) for p, c in now_content.items()}
+    if state.get("hash") == HASH:
+        same = lambda p: now[p] == then[p]
+    else:
+        same = lambda p: then[p] in legacy_digests(now_content[p])
+    result["changed"] = sorted(p for p in now if p in then and not same(p))
     result["added"] = sorted(p for p in now if p not in then)
     result["removed"] = sorted(p for p in then if p not in now)
     result["summary"] = change_summary(result["changed"], result["added"], result["removed"])
     result["status"] = "stale" if (result["changed"] or result["added"] or result["removed"]) else "fresh"
     result["recorded"] = state.get("recorded")
+    result["provisional"] = provisional(root, state, names, base_tip, against)
     pending = os.path.join(base, "pending.json")
     if result["status"] == "fresh" and os.path.isfile(pending):
         os.remove(pending)
@@ -291,14 +489,25 @@ def check(root):
         # What `record` will store: the files as they were when the change was noticed, not as
         # they are when the delta is finished. An edit made in between is noticed by the next check.
         with open(pending, "w", encoding="utf-8") as fh:
-            json.dump(now, fh)
+            json.dump({"hash": HASH, "against": against, "files": now}, fh)
     return result
 
 
-def record(root, expect=None, keep=False):
+def learned_where(root, against):
+    """Where a delta is being learned: branch, base branch and base commit. None outside git."""
+    if against.get("kind") != "commit":
+        return None
+    branch = git_text(root, "rev-parse", "--abbrev-ref", "HEAD")
+    return {"branch": branch if branch and branch != "HEAD" else None,
+            "commit": git_text(root, "rev-parse", "HEAD"), "base": against["base"], "base_ref": against["ref"],
+            "recorded": datetime.now(timezone.utc).isoformat()}
+
+
+def record(root, expect=None, keep=False, base_branch=None):
     base, profile, state_path, delta_dir = paths(root)
     if not os.path.isfile(profile):
         sys.exit("There is no profile to record: %s does not exist." % profile)
+    target = None
     if expect:
         target = expect if os.path.isabs(expect) else os.path.join(root, expect)
         if not os.path.isfile(target) or os.path.getsize(target) == 0:
@@ -308,21 +517,43 @@ def record(root, expect=None, keep=False):
     os.makedirs(delta_dir, exist_ok=True)
     previous = load_state(root) or {}
     pending = os.path.join(base, "pending.json")
+    current = reference(root, base_branch)[0]
+    against = dict(current)
     if keep and previous.get("files"):
-        files = previous["files"]            # a learned delta: nothing about the watched files changed
+        files, method = previous["files"], previous.get("hash")   # a learned delta: nothing watched changed
     else:
         try:
             with open(pending, encoding="utf-8") as fh:
-                files = json.load(fh)
+                saved = json.load(fh)
         except (OSError, ValueError):
-            files = fingerprints(root)
+            saved = None
+        if isinstance(saved, dict) and isinstance(saved.get("files"), dict):
+            files, method = saved["files"], saved.get("hash")
+            if isinstance(saved.get("against"), dict):
+                against = saved["against"]
+        elif isinstance(saved, dict):
+            files, method = saved, None      # written by an earlier version: raw-byte fingerprints
+            against = {"kind": "working tree", "reason": "noticed by an earlier version of this script"}
+        else:
+            files, method = fingerprints(root, against), HASH
     if not keep and os.path.isfile(pending):
         os.remove(pending)
+    learned = dict(previous["learned"]) if isinstance(previous.get("learned"), dict) else {}
+    if keep and target and os.path.normcase(os.path.dirname(os.path.abspath(target))) == \
+            os.path.normcase(os.path.abspath(delta_dir)):
+        where = learned_where(root, current)
+        if where:
+            learned[os.path.basename(target)] = where
     state = {"schema": SCHEMA, "created": previous.get("created") or datetime.now(timezone.utc).isoformat(),
              "recorded": datetime.now(timezone.utc).isoformat(), "files": files, "deltas": len(deltas(root))}
+    if method:
+        state["hash"] = method
+    state["against"] = against
+    if learned:
+        state["learned"] = learned
     with open(state_path, "w", encoding="utf-8") as fh:
         json.dump(state, fh, indent=1)
-    return {"recorded": len(files), "deltas": state["deltas"]}
+    return {"recorded": len(files), "deltas": state["deltas"], "against": against}
 
 
 def next_delta(root, slug):
@@ -346,15 +577,21 @@ def reset(root):
     return {"removed": removed}
 
 
+def option(args, name):
+    if name in args and len(args) > args.index(name) + 1:
+        return args[args.index(name) + 1]
+    return None
+
+
 def main():
     args = sys.argv[1:]
     cmd = args[0] if args else "check"
     root = project_root()
     if cmd == "check":
-        print(json.dumps(check(root), indent=1))
+        print(json.dumps(check(root, base_branch=option(args, "--base")), indent=1))
     elif cmd == "record":
-        expect = args[args.index("--expect") + 1] if "--expect" in args and len(args) > args.index("--expect") + 1 else None
-        print(json.dumps(record(root, expect=expect, keep="--keep" in args)))
+        print(json.dumps(record(root, expect=option(args, "--expect"), keep="--keep" in args,
+                                base_branch=option(args, "--base"))))
     elif cmd == "next-delta":
         print(next_delta(root, args[1] if len(args) > 1 else "change"))
     elif cmd == "list":
@@ -366,7 +603,8 @@ def main():
     elif cmd == "reset":
         print(json.dumps(reset(root)))
     else:
-        sys.exit("Unknown command %r. Use: check | record [--expect PATH] [--keep] | next-delta SLUG | list | reset" % cmd)
+        sys.exit("Unknown command %r. Use: check [--base BRANCH] | record [--expect PATH] [--keep] "
+                 "[--base BRANCH] | next-delta SLUG | list | reset" % cmd)
 
 
 if __name__ == "__main__":
