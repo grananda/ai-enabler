@@ -1,0 +1,18 @@
+{
+  "summary": "The orchestrator of delivery-run starts lighter: run-and-config.md keeps the core and four references are read only when their situation occurs (repo-profile.md, external-sources.md, deltas.md, tests-protocol.md), and delivery-run moves going back after a gate and external-source handling into files of its own. The test engineer writes its results as acceptance-tests.json and test-report.json, which run_state.py renders as the Markdown reports (Claude Code tells subagents not to write report Markdown, so the orchestrator used to transcribe them); \run_state.py render does it for the stand-alone skills, and the review pack falls back to the JSON.",
+  "category": "Changed",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler": "minor"
+  },
+  "assets": {
+    "plugins/ai-enabler/agents/delivery-test-engineer.md": "minor",
+    "plugins/ai-enabler/agents/delivery-solution-planner.md": "patch",
+    "plugins/ai-enabler/skills/delivery-run/SKILL.md": "minor",
+    "plugins/ai-enabler/skills/delivery-implement/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-review/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-sources/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-test/SKILL.md": "patch"
+  },
+  "migration": ""
+}

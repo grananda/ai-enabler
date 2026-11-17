@@ -29,7 +29,7 @@ The caller gives you `tasks` — one or more of `profile`, `delta`, `ticket` —
 
 - `profile` — the absolute path to write. The profile does not exist yet. If a file is already there, stop and say so: it is never overwritten.
 - `delta` — the absolute path of the profile, the absolute path to write (already numbered), and the reason: either the summary of the watched files that changed, appeared or disappeared (one line per file when there are few; one line per kind and folder, with counts and examples, when there are many), or a `learned` note (something a later stage found to be wrong or missing in the profile).
-- `ticket` — the absolute path of the profile, `run_dir`, and the path to `requirements.json` (read `feature_area`, `feature_type`, `tech_stack_hints`).
+- `ticket` — the absolute path of the profile, `run_dir`, and the path to `requirements.json` (read `feature_area`, `feature_type`, `tech_stack_hints`); and, when `repo_profile.py check` listed any, the `provisional` deltas — learned on a branch that has not been merged.
 
 Do them in that order. Write to the paths you were given, exactly: the caller's bookkeeping looks for the files there, and a path you work out yourself from your current directory may be a different folder.
 
@@ -68,7 +68,7 @@ The facts as they are, in the same terms the profile uses (a command, a conventi
 - If watched files changed but nothing the profile or its deltas say is affected (a dependency bump, a reformat, a new module that follows the same conventions), **write no file** and say so in your reply: `no delta: nothing in the profile is affected`. An empty complement is noise that every later run would have to read.
 - **At most about 30 lines.** A delta that needs more is a sign the profile should be rebuilt; say so in your reply, and the caller will suggest `--relearn`.
 - A later delta overrides an earlier one and the profile. Never repeat what is still true.
-- Only lasting facts about the repository belong in a delta. Nothing about the ticket in hand or the state of the working tree (an untracked file, a missing newline): that goes in the run's `repo-context.md`, under "For this run".
+- Only lasting facts about the repository as it is on the base branch belong in a delta — never the behaviour the run in progress is adding, which is not merged yet. Nothing about the ticket in hand or the state of the working tree (an untracked file, a missing newline): that goes in the run's `repo-context.md`, under "For this run".
 
 ## Task: ticket
 
@@ -78,7 +78,7 @@ Write `<run_dir>/repo-context.md` with what this ticket needs and the profile ca
    - Find them by name and by content, never by walking the tree: the Glob tool or `git ls-files '*<noun>*'` for names, the Grep tool or `git grep -l -i '<noun>'` for content, inside the layer directories the profile names when the nouns are common words.
    - **Open at most ten files** to confirm the closest ones, then stop. `repo-context.md` lists files with a reason each; it does not summarise the codebase. If ten files do not settle it, list the candidates as candidates and say so.
 2. **What the planner needs from them.** The planner works from this file and opens source files only for what it does not show, so give it the fragments a plan depends on. For each file likely to be modified or imitated: the signature of the class or function that would change, the route and its handler, the place where things are registered or wired, and the existing test that is the pattern to imitate (its name and setup). Each as a short excerpt with `path:line`, a few lines, never the whole file: about fifteen lines per file and a hundred and twenty in all.
-3. **For this run.** Anything true only now: uncommitted changes in the working tree, a branch that already exists for this key.
+3. **For this run.** Anything true only now: uncommitted changes in the working tree, a branch that already exists for this key, and each `provisional` delta you were given, with its branch, as "unconfirmed: do not rely on it" — check what it claims against the code on the base branch, and say what you found.
 
 Start the file with one line naming what it complements: `Complements the repository profile (<its path>) and its <n> deltas.` Do not repeat the profile in it.
 

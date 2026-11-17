@@ -96,7 +96,41 @@ def main():
     assert [q["question"] for q in out["blocking_questions"]] == ["Which currency?"]
     assert state(run_dir)["test_order"] == "mixed"
     assert run("intake", run_dir, "--order", "after")["test_order"] == "after"
-    print("ok — run state: init, resume, transitions, interventions, notes, intake")
+
+    # Reports: the test engineer writes JSON, the script writes the Markdown people and later stages read.
+    report = {"mode": "coverage", "verdict": "defects found", "coverage_verdict": "acceptable",
+              "suite": {"passed": 40, "failed": 1, "skipped": 0},
+              "coverage": {"line_percent": 75, "branch_percent": 70, "target": 80, "minimum": 70,
+                           "files": [{"file": "src/a.py", "line_percent": 75, "uncovered": "l. 9 | 12"}]},
+              "criteria": [{"id": "AC-1", "tests": ["test_ac1"], "written": "before code", "status": "failing"}],
+              "mutation": {"decision_points": 3, "mutants": 6, "killed": 5,
+                           "surviving": [{"where": "src/a.py:9", "mutant": "< to <=", "reason": "equivalent"}]},
+              "defects": [{"test": "test_ac1", "expected": "422", "actual": "500", "suspect": "src/a.py:9"}],
+              "an_unplanned_field": {"kept": True}}
+    with open(os.path.join(run_dir, "test-report.json"), "w", encoding="utf-8") as fh:
+        json.dump(report, fh)
+    out = run("update", run_dir, "--add", "fix_rounds=1")
+    assert out["rendered"] == ["test-report.md"], out
+    with open(os.path.join(run_dir, "test-report.md"), encoding="utf-8") as fh:
+        md = fh.read()
+    for expected in ("**Verdict:** defects found", "**Coverage:** acceptable", "40 passed, 1 failed",
+                     "Line 75 % · branch 70 % (target 80 % · minimum 70 %)", "l. 9 \\| 12", "| AC-1 | test_ac1 |",
+                     "< to <=", "| test_ac1 |", "An unplanned field", "Edit the JSON"):
+        assert expected in md, (expected, md)
+    assert "rendered" not in run("update", run_dir, "--add", "fix_rounds=1")      # up to date: not written again
+    with open(os.path.join(run_dir, "acceptance-tests.json"), "w", encoding="utf-8") as fh:
+        json.dump({"verdict": "written", "tests": [{"criterion": "AC-1", "file": "t.py", "tests": ["a", "b"]}],
+                   "not_tested": [{"criterion": "AC-2", "reason": "needs a browser"}]}, fh)
+    out = run("render", run_dir)
+    assert out == {"rendered": ["acceptance-tests.md"], "errors": []}, out
+    with open(os.path.join(run_dir, "acceptance-tests.md"), encoding="utf-8") as fh:
+        md = fh.read()
+    assert "| AC-1 | t.py | a, b |" in md and "needs a browser" in md, md
+    with open(os.path.join(run_dir, "test-report.json"), "w", encoding="utf-8") as fh:
+        fh.write("[1, 2")
+    out = run("render", run_dir, "--force")
+    assert out["errors"] and out["errors"][0].startswith("test-report.json"), out   # reported, not raised
+    print("ok — run state: init, resume, transitions, interventions, notes, intake, reports")
 
 
 if __name__ == "__main__":

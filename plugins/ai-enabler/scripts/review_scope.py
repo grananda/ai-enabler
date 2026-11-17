@@ -215,10 +215,16 @@ def write_pack(path, args, merge_base, files, chunks, result, run_dir):
         out += ["", "## Acceptance criteria in force", ""]
         out += ["- **%s** %s" % (c.get("id", "?"), c.get("text", "").strip()) for c in crit]
     report = os.path.join(run_dir, "test-report.md") if run_dir else None
+    data = os.path.join(run_dir, "test-report.json") if run_dir else None
     if report and os.path.isfile(report):
         with open(report, encoding="utf-8", errors="replace") as fh:
             text = re.sub(r"(?m)^(#+) ", r"\1## ", fh.read().strip())
         out += ["", "## Test results (`test-report.md`)", "", text]
+    elif data and os.path.isfile(data):
+        # Not rendered yet (run_state.py renders it): the test engineer's data as it is.
+        with open(data, encoding="utf-8", errors="replace") as fh:
+            text = fh.read().strip()
+        out += ["", "## Test results (`test-report.json`)", "", "```json", text, "```"]
     tests_docs = [p for p in sorted(files) if kind(p) != "code"]
     out += ["", "## What each lens reads beyond this pack", "",
             "- **correctness** — the code diff below; the tests and documents below when a criterion depends on them.",

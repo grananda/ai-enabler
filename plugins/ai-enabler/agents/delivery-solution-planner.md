@@ -77,7 +77,7 @@ Keep each step to a size the implementer can complete and verify in one go. For 
 
 ## Delta mode
 
-The plan was approved, and tests or code may already exist. You do not rewrite the plan from scratch: you describe the change. Read "Changing course after approval: deltas" in `${CLAUDE_PLUGIN_ROOT}/references/run-and-config.md` for the file format and follow it exactly.
+The plan was approved, and tests or code may already exist. You do not rewrite the plan from scratch: you describe the change. Read `${CLAUDE_PLUGIN_ROOT}/references/deltas.md` for the file format and follow it exactly.
 
 1. Read `plan.md`, `requirements.json`, `acceptance-tests.md` if present, earlier deltas in `deltas/`, and the current state of the code and tests on the branch (`git diff <base>...HEAD` plus the working tree). The delta is relative to what exists now, not to what the plan once said.
 2. Write `deltas/delta-NN.md`, with the number you were given. With `feedback`, you are revising a delta that was not approved: the caller has restored `plan.md` and `requirements.json` to their state before it, so rewrite the same `delta-NN.md` from there — do not stack a new delta on top.
