@@ -101,6 +101,20 @@ The review costs in proportion to what changed, not the same for every ticket. B
 
 The reviewers keep the strongest model and high effort: their independence is part of the quality the pipeline promises. `review.select_lenses: false` runs every lens on every change.
 
+### A run in proportion to the ticket: lanes
+
+A one-line change and a new payment flow should not cost the same. The analyst sizes each ticket — `S`, `M` or `L` — and names the risk areas it touches (authentication, permissions, personal data, money, external input, dependencies, migrations, concurrency), and the run follows the lane that gives:
+
+| | S | M | L |
+|---|---|---|---|
+| Refinement | only when the analyst found gaps | always | always |
+| Gates | ship only; the plan is shown there | plan and ship | plan and ship |
+| Review | by the diff, two reviewers | by the diff | every lens, one reviewer each |
+| Whole-suite runs | 1 | 2 | 2 |
+| Most mutants | 10 | 25 | 40 |
+
+Any risk area makes a ticket at least `M`; authentication, permissions or personal data make it `L`. The lane is shown at the plan gate (and at the ship gate when there was none), and you can change it: `--lane S|M|L` on the run, or `adjust: lane M` at the plan gate. A value you set in `.enabler/config.json` that differs from the default applies to every lane; `"lanes": {"enabled": false}` gives every ticket the same treatment, and `"lanes": {"S": {"gates": ["plan", "ship"]}}` keeps the plan gate on small tickets. The models do not change by lane: switching them mid-run would start the prompt cache again. The full rules are under "Lanes" in [references/run-and-config.md](references/run-and-config.md).
+
 What the human sees at each gate:
 
 - **Plan gate** — this is where you review the change before it exists. The approach in three sentences, the steps, every file that will be created or modified by path, the planned tests, the technical decisions taken, the assumptions made about the ticket. Answer `approve`, `adjust: ...` or `cancel`.
@@ -308,7 +322,8 @@ Optional, in `.enabler/config.json` at the project root — a local file, like e
               "group_below_lines": 150, "sensitive_paths": [],
               "min_confidence": 80, "auto_fix": ["critical", "high"], "max_fix_rounds": 2 },
   "output_trim": { "enabled": true, "max_chars": 6000 },
-  "notify": { "gates": true }
+  "notify": { "gates": true },
+  "lanes": { "enabled": true, "S": {}, "M": {}, "L": {} }
 }
 ```
 

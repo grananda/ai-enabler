@@ -14,10 +14,13 @@
         approved/applied false. --drop-delta removes a cancelled one. --intervene appends to
         human_interventions, stamped with the time and the current stage. --note / --drop-note
         keep profile_notes.
-    run_state.py intake <run_dir> [--order auto|after]
+    run_state.py intake <run_dir> [--order auto|after] [--lane S|M|L] [--gates LIST] [--no-refine]
+                        [--config PATH]
         Reads requirements.json once and prints what the orchestrator needs from it: the verdicts
         after refinement, the counts, the blocking questions in full, and test_order, which it
-        also records in state.json.
+        also records in state.json. Also the lane (S, M or L) from the analyst's size and risk
+        areas, the settings that lane gives this run (gates, refinement, review, test budget) and
+        whether the ticket needs refining; run it after the analyst and again after the refiner.
     run_state.py show   <run_dir>
     run_state.py render <run_dir>
         Writes test-report.md and acceptance-tests.md from the test engineer's test-report.json and
@@ -41,6 +44,19 @@ KINDS = ["approval", "adjustment", "fix", "delta", "question", "takeover", "cove
 ORDER = {"sufficient": "before", "scarce": "mixed", "missing": "after"}
 VIEW = ["key", "stage", "status", "stages_done", "plan_approved", "test_order", "refined", "branch",
         "gate_rounds", "fix_rounds", "deltas", "profile_notes", "pr_url"]
+SIZES = ["S", "M", "L"]
+# What a run spends, by lane. A key set in .enabler/config.json to something other than its default wins over this.
+DEFAULTS = {"gates": ["plan", "ship"], "refine": "always",
+            "review": {"select_lenses": True, "group_below_lines": 150},
+            "tests": {"full_suite_runs": 2, "mutation": {"enabled": True, "max_mutants": 40}}}
+LANES = {
+    "S": {"gates": ["ship"], "refine": "gaps", "review": {"group_below_lines": 400},
+          "tests": {"full_suite_runs": 1, "mutation": {"max_mutants": 10}}},
+    "M": {"tests": {"mutation": {"max_mutants": 25}}},
+    "L": {"review": {"select_lenses": False, "group_below_lines": 0}},
+}
+# A risk area sets the lowest lane a ticket may run in.
+RISK_LANE = {"authentication": "L", "permissions": "L", "personal_data": "L"}
 
 
 def now():
@@ -188,6 +204,60 @@ def cmd_update(args):
     return view(state, **extra)
 
 
+def merge(base, over):
+    out = dict(base)
+    for k, v in (over or {}).items():
+        out[k] = merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+def chosen(config):
+    """The settings the person chose in config.json: only the keys whose value differs from the default."""
+    picked = {}
+    if "gates" in config and config["gates"] != DEFAULTS["gates"]:
+        picked["gates"] = config["gates"]
+    if (config.get("refine") or {}).get("enabled") is False:
+        picked["refine"] = "never"
+    for section, keys in (("review", ("select_lenses", "group_below_lines")), ("tests", ("full_suite_runs",))):
+        for k in keys:
+            v = (config.get(section) or {}).get(k)
+            if v is not None and v != DEFAULTS[section][k]:
+                picked.setdefault(section, {})[k] = v
+    mutation = (config.get("tests") or {}).get("mutation") or {}
+    for k in ("enabled", "max_mutants"):
+        if k in mutation and mutation[k] != DEFAULTS["tests"]["mutation"][k]:
+            picked.setdefault("tests", {}).setdefault("mutation", {})[k] = mutation[k]
+    return picked
+
+
+def load_config(run_dir, path=None):
+    path = path or os.path.join(run_dir, os.pardir, os.pardir, "config.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def lane_of(req, config, forced=None):
+    """The lane a ticket runs in, and the settings that gives it."""
+    size = req.get("size") if req.get("size") in SIZES else "M"
+    risks = [r for r in req.get("risk_areas") or [] if isinstance(r, str)]
+    minimum = max([RISK_LANE.get(r, "M") for r in risks] or ["S"], key=SIZES.index)
+    name = forced if forced in SIZES else max(size, minimum, key=SIZES.index)
+    lanes = config.get("lanes") or {}
+    settings = dict(DEFAULTS)
+    if lanes.get("enabled", True) is not False:
+        settings = merge(merge(settings, LANES[name]), lanes.get(name))
+    else:
+        name = None
+    settings = merge(settings, chosen(config))
+    lane = {"name": name, "size": size, "risk_areas": risks, "minimum": minimum,
+            "forced": bool(forced), "below_minimum": bool(name and SIZES.index(name) < SIZES.index(minimum))}
+    return lane, settings
+
+
 def cmd_intake(args):
     p = path_of(args.run_dir, "requirements.json")
     if not os.path.isfile(p):
@@ -199,11 +269,24 @@ def cmd_intake(args):
     quality = req.get("acceptance_criteria_quality")
     order = "after" if args.order == "after" else ORDER.get(quality, "after")
     questions = [q for q in req.get("open_questions") or [] if isinstance(q, dict)]
+    has_state = os.path.isfile(path_of(args.run_dir, "state.json"))
+    state = load(args.run_dir) if has_state else {}
+    forced = args.lane or ((state.get("lane") or {}).get("name") if (state.get("lane") or {}).get("forced") else None)
+    lane, settings = lane_of(req, load_config(args.run_dir, args.config), forced)
+    if args.gates is not None:
+        settings["gates"] = [g for g in args.gates.split(",") if g and g != "none"]
+    if args.no_refine:
+        settings["refine"] = "never"
+    gaps = (req.get("readiness") != "ready" or quality != "sufficient" or bool(questions)
+            or bool(req.get("requirements_without_criteria")))
     out = {
         "readiness": req.get("readiness"),
         "criteria_quality": quality,
         "test_order": order,
         "refined": bool(req.get("refinement")),
+        "lane": lane,
+        "settings": settings,
+        "needs_refinement": settings["refine"] == "always" or (settings["refine"] == "gaps" and gaps),
         "requirements": len([r for r in req.get("requirements") or [] if not (isinstance(r, dict) and r.get("removed_by"))]),
         "criteria": {"in_force": len(in_force),
                      "from_ticket": len([c for c in in_force if not c.get("derived") and not c.get("refined")]),
@@ -214,9 +297,10 @@ def cmd_intake(args):
         "open_questions": len(questions),
         "blocking_questions": [q for q in questions if q.get("blocking")],
     }
-    if os.path.isfile(path_of(args.run_dir, "state.json")):
-        state = load(args.run_dir)
+    if has_state:
         state["test_order"] = order
+        state["lane"] = {k: lane[k] for k in ("name", "size", "risk_areas", "forced")}
+        state["settings"] = settings
         save(args.run_dir, state)
     return out
 
@@ -392,6 +476,10 @@ def main(argv=None):
     p = sub.add_parser("intake")
     p.add_argument("run_dir")
     p.add_argument("--order", choices=["auto", "after"], default="auto", help="tests.order")
+    p.add_argument("--lane", choices=SIZES, help="The lane the person chose (--lane, or adjust: lane X).")
+    p.add_argument("--gates", help="--gates of delivery-run: plan,ship | plan | ship | none.")
+    p.add_argument("--no-refine", action="store_true")
+    p.add_argument("--config", help="Default: .enabler/config.json above the run directory.")
     p = sub.add_parser("show")
     p.add_argument("run_dir")
     p = sub.add_parser("render")

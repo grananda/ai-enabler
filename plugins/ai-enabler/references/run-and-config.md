@@ -36,6 +36,8 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
   "status": "active | held | stopped",
   "refined": true,
   "test_order": "before | mixed | after",
+  "lane": { "name": "S | M | L", "size": "S | M | L", "risk_areas": [], "forced": false },
+  "settings": { "gates": ["plan", "ship"], "refine": "always | gaps | never", "review": {}, "tests": {} },
   "stages_done": ["intake", "scout"],
   "plan_approved": false,
   "fix_rounds": 0,
@@ -49,7 +51,7 @@ Each ticket gets one directory, `.enabler/runs/<KEY>/`, where `<KEY>` is the Jir
 }
 ```
 
-`gate_rounds` is explained under "Rounds at a gate", `deltas` in `deltas.md` and `profile_notes` (absent or empty most of the time) in `repo-profile.md`, both next to this file. `refined` says whether the ticket went through refinement in this run; a run started before refinement existed has no such key and is resumed as it is. `stage` is the stage to run next, using exactly the names above; they are also the values `--from` accepts. `status` is `held` when the run waits at the ship gate, `stopped` when a person cancelled or stopped it (the note of the last intervention says where and why), `active` otherwise.
+`gate_rounds` is explained under "Rounds at a gate", `deltas` in `deltas.md` and `profile_notes` (absent or empty most of the time) in `repo-profile.md`, both next to this file. `lane` and `settings` are written by `run_state.py intake` (see "Lanes"): the lane the run follows and what it gives this run, which the orchestrating skill uses instead of the configuration file for those keys. `refined` says whether the ticket went through refinement in this run; a run started before refinement existed has no such key and is resumed as it is. `stage` is the stage to run next, using exactly the names above; they are also the values `--from` accepts. `status` is `held` when the run waits at the ship gate, `stopped` when a person cancelled or stopped it (the note of the last intervention says where and why), `active` otherwise.
 
 Update `state.json` whenever a stage completes and whenever the human steps in, through `scripts/run_state.py` (`init`, `update`, `intake`, `show`), never by editing the file: one call per transition records every change of that transition and stamps the time. The same calls render `test-report.md` and `acceptance-tests.md` from the test engineer's JSON whenever it is newer (`run_state.py render` does only that, for a skill that keeps no `state.json`). Subagents are told not to write report or summary Markdown files, so the test engineer's results are data that a script turns into Markdown, not documents it writes. `human_interventions` is the pipeline's own record of where a person had to act; keep each note to one line. Its kinds are `approval`, `adjustment`, `fix`, `delta`, `question`, `takeover`, `coverage_accepted`, `hold`, `local`, `ship`, `cancel` and `stop`.
 
@@ -105,7 +107,8 @@ Optional file `.enabler/config.json`. Like the rest of `.enabler/`, it is a loca
     "max_fix_rounds": 2
   },
   "output_trim": { "enabled": true, "max_chars": 6000 },
-  "notify": { "gates": true }
+  "notify": { "gates": true },
+  "lanes": { "enabled": true, "S": {}, "M": {}, "L": {} }
 }
 ```
 
@@ -128,8 +131,26 @@ Optional file `.enabler/config.json`. Like the rest of `.enabler/`, it is a loca
 - `review.auto_fix` — severities `/ai-enabler:delivery-run` fixes on its own inside its fix loop. Everything else is reported and left for the human. The stand-alone `/ai-enabler:delivery-review` ignores this key: there it fixes only with `--fix` or when the person says so.
 - `output_trim` — a hook that shows the pipeline's subagents only the failures and the summary of a long test or build run (`dotnet test`, Maven, Gradle, npm, Jest, Vitest, pytest, `go test`, `cargo test`): the lines that fail with their assertion messages and first stack frames, the summary lines, and the first and last lines. Output under `max_chars` (6000) is left alone, the full output is saved in `.enabler/tmp/output/` and the trimmed text names the file, the command itself is unchanged, and the person's own sessions are never trimmed. `enabled: false` turns it off.
 - `notify.gates` — when a run waits at a gate (the plan, the ship, a delta, coverage below the minimum, a blocked ticket) and Claude Code has been idle for about a minute, a desktop notification names the run and the gate, once per wait. `false` turns it off.
+- `lanes` — what a run spends depends on the ticket's lane, `S`, `M` or `L`; see "Lanes" below. `enabled: false` gives every ticket the same treatment, the defaults above. `S`, `M` and `L` each take the same keys as the table there (`gates`, `refine`, `review`, `tests`) to change what that lane does.
 
 Command-line flags on a skill override the file for that run.
+
+## Lanes
+
+A one-line fix and a new payment flow should not cost the same. The analyst gives each ticket a `size` (`S`, `M`, `L`) and its `risk_areas` (authentication, permissions, personal data, money, external input, dependencies, migrations, concurrency), the refiner may raise them, and `run_state.py intake` turns them into the run's lane and the settings that lane gives it:
+
+| Setting | S | M | L |
+|---|---|---|---|
+| `refine` — refinement | only when the analyst found gaps (not ready, criteria not sufficient, open questions, requirements without a criterion) | always | always |
+| `gates` | `ship`: no plan gate; the plan is shown at the ship gate | `plan`, `ship` | `plan`, `ship` |
+| `review` | by the diff, two reviewers below 400 changed lines | by the diff (the defaults above) | every lens, one reviewer each (`select_lenses: false`, `group_below_lines: 0`) |
+| `tests.full_suite_runs` | 1 | 2 | 2 |
+| `tests.mutation.max_mutants` | 10 | 25 | 40 |
+
+- **Risk sets a floor.** Any risk area makes a ticket at least `M`; authentication, permissions or personal data make it `L`.
+- **The person decides.** `--lane S|M|L` on `delivery-run`, or `adjust: lane S|M|L` at the plan gate, sets the lane for the run (it is kept on resume). A lane below the floor the risk areas set is allowed, and said at the gate and in the delivery report.
+- **What comes first.** The flags of the run; then a key set in `.enabler/config.json` to something other than its default — a choice the person made for every ticket, such as `tests.mutation.max_mutants: 5` or `gates: ["ship"]`; then the lane; then the defaults. A configuration file that only repeats the defaults, as `/ai-enabler:delivery-doctor --init` writes it, changes nothing. To keep the plan gate on small tickets, set `"lanes": {"S": {"gates": ["plan", "ship"]}}`.
+- **Not by lane:** the models and their effort, which are fixed per agent so that a run never invalidates the prompt cache by switching them.
 
 ## Changing course after approval: deltas
 

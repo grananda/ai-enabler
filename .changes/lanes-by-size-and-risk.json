@@ -1,0 +1,14 @@
+{
+  "summary": "Lanes by ticket size and risk: the analyst sizes each ticket (S, M, L) and names its risk areas, and run_state.py intake turns them into the run's lane and settings. An S ticket is refined only when the analyst found gaps, has no plan gate (the plan is shown at the ship gate), two reviewers, one whole-suite run and at most 10 mutants; L gets every lens with one reviewer each; any risk area raises a ticket to at least M, authentication, permissions or personal data to L. The lane is shown at the plan gate and can be changed with --lane or 'adjust: lane X'; a configuration key that differs from its default still applies to every lane.",
+  "category": "Breaking",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler": "major"
+  },
+  "assets": {
+    "plugins/ai-enabler/agents/delivery-ticket-analyst.md": "minor",
+    "plugins/ai-enabler/agents/delivery-ticket-refiner.md": "patch",
+    "plugins/ai-enabler/skills/delivery-run/SKILL.md": "major"
+  },
+  "migration": "Small (S) tickets no longer stop at the plan gate by default, and their refinement, review and test budget are lighter. To keep the previous behaviour for every ticket, set \"lanes\": {\"enabled\": false} in .enabler/config.json; to keep only the plan gate on small tickets, set \"lanes\": {\"S\": {\"gates\": [\"plan\", \"ship\"]}}. Runs in progress resume unchanged: run_state.py intake derives the lane when their state has none."
+}

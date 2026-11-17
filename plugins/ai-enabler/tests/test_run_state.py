@@ -130,7 +130,46 @@ def main():
         fh.write("[1, 2")
     out = run("render", run_dir, "--force")
     assert out["errors"] and out["errors"][0].startswith("test-report.json"), out   # reported, not raised
-    print("ok — run state: init, resume, transitions, interventions, notes, intake, reports")
+
+    # Lanes: the size and risk areas decide what the run spends; a person's choice wins.
+    def lane_case(size, risks, readiness="ready", quality="sufficient", config=None, *extra):
+        with open(os.path.join(run_dir, "requirements.json"), "w", encoding="utf-8") as fh:
+            json.dump({"readiness": readiness, "acceptance_criteria_quality": quality, "size": size,
+                       "risk_areas": risks, "acceptance_criteria": [{"id": "AC-1"}]}, fh)
+        cfg = os.path.join(os.path.dirname(os.path.dirname(run_dir)), "config.json")
+        if config is None:
+            if os.path.exists(cfg):
+                os.remove(cfg)
+        else:
+            with open(cfg, "w", encoding="utf-8") as fh:
+                json.dump(config, fh)
+        return run("intake", run_dir, *extra)
+
+    run("update", run_dir, "--set", "lane=null")
+    out = lane_case("S", [])
+    assert out["lane"]["name"] == "S" and out["settings"]["gates"] == ["ship"] and out["needs_refinement"] is False, out
+    assert out["settings"]["tests"]["full_suite_runs"] == 1 and out["settings"]["tests"]["mutation"]["max_mutants"] == 10
+    assert state(run_dir)["lane"]["name"] == "S" and state(run_dir)["settings"]["gates"] == ["ship"]
+    assert lane_case("S", [], "ready_with_assumptions")["needs_refinement"] is True        # S refines only gaps
+    out = lane_case("S", ["external_input"])
+    assert out["lane"]["name"] == "M" and out["settings"]["gates"] == ["plan", "ship"] and out["needs_refinement"], out
+    out = lane_case("M", ["personal_data"])
+    assert out["lane"]["name"] == "L" and out["settings"]["review"] == {"select_lenses": False, "group_below_lines": 0}
+    out = lane_case("M", ["personal_data"], "ready", "sufficient", None, "--lane", "S")
+    assert out["lane"]["name"] == "S" and out["lane"]["below_minimum"] is True and out["lane"]["forced"] is True
+    assert lane_case("M", ["personal_data"])["lane"]["name"] == "S"                      # the choice is kept on resume
+    run("update", run_dir, "--set", "lane=null")
+    defaults_file = {"gates": ["plan", "ship"], "refine": {"enabled": True},
+                     "tests": {"full_suite_runs": 2, "mutation": {"enabled": True, "max_mutants": 40}}}
+    assert lane_case("S", [], "ready", "sufficient", defaults_file)["settings"]["gates"] == ["ship"]   # defaults don't pin
+    out = lane_case("S", [], "ready", "sufficient", {"tests": {"mutation": {"max_mutants": 5}}, "refine": {"enabled": False}})
+    assert out["settings"]["tests"]["mutation"]["max_mutants"] == 5 and out["settings"]["refine"] == "never", out
+    out = lane_case("S", [], "ready", "sufficient", {"lanes": {"enabled": False}})
+    assert out["lane"]["name"] is None and out["settings"]["gates"] == ["plan", "ship"], out
+    out = lane_case("S", [], "ready", "sufficient", {"lanes": {"S": {"gates": ["plan", "ship"]}}}, "--gates", "none")
+    assert out["settings"]["gates"] == [], out
+    assert lane_case("L", [], "ready", "sufficient", {"lanes": {"S": {"gates": ["plan", "ship"]}}})["lane"]["name"] == "L"
+    print("ok — run state: init, resume, transitions, interventions, notes, intake, reports, lanes")
 
 
 if __name__ == "__main__":
