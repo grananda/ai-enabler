@@ -25,8 +25,8 @@ Before anything else, read these two files and follow them throughout:
 | 3 | plan | `ai-enabler:delivery-solution-planner` | `plan.md` | **plan** |
 | 4 | acceptance-tests | `ai-enabler:delivery-test-engineer` (`acceptance`) | tests for the ticket's criteria, `acceptance-tests.json` (rendered as `acceptance-tests.md`) | — |
 | 5 | implement | `ai-enabler:delivery-code-implementer` | code on a feature branch that makes those tests pass | — |
-| 6 | coverage | `ai-enabler:delivery-test-engineer` (`coverage`) | remaining tests, coverage (target 80 %, minimum 70 %), `test-report.json` (rendered as `test-report.md`) | only if coverage is below the minimum |
-| 7 | review | `ai-enabler:delivery-code-reviewer`, one instance per lens or group of lenses the change needs, in parallel | `review-pack.md`, `review.md` | — |
+| 6 | coverage | `ai-enabler:delivery-test-engineer` (`coverage`), and beside it, when the review has one reviewer per lens, the correctness, security and quality reviewers | remaining tests, coverage (target 80 %, minimum 70 %), `test-report.json` (rendered as `test-report.md`) | only if coverage is below the minimum |
+| 7 | review | `ai-enabler:delivery-code-reviewer`, one instance per lens or group of lenses the change needs, in parallel — only the tests lens when the others ran in stage 6 | `review-pack.md`, `review.md` | — |
 | 8 | ship | this skill, following `ai-enabler:delivery-ship` | commit, push, PR, Jira update | **ship** |
 
 Tests come before the code. A test written from the ticket says what the code must do; a test written from the code only confirms what it already does, errors included. Stage 4 therefore runs whenever the ticket states acceptance criteria worth testing against, and the ticket decides how much it can cover — read "Test order" in the run-and-config reference. Stage 6 always runs, whatever the order: it aims at 80 % coverage of the changed code, accepts 70 % or more, and below that hands the decision to the person ("Coverage" in the same reference).
@@ -127,7 +127,9 @@ Stages 4 to 7 all run tests. Where they run, what a brief to the test engineer m
 3. If the implementer disputes an acceptance test, settle it yourself against the ticket and the plan — not against the code. If the test is right, send it back as a fix. If the test contradicts the ticket or the plan, launch the test engineer in `repair` mode for that test, with the correction as guidance, and record the change and its reason in the delivery report. Never let the implementer edit a test to match its code.
 4. If the implementer stopped because the plan is wrong in a way that changes scope, do not let it improvise and do not patch the plan in place: the plan was approved, so the change is a **delta**. Follow "Going back" below, with the implementer's explanation as the change.
 
-## Step 6 — Coverage, after the code
+## Step 6 — Coverage, after the code, and the review of the production code beside it
+
+**First, see whether the review can start now.** Run `review_scope.py` as in Step 7, item 1. When every entry of `groups` holds one lens — the change is at or above `review.group_below_lines`, or the lane reviews one lens per reviewer — the review of the production code does not have to wait for the tests: launch the test engineer below and, **in the same message**, one reviewer per group except `tests`, as Step 7, item 2 says, with the pack just written. They read the code while the tests are written and run; the test engineer mutates copies, never the working tree, so what they read stays the code under review. When the groups pair lenses (a small change), launch the test engineer alone: the review runs after coverage, as Step 7 says, because splitting the tests lens off would add a reviewer to a review that is quick anyway.
 
 Launch `ai-enabler:delivery-test-engineer` with `mode: coverage`, the run directory, `tests.coverage_target`, `tests.coverage_minimum`, `tests.levels`, `tests.full_suite_runs` and `tests.mutation` — those values and nothing else: no extra verification of your own ("What a brief may ask for" in `tests-protocol.md`). It runs the acceptance tests and the whole suite (at most `tests.full_suite_runs` times), writes the tests still missing — for derived criteria, for requirements that had no criterion, and for uncovered lines and branches — measures coverage of the changed code, and, unless `tests.mutation.enabled` is false, runs mutation testing on the changed code that decides something, adding tests for the mutants that survive. It writes `test-report.json` itself — your next `run_state.py update` renders `test-report.md` from it — and returns the figures: act on its return, and do not read, write or rewrite either file.
 
@@ -152,6 +154,8 @@ Launch `ai-enabler:delivery-test-engineer` with `mode: coverage`, the run direct
 - `could not run` — continue to review, and state clearly in the report that the change is untested and why.
 
 ## Step 7 — Review and fix loop
+
+**When correctness, security and quality were reviewed during the coverage stage**, only the tests lens is left. Run `review_scope.py` with `--lenses tests --no-select` — a fresh pack, which now has the test report — and launch one reviewer with it; if a defect fix in Step 6 changed production code after the first reviewers had read it, add the lenses that reviewed that code to the same launch (`--lenses <those>,tests --no-select`), told which files the fix changed. Then consolidate its findings with those of the first reviewers, from item 3 on. Otherwise, start at item 1.
 
 1. Decide the lenses and write the review pack, with no model involved:
 

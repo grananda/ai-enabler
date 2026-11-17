@@ -26,7 +26,7 @@ For manual commands use `/bin/bash "<plugin-root>/scripts/run-python.sh" "<plugi
 | 4 | Acceptance tests | `delivery-test-engineer` | the ticket's acceptance criteria, the plan | tests, `acceptance-tests.md` | — |
 | 5 | Implement | `delivery-code-implementer` | plan, context, the acceptance tests | code on a feature branch that makes them pass | — |
 | 6 | Coverage | `delivery-test-engineer` | the changed code | remaining tests, `test-report.md` | only if coverage is under 70 % |
-| 7 | Review | `delivery-code-reviewer`, one per lens the change needs (two reviewers with two lenses each on a small change), in parallel | the review pack: the code diff, the criteria, the test report | `review-pack.md`, `review.md` | — |
+| 7 | Review | `delivery-code-reviewer`, one per lens the change needs (two reviewers with two lenses each on a small change), in parallel; with one per lens, all but the tests lens start during stage 6 | the review pack: the code diff, the criteria, the test report | `review-pack.md`, `review.md` | — |
 | 7b | Fix loop | `delivery-code-implementer` | blocking findings | fixes (max 2 rounds) | — |
 | 8 | Ship | the skill itself | `delivery-report.md` | commit, push, PR, Jira update | **Gate 2 — approve the ship** |
 
@@ -97,6 +97,7 @@ The review costs in proportion to what changed, not the same for every ticket. B
 
 - **Which lenses.** Correctness, quality and tests always. Security whenever the change touches external input, I/O, process execution, queries, HTML rendering, authentication, secrets, configuration, dependencies or a path you declared sensitive (`review.sensitive_paths`); when in doubt it is in. It is left out only when none of that appears, and the review report says so and why.
 - **How many reviewers.** Under 150 changed lines (`review.group_below_lines`), two reviewers carry two lenses each — correctness with tests, security with quality. Above, one reviewer per lens, as before.
+- **When it starts.** When the change gets one reviewer per lens, the correctness, security and quality reviewers start as soon as the code is written, in parallel with the coverage stage, and only the tests reviewer waits for the test report: the review no longer adds its full length to the run. A small change, reviewed in pairs, keeps the order — tests, then review — because splitting the tests lens off would add a reviewer. The test engineer mutates copies, never the working tree, so the reviewers read the code as it is.
 - **What they read first.** One review pack, `review-pack.md`, written once for all of them: the files changed and their kind, the acceptance criteria in force, the test report and the diff of the code. Each reviewer still reads around the change — callers, callees, tests — and the tests and documents its lenses need.
 
 The reviewers keep the strongest model and high effort: their independence is part of the quality the pipeline promises. `review.select_lenses: false` runs every lens on every change.
