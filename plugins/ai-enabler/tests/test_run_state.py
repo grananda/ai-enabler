@@ -201,6 +201,15 @@ def main():
                      "Deltas    : 1 since the plan was approved", "PR body   : the plugin's", "Ship it?"):
         assert expected in gate, (expected, gate)
     assert "comment on" not in gate and state(run_dir)["waiting"]["gate"] == "ship"    # a file source: no Jira
+
+    # A Jira issue with a read-only Jira server, and no PR tool: the gate promises only what can happen.
+    run("update", run_dir, "--set", "source=jira")
+    gate_of = lambda *extra: subprocess.run([sys.executable, SCRIPT, "gate", run_dir, "ship"] + list(extra),
+                                            capture_output=True).stdout.decode("utf-8")
+    assert "→ comment on PROJ-7" in gate_of() and "→ open PR against" in gate_of()
+    gate = gate_of("--no-jira-write", "--no-pr")
+    assert "comment on PROJ-7" not in gate and "Jira: not possible — no Jira write tool connected" in gate, gate
+    assert "open PR against" not in gate and "pull request: not opened from here" in gate and "PR body" not in gate
     print("ok — run state: init, resume, transitions, interventions, notes, intake, reports, lanes, gates")
 
 

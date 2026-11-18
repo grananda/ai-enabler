@@ -84,4 +84,6 @@ The body follows a template: a real file, so that every pull request the pipelin
 - A failure midway leaves earlier steps in place and is reported precisely — for example "committed and pushed; pull request not created: gh is not authenticated". Do not undo completed steps and do not retry destructively.
 - "no" and "local" both mean nothing leaves this machine; with "no", nothing is committed either. Both switch the project to local-only.
 - Never merge, never approve, never force-push, never bypass hooks, never push to the base branch.
-- If the Jira MCP server is not connected, skip the Jira step and say so; the rest still ships.
+- If the Jira MCP server is not connected, or it is connected but has no tool to add a comment (a read-only server), skip the Jira step and say so — at the confirmation, not only afterwards: do not list a Jira step that cannot happen. The rest still ships.
+- A push that fails because git cannot ask for credentials (no terminal) is not retried and not worked around: report it with the command the person runs once in a normal terminal to sign in, and keep the commit; `/ai-enabler:delivery-ship <KEY>` finishes afterwards. `/ai-enabler:delivery-doctor` checks this before a run.
+- The intervention recorded for the person's answer quotes it as written (`ship`, `local`, `yes`), with nothing added.
