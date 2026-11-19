@@ -26,7 +26,9 @@
         Records that the run waits for a person (`waiting` in state.json, which the gate notification
         hook reads; the next update that records a decision clears it). For `ship` it also prints the
         ship gate, filled in from the run's files: diff, criteria, tests, review, deltas, lane, and
-        what shipping will do.
+        what shipping will do. --no-jira-write: no connected tool can comment on the Jira issue, so the
+        gate says the Jira step is not possible instead of promising it. --no-pr: no pull request can
+        be opened from here.
     run_state.py render <run_dir>
         Writes test-report.md and acceptance-tests.md from the test engineer's test-report.json and
         acceptance-tests.json, for people and for the stages that read Markdown. `update` does it too,
@@ -479,7 +481,7 @@ def git(root, *args):
         return ""
 
 
-def ship_gate(run_dir, state):
+def ship_gate(run_dir, state, jira_write=True, pull_request=True):
     """The ship gate, filled in from the run's files. A line it cannot fill says `?` and what to put there."""
     root = os.path.abspath(os.path.join(run_dir, os.pardir, os.pardir, os.pardir))
     config = load_config(run_dir)
@@ -557,13 +559,21 @@ def ship_gate(run_dir, state):
         question = "Commit locally? (local / hold / fix: <what to change>)"
     else:
         will = "commit → push %s" % branch
-        if git_cfg.get("pull_request", True) is not False:
+        pr = git_cfg.get("pull_request", True) is not False
+        if pr and pull_request:
             will += " → open PR against %s" % base
+        elif pr:
+            will += "\n            pull request: not opened from here — no PR tool for this remote; the link to open it is given"
         if state.get("source") == "jira":
-            if jira_cfg.get("comment_on_ship", True) is not False:
-                will += " → comment on %s" % key
-            if jira_cfg.get("transition_on_ship"):
-                will += ' → transition to "%s"' % jira_cfg["transition_on_ship"]
+            wants = jira_cfg.get("comment_on_ship", True) is not False or jira_cfg.get("transition_on_ship")
+            if not jira_write:
+                if wants:
+                    will += "\n            Jira: not possible — no Jira write tool connected (%s stays as it is)" % key
+            else:
+                if jira_cfg.get("comment_on_ship", True) is not False:
+                    will += " → comment on %s" % key
+                if jira_cfg.get("transition_on_ship"):
+                    will += ' → transition to "%s"' % jira_cfg["transition_on_ship"]
         question = "Ship it? (ship / local / hold / fix: <what to change>)"
 
     lines = []
@@ -583,7 +593,7 @@ def ship_gate(run_dir, state):
     if "plan" not in ((state.get("settings") or {}).get("gates") or ["plan"]):
         lines.append("Plan      : not reviewed before the code — .enabler/runs/%s/plan.md" % key)
     lines.append("Will do   : %s" % will)
-    if not local and git_cfg.get("pull_request", True) is not False:
+    if not local and pull_request and git_cfg.get("pull_request", True) is not False:
         lines.append("PR body   : %s" % (state.get("pr_template") or "? — the template settled for this run"))
     lines += ["Report    : .enabler/runs/%s/delivery-report.md" % key, "", question]
     return "\n".join(lines)
@@ -594,7 +604,7 @@ def cmd_gate(args):
     state["waiting"] = {"gate": args.gate, "since": now()}
     save(args.run_dir, state)
     if args.gate == "ship":
-        return ship_gate(args.run_dir, state)
+        return ship_gate(args.run_dir, state, jira_write=not args.no_jira_write, pull_request=not args.no_pr)
     return None
 
 
@@ -633,6 +643,8 @@ def main(argv=None):
     p = sub.add_parser("gate")
     p.add_argument("run_dir")
     p.add_argument("gate", choices=["plan", "ship", "delta", "coverage", "blocked"])
+    p.add_argument("--no-jira-write", action="store_true", help="No connected tool can comment on the Jira issue.")
+    p.add_argument("--no-pr", action="store_true", help="No pull request can be opened from here.")
     p = sub.add_parser("render")
     p.add_argument("run_dir")
     p.add_argument("--force", action="store_true", help="Render even when the Markdown is newer.")
