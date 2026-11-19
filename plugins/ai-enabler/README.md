@@ -436,11 +436,11 @@ The scouts are meant to take about as long on fifty thousand files as on fifty. 
 
   Sources registered by URL are cloned under `.enabler/sources/`, inside the project, and need nothing.
 - **An `ask` or `deny` rule** in your settings that covers `git`, `ls`, Read, Grep or Glob.
-- **The build and test commands.** The implementer and the test engineer run the project's own commands — `dotnet test`, `npm run test:coverage` and the like — and one that is not allowed asks, unattended: on one run a 30-second test command waited 21 minutes. Allow the commands the repository profile records, in `.claude/settings.local.json`.
-- **The permission mode.** In `dontAsk` mode a call that would prompt is refused instead, and the scouts carry on with less; in auto mode a classifier may delay some commands, and refuse some it reads as unauthorised. The pipeline records each answer you give at a gate as you wrote it, so that the classifier can match it with what you were shown.
+- **The build and test commands.** The implementer and the test engineer run the project's own commands — `dotnet test`, `npm run test:coverage` and the like — and one that is not allowed asks, unattended: on one run a 30-second test command waited 21 minutes. Allow the commands the repository profile records, in `.claude/settings.local.json`. On Windows allow each one for the PowerShell tool as well as for Bash: the agents run most commands through PowerShell there. Write the rules with a space before `*` (`"PowerShell(dotnet test *)"`), and give colon-suffixed scripts their own rule, since `test *` does not cover `test:coverage`.
+- **The permission mode.** In `dontAsk` mode a call that would prompt is refused instead, and the scouts carry on with less; in auto mode a classifier may delay some commands, and refuse some it reads as unauthorised. The pipeline records each answer you give at a gate as you wrote it, so that the classifier can match it with what you were shown. It also judges by the description of your environment that `/auto-mode-setup` writes to your user settings: check that it names this repository's remote exactly, your Jira host, and that answering `ship` at the ship gate authorises the commit, push, pull request and Jira comment the gate lists. Without that, it may refuse the push as an action nobody approved.
 - **Pushing.** The ship stage runs git without a terminal, so a push that needs a credential prompt fails. Sign in once from a normal terminal (`git ls-remote origin`) so that the credentials are stored.
 
-`/ai-enabler:delivery-doctor` reports each of these for the project, the push credentials and the test commands included.
+`/ai-enabler:delivery-doctor` reports each of these for the project, the push credentials, the test commands and the auto-mode description included, with the rules or lines to add.
 
 ## External sources: other repositories and documents
 

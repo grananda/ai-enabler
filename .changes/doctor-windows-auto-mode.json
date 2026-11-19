@@ -1,0 +1,12 @@
+{
+  "summary": "delivery-doctor on Windows: the permission rules it proposes for the build and test commands come for the PowerShell tool as well as for Bash, since the agents run most commands through PowerShell there, in the current wildcard form and with colon-suffixed scripts covered; and, in auto mode, a new check that the environment description /auto-mode-setup writes names the repository's remote exactly, the Jira host, and that answering ship at the ship gate authorises the commit, push, pull request and Jira comment it lists, with the line to add.",
+  "category": "Fixed",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler": "patch"
+  },
+  "assets": {
+    "plugins/ai-enabler/skills/delivery-doctor/SKILL.md": "patch"
+  },
+  "migration": ""
+}
