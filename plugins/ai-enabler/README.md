@@ -20,7 +20,7 @@ For manual commands use `/bin/bash "<plugin-root>/scripts/run-python.sh" "<plugi
 
 | # | Stage | Subagent | Reads | Writes | Human gate |
 |---|---|---|---|---|---|
-| 1 | Intake | `delivery-ticket-analyst`, then `delivery-ticket-refiner` | Jira issue, links, comments (MCP); the repository profile when there is one | `requirements.json`, strengthened by refinement, and `refinement.md` | only if the ticket is blocked |
+| 1 | Intake | `delivery-ticket-analyst`, then `delivery-ticket-refiner` | Jira issue, links, comments and its screenshots and other images (MCP); the repository profile when there is one | `requirements.json`, strengthened by refinement, and `refinement.md` | only if the ticket is blocked |
 | 2 | Scout | `delivery-repo-scout`, and `delivery-source-scout` in parallel when the project has external sources | manifests, code, rules, CI — the first time only; afterwards just what changed. Other repositories, sibling folders and documents, the same way | the repository profile or a delta to it, and `repo-context.md`; a profile or delta per source, and `external-context.md` | — |
 | 3 | Plan | `delivery-solution-planner` | the two files above, the code | `plan.md` | **Gate 1 — approve the plan** |
 | 4 | Acceptance tests | `delivery-test-engineer` | the ticket's acceptance criteria, the plan | tests, `acceptance-tests.md` | — |
@@ -101,6 +101,10 @@ The review costs in proportion to what changed, not the same for every ticket. B
 - **What they read first.** One review pack, `review-pack.md`, written once for all of them: the files changed and their kind, the acceptance criteria in force, the test report and the diff of the code. Each reviewer still reads around the change — callers, callees, tests — and the tests and documents its lenses need.
 
 The reviewers keep the strongest model and high effort: their independence is part of the quality the pipeline promises. `review.select_lenses: false` runs every lens on every change.
+
+### Screenshots in the ticket
+
+People often explain a ticket with a picture: an error message, a mock-up, a table pasted as a screenshot, embedded in the description or attached. When a ticket has images, the analyst reads them, once, through the Jira MCP server, and treats what they show as part of the ticket: a field or a message visible only in a screenshot becomes a requirement or a criterion like one in the text, marked as coming from that image. It writes what each image shows into `requirements.json`, so the refiner and the planner work from that description without opening the images again. There is nothing to approve and nothing to configure. Without images, nothing changes. When images cannot be read — the server has no image tool, the model behind your gateway does not take images — the run goes on with the text, says which images it did not see, and lists them in the pull request so a reviewer can check them. On `mcp-atlassian` the tool is `jira_get_issue_images`; see [docs/jira-mcp.md](../../docs/jira-mcp.md) and `/ai-enabler:delivery-doctor`.
 
 ### A run in proportion to the ticket: lanes
 
@@ -269,7 +273,7 @@ Each stage runs in its own context and hands over a file, not a conversation. Th
 
 | Agent | Role | Model | Tools |
 |---|---|---|---|
-| `delivery-ticket-analyst` | Normalises the ticket, makes each acceptance criterion testable, judges readiness | `sonnet` | Everything except edit tools, skills, to-do lists, web search and subagents (it needs the MCP tools, whose names vary by server) |
+| `delivery-ticket-analyst` | Normalises the ticket, reads its screenshots and other images, makes each acceptance criterion testable, judges readiness | `sonnet` | Everything except edit tools, skills, to-do lists, web search and subagents (it needs the MCP tools, whose names vary by server) |
 | `delivery-ticket-refiner` | Closes the gaps in a ticket's definition as marked additions, assumptions and questions; writes the Markdown ticket for the two ticket skills | `opus`, effort `high` | Everything except edit tools, skills, to-do lists, web search and subagents; reads Jira, never writes to it |
 | `delivery-repo-scout` | Finds the stack, the commands that really work here, conventions, hard rules | `sonnet` | Read, Grep, Glob, Bash, Write (its own output only) |
 | `delivery-source-scout` | Learns the external sources — other repositories, sibling folders, documents including Word — once each, and writes what they impose on each ticket | `sonnet` | Read, Grep, Glob, Bash, Write (its own output only); never writes to a source |

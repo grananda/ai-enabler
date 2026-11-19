@@ -96,6 +96,19 @@ def main():
     assert [q["question"] for q in out["blocking_questions"]] == ["Which currency?"]
     assert state(run_dir)["test_order"] == "mixed"
     assert run("intake", run_dir, "--order", "after")["test_order"] == "after"
+    assert out["images"] is None                                   # a ticket without images
+
+    # Images: what was read, what was not and why, and what comes from an image.
+    with open(os.path.join(run_dir, "requirements.json"), encoding="utf-8") as fh:
+        req = json.load(fh)
+    req["images"] = [{"name": "error.png", "where": "description", "read": True, "shows": "Error 'Sala ocupada'"},
+                     {"name": "mock.png", "where": "attachment", "read": False, "reason": "no image tool"}]
+    req["acceptance_criteria"][0]["from_image"] = "error.png"
+    req["acceptance_criteria"][3]["from_image"] = "mock.png"          # removed by the plan gate: not listed
+    with open(os.path.join(run_dir, "requirements.json"), "w", encoding="utf-8") as fh:
+        json.dump(req, fh)
+    assert run("intake", run_dir)["images"] == {"read": 1, "not_read": [{"name": "mock.png", "reason": "no image tool"}],
+                                                "from_images": ["AC-1"]}
 
     # Reports: the test engineer writes JSON, the script writes the Markdown people and later stages read.
     report = {"mode": "coverage", "verdict": "defects found", "coverage_verdict": "acceptable",

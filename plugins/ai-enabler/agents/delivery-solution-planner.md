@@ -16,7 +16,7 @@ You are the solution planner of a machine-driven delivery pipeline. Your plan is
 
 ## Input
 
-- `run_dir` with `requirements.json` and `repo-context.md`. Read both in full first, and `refinement.md` and `external-context.md` when they are there.
+- `run_dir` with `requirements.json` and `repo-context.md`. Read both in full first, and `refinement.md` and `external-context.md` when they are there. What the ticket's screenshots show is under `images` in `requirements.json`, described by the analyst; plan from that and do not open the images. A requirement or criterion marked `from_image` came from one: say so in the plan's trace.
 - `test_order` — `before`, `mixed` or `after`: whether tests for the stated criteria will be written before the code. With `after`, mark every test `after code`.
 - optionally `feedback` — adjustments the human asked for on a plan that is **not yet approved**. Apply them and list what changed at the top of the new plan.
 - optionally `mode: delta` with `change` and the delta `number` (and `feedback` when a delta is being revised) — a change requested after the plan was approved. See "Delta mode".

@@ -49,6 +49,12 @@ Each developer exports `JIRA_PERSONAL_TOKEN` in their shell profile. For Jira Cl
 
 To make the pipeline read-only towards Jira regardless of configuration, start the server in its read-only mode (see its documentation); the ship stage will then report that the comment and transition were skipped.
 
+If you limit the server to some tools with `--enabled-tools`, include `jira_get_issue_images` next to `jira_get_issue`. It is a read tool, and it lets the pipeline see the screenshots in a ticket (see "Images in a ticket" below):
+
+```
+--read-only --enabled-tools jira_get_issue,jira_get_issue_images
+```
+
 ## Checking the connection
 
 ```
@@ -63,18 +69,27 @@ With more than one Jira server connected, the pipeline asks once which to use; s
 
 | When | Action | Controlled by |
 |---|---|---|
-| Intake | Reads the issue, its comments, and the links needed to understand it | always |
+| Intake | Reads the issue, its comments, the links needed to understand it, and its image attachments | always (images when the server has an image tool) |
 | Ship | Adds a comment with the branch, the pull-request link, the result and open items | `jira.comment_on_ship` (default on) |
 | Ship | Transitions the issue | `jira.transition_on_ship` (default off) |
 
 Writes happen only after the ship gate, which lists them. The pipeline never edits the description or the acceptance criteria, never reassigns, and never deletes an issue.
+
+## Images in a ticket
+
+People often explain a ticket with a screenshot: an error message, a mock-up, a table pasted as a picture. Whether it is embedded in the description or attached, Jira stores it as an attachment of the issue, and the ticket analyst reads those images with the server's image tool and uses what they show as part of the ticket. No setting turns this on or off: it happens when the ticket has images and the server can return them.
+
+- **What is read:** PNG, JPEG, GIF and WebP attachments, the first ten and up to 10 MB each, once per run. Images on external URLs are not fetched.
+- **Where it is recorded:** the analyst writes what each image shows under `images` in the run's `requirements.json`, and marks the requirements and criteria that come from one. Later stages work from that description and do not open the images again, so their cost is paid once.
+- **Which servers:** `mcp-atlassian` has `jira_get_issue_images`. On another server, the pipeline uses a read tool that returns an issue's images if there is one. Without one, the run goes on with the text and says which images it did not see; `/ai-enabler:delivery-doctor` reports it.
+- **The model must accept images.** Claude models do. Behind a gateway, check that the model it maps to takes image input; if not, the images are reported as not read.
 
 ## Permissions
 
 The first use of each MCP tool raises a permission prompt. To avoid being asked on every run, allow the read tools in the project's `.claude/settings.json`, using the tool names shown by `/mcp` for your server, for example:
 
 ```json
-{ "permissions": { "allow": ["mcp__atlassian__getJiraIssue", "mcp__atlassian__searchJiraIssuesUsingJql"] } }
+{ "permissions": { "allow": ["mcp__atlassian__getJiraIssue", "mcp__atlassian__searchJiraIssuesUsingJql", "mcp__jira__jira_get_issue_images"] } }
 ```
 
 Leave the write tools on "ask" unless the team is comfortable with the ship gate being the only confirmation. Permission prompts are counted by `ai-enabler-metrics` as human interactions, so tuning these rules shows up directly in the usage report.
