@@ -6,6 +6,15 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.9.1] — 2026-11-19
+
+`ai-enabler` 1.7.1 · `ai-enabler-metrics` 1.2.3
+
+### Fixed
+
+- **ai-enabler, marketplace:** Fixes from the first real delivery on 1.9.0: intervention notes quote the person's reply as written, since a paraphrase of what a gate approval authorises was refused by Claude Code's auto-mode classifier; run_state.py gate ship takes --no-jira-write and --no-pr, so the ship gate no longer promises a Jira comment or a pull request that cannot happen from here; delivery-ship says so before shipping and reports a push that failed for lack of stored credentials with the one command that fixes it; delivery-doctor checks that the remote accepts a push without a prompt and that the build and test commands of the repository profile will not ask for permission during an unattended run.
+- **ai-enabler-metrics, marketplace:** A usage-report test no longer depends on how fast the machine runs it: the wait it uses to tell a mostly-waiting agent is no longer short enough to be overtaken by a slow runner, which made the main pipeline fail intermittently.
+
 ## [1.9.0] — 2026-11-17
 
 `ai-enabler` 1.7.0 · `ai-enabler-metrics` 1.2.2

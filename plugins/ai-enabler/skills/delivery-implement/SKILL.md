@@ -4,7 +4,7 @@ description: Implements an already approved ai-enabler plan — creates the feat
 argument-hint: <JIRA-KEY> [--steps 1,2,3]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.2.3"
+  version: "1.2.4"
 ---
 
 # ai-enabler:delivery-implement — execute an approved plan

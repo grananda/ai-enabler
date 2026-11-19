@@ -4,7 +4,7 @@ description: "Generates and runs the tests for a change and checks coverage of t
 argument-hint: "[JIRA-KEY | path ...] [--base <branch>] [--target 80] [--minimum 70] [--levels unit,integration,e2e] [--before-code]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.3.3"
+  version: "1.3.4"
 ---
 
 # ai-enabler:delivery-test — tests and coverage for a change
