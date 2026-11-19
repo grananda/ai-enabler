@@ -4,7 +4,7 @@ description: Refines an existing ticket into a more robust definition, written a
 argument-hint: <JIRA-KEY | ticket.md | ticket.txt> [--out <path>]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.1.3"
+  version: "1.1.4"
 ---
 
 # ai-enabler:delivery-ticket-refine — a thin ticket into a robust one
