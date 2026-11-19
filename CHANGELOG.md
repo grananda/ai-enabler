@@ -6,6 +6,14 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.9.2] — 2026-11-19
+
+`ai-enabler` 1.7.2 · `ai-enabler-metrics` 1.2.3
+
+### Fixed
+
+- **ai-enabler, marketplace:** delivery-doctor on Windows: the permission rules it proposes for the build and test commands come for the PowerShell tool as well as for Bash, since the agents run most commands through PowerShell there, in the current wildcard form and with colon-suffixed scripts covered; and, in auto mode, a new check that the environment description /auto-mode-setup writes names the repository's remote exactly, the Jira host, and that answering ship at the ship gate authorises the commit, push, pull request and Jira comment it lists, with the line to add.
+
 ## [1.9.1] — 2026-11-19
 
 `ai-enabler` 1.7.1 · `ai-enabler-metrics` 1.2.3
