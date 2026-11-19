@@ -1,0 +1,10 @@
+{
+  "summary": "A usage-report test no longer depends on how fast the machine runs it: the wait it uses to tell a mostly-waiting agent is no longer short enough to be overtaken by a slow runner, which made the main pipeline fail intermittently.",
+  "category": "Fixed",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler-metrics": "patch"
+  },
+  "assets": {},
+  "migration": ""
+}

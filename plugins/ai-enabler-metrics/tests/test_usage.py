@@ -379,6 +379,7 @@ def agents(tmp, base_env):
     call(b, "Bash", "k2-1", {"command": "sleep 600 && echo hunter2"}, end=False, **scout(2))
     call(b, "Write", "k3-1", {"file_path": os.path.join(project, "y.py")}, end=False, **scout(3))
     fire(b, "PermissionRequest", tool_name="Write", tool_input={}, **scout(3))
+    waited_from = time.time()
     time.sleep(1.1)
     fire(b, "Stop")
 
@@ -416,12 +417,17 @@ def agents(tmp, base_env):
 
     # Sessions A and B ended ten minutes ago. Session C is running the report right now: its
     # open call is the report's own command, still running, not unfinished.
+    # In B, the wait after the open calls is stretched to 30 s, so that "mostly waiting" does not
+    # depend on how fast the runner spawns the hook (on a loaded CI runner, the 1.1 s sleep was
+    # not always more than the time taken by the calls before it).
     ago = 600.0
     for sid in (a, b):
         path = os.path.join(folder, sid + ".jsonl")
         lines = [json.loads(line) for line in open(path).read().splitlines()]
         with open(path, "w") as fh:
             for e in lines:
+                if sid == b and e["t"] >= waited_from:
+                    e["t"] += 30.0
                 e["t"] -= ago
                 fh.write(json.dumps(e) + "\n")
     c = "cccccccc-0000-0000-0000-000000000003"
