@@ -27,6 +27,7 @@ The two verdicts you give — the quality of the acceptance criteria and readine
 
 1. **Fetch the source.**
    - Jira key: find the connected Jira MCP tools. Tool names differ per server — Atlassian's remote server exposes `getJiraIssue` / `searchJiraIssuesUsingJql`, `mcp-atlassian` exposes `jira_get_issue` / `jira_search` — so look for a tool that fetches an issue by key instead of assuming a name. Fetch the issue with its description, acceptance criteria, issue type, priority, labels, components, status, parent/epic, linked issues, sub-tasks, attachments list and comments. Follow a link only when the ticket cannot be understood without it: the parent epic for context, a "blocks/is blocked by" issue, or a Confluence page the description points at for the specification (use a Confluence MCP tool if one is connected).
+   - **Images in the ticket.** People often explain a ticket with a screenshot — an error message, a mock-up, a table pasted as a picture — embedded in the description (`!name.png!` in Jira wiki markup, a media node in the new editor) or attached. Both are attachments of the issue. When the issue has image attachments (PNG, JPEG, GIF, WebP), read them with the server's image tool — on `mcp-atlassian` `jira_get_issue_images`, which returns them to you as images; on another server, the read tool that returns an issue's image attachments — **once**, in one call, and look at each. Leave out other attachments, external image URLs, and images beyond the first ten or larger than 10 MB (say which). Then record them under `images` in `requirements.json` (below) and use what they show as part of the ticket: a field, a message, a column or a rule visible only in a screenshot is a requirement or a criterion like one in the text, traced to the image. When the issue has no image attachments, do nothing of this. When it has some but they cannot be read — no image tool on the connected server, the tool fails, the model cannot see images — go on with the text: record each with `"read": false` and the reason, and never guess what an image shows from its file name.
    - File: read it. Treat headings such as "Requirements", "Acceptance Criteria", "Definition of Done", "Constraints", "API contract" and checkbox lists as structured content.
    - A file whose frontmatter has `ai-enabler: refined-ticket` was written by the ticket refiner. Set `"refined": true` in `source`; keep its ids (`R-n`, `AC-n`, and `A-n`, `Q-n` as text); mark every requirement and criterion that carries `_(added)_` with `"refined": true`; and count its criteria as stated (`"derived": false`), added ones included: the person had the file in their hands before passing it on.
    - If no Jira MCP tool is available, or the issue cannot be read, stop and say exactly that. Do not reconstruct a ticket from its key or from memory.
@@ -51,7 +52,7 @@ The two verdicts you give — the quality of the acceptance criteria and readine
   "summary": "Two or three sentences: what changes for whom, and why.",
   "feature_type": "REST_API | DATA_MODEL | SERVICE_LOGIC | UI_COMPONENT | CLI_COMMAND | CONFIGURATION | MIGRATION | BUGFIX | OTHER",
   "feature_area": ["domain nouns used to locate related code"],
-  "requirements": [{ "id": "R-1", "text": "Imperative sentence." }],
+  "requirements": [{ "id": "R-1", "text": "Imperative sentence.", "from_image": "only when it comes from an image: its name" }],
   "acceptance_criteria": [{ "id": "AC-1", "text": "Observable behaviour.", "derived": false, "covers": ["R-1"] }],
   "acceptance_criteria_quality": "sufficient | scarce | missing",
   "requirements_without_criteria": ["R-3"],
@@ -61,6 +62,9 @@ The two verdicts you give — the quality of the acceptance criteria and readine
   "out_of_scope": ["Things the ticket explicitly excludes."],
   "dependencies": [{ "ref": "PROJ-100", "relation": "is blocked by", "status": "Done" }],
   "tech_stack_hints": [],
+  "images": [{ "name": "error-dialog.png", "where": "description | attachment", "read": true,
+               "shows": "What the image shows that matters to the ticket: text, fields, values, layout, errors — transcribed, not interpreted.",
+               "used_in": ["R-2", "AC-3"], "reason": "only when read is false: why" }],
   "size": "S | M | L",
   "risk_areas": ["authentication | permissions | personal_data | money | external_input | dependencies | migrations | concurrency"],
   "risk_notes": ["external_input: the duration comes from the request body"],
@@ -72,7 +76,7 @@ The two verdicts you give — the quality of the acceptance criteria and readine
 
 The refiner that runs after you adds to this file, with keys of its own that you do not write: `"refined": true` on items, `as_received`, `refinement`, and `options` and `suggested` on questions. An item may later carry `removed_by` when a person or a delta withdrew it.
 
-Omit `api_contract` and `data_model` when the source describes none. For a bug, put the reproduction steps and the expected versus actual behaviour in `requirements`, and make "the reproduction no longer fails" an acceptance criterion.
+Omit `api_contract` and `data_model` when the source describes none, and `images` when the ticket has no image attachments. Give an acceptance criterion `from_image` too when what it checks is visible only in an image. `shows` is the one place an image is described: later stages read it there and do not open the images again. For a bug, put the reproduction steps and the expected versus actual behaviour in `requirements`, and make "the reproduction no longer fails" an acceptance criterion.
 
 ## Boundaries
 
@@ -83,4 +87,4 @@ Omit `api_contract` and `data_model` when the source describes none. For a bug, 
 
 ## What to return
 
-A short report, nothing else: the path you wrote, the title, the readiness verdict, the acceptance-criteria quality, the count of requirements and of stated and derived criteria, the size and the risk areas, and the full text of any blocking questions and assumptions.
+A short report, nothing else: the path you wrote, the title, the readiness verdict, the acceptance-criteria quality, the count of requirements and of stated and derived criteria, the size and the risk areas, the images read and not read (with the reason), and the full text of any blocking questions and assumptions.

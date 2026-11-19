@@ -21,6 +21,8 @@
         also records in state.json. Also the lane (S, M or L) from the analyst's size and risk
         areas, the settings that lane gives this run (gates, refinement, review, test budget) and
         whether the ticket needs refining; run it after the analyst and again after the refiner.
+        `images` says how many of the ticket's images the analyst read, which it could not and why,
+        and which requirements and criteria come from an image (null when the ticket has none).
     run_state.py show   <run_dir>
     run_state.py gate   <run_dir> plan|ship|delta|coverage|blocked
         Records that the run waits for a person (`waiting` in state.json, which the gate notification
@@ -270,6 +272,19 @@ def lane_of(req, config, forced=None):
     return lane, settings
 
 
+def images_summary(req):
+    """The ticket's images as the analyst left them: how many were read, which were not and why."""
+    images = [i for i in req.get("images") or [] if isinstance(i, dict)]
+    if not images:
+        return None
+    traced = [x.get("id") for x in (req.get("requirements") or []) + (req.get("acceptance_criteria") or [])
+              if isinstance(x, dict) and x.get("from_image") and not x.get("removed_by")]
+    return {"read": len([i for i in images if i.get("read")]),
+            "not_read": [{"name": i.get("name"), "reason": i.get("reason") or "not given"}
+                         for i in images if not i.get("read")],
+            "from_images": traced}
+
+
 def cmd_intake(args):
     p = path_of(args.run_dir, "requirements.json")
     if not os.path.isfile(p):
@@ -308,6 +323,7 @@ def cmd_intake(args):
         "assumptions": len(req.get("assumptions") or []),
         "open_questions": len(questions),
         "blocking_questions": [q for q in questions if q.get("blocking")],
+        "images": images_summary(req),
     }
     if has_state:
         state["test_order"] = order

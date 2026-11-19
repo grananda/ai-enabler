@@ -50,6 +50,10 @@ the session that produced the change.
 <!-- Omit when the project has none. -->
 <Each source the change relies on — by its URL or document name, never a local path — and what it imposed: "Orders API contract (git.example.com/team/contracts, openapi/orders.yaml): error bodies and status codes". Anything in a source that the change could not follow, and why.>
 
+### Images in the ticket
+
+<Only when the ticket had screenshots or other images: which ones were read and what the change took from them, by image name; and any that could not be read, with the reason, so the reviewer can check them by hand. Omit the section when there were none.>
+
 ### Deviations and assumptions
 
 <Where the implementation departed from the plan without a delta; assumptions made about the ticket. "None" otherwise.>

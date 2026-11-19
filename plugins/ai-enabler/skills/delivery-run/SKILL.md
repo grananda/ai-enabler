@@ -50,7 +50,7 @@ Print one line per stage as you go (`[2/8] scout — analysing repository conven
 
 ## Step 1 — Intake
 
-Launch `ai-enabler:delivery-ticket-analyst` with the source and the run directory. For a Jira key, tell it which Jira MCP server to use (the one found in preflight).
+Launch `ai-enabler:delivery-ticket-analyst` with the source and the run directory. For a Jira key, tell it which Jira MCP server to use (the one found in preflight). It reads the ticket's images itself when there are any; do not open them yourself. When the intake lists images that could not be read, say so once, with the reason, and carry it into the delivery report: what they showed may be missing from the requirements.
 
 **When the project has sources**, learn them in parallel with the analyst, as `external-sources.md` says, and wait for that before refining: the refiner reads the source profiles.
 
@@ -65,7 +65,7 @@ When intake is run again on purpose (`--refresh`, or `--from intake`), the analy
 
 If the refiner fails, go on with the analyst's `requirements.json` and say so in the final report: refinement improves a ticket, it is not a condition for delivering it.
 
-Then run `run_state.py intake` again, with the same flags, instead of reading `requirements.json`: it prints the verdicts after refinement, the lane again (refinement may have raised it), the counts, the blocking questions in full, and `test_order`, which it records — `sufficient` → `before`, `scarce` → `mixed`, `missing` → `after`, as the "Test order" table in the reference says. Then act on `readiness`:
+Then run `run_state.py intake` again, with the same flags, instead of reading `requirements.json`: it prints the verdicts after refinement, the lane again (refinement may have raised it), the counts, the blocking questions in full, `images` (the ticket's screenshots the analyst read, the ones it could not and why, and what comes from them), and `test_order`, which it records — `sufficient` → `before`, `scarce` → `mixed`, `missing` → `after`, as the "Test order" table in the reference says. Then act on `readiness`:
 
 - `ready` — continue.
 - `ready_with_assumptions` — continue; the assumptions will be shown at the plan gate.
