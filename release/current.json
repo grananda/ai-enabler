@@ -1,8 +1,7 @@
 {
   "date": "2026-11-19",
   "fragments": [
-    ".changes/real-delivery-fixes.json",
-    ".changes/usage-test-timing.json"
+    ".changes/doctor-windows-auto-mode.json"
   ],
   "hashes": {
     ".changes/README.md": "37a22b10c9012cc7d2ebd6cf309bad3206196cec23dcd3561f6135b0fef79926",
@@ -14,11 +13,11 @@
     ".gitlab/merge_request_templates/Default.md": "99f5a60e2aa5a8190630593c6b2a957f39ea30a2a305cd8ddbca27b1c17a7e31",
     ".gitlab/merge_request_templates/Release.md": "bd592ec93f33dc9664e3dfc25dbc5f3b7c4038933f9c3a46b8df321a27ae7f31",
     "AGENTS.md": "8c52ad578062adb74c86d401e50830dd8cfa8039a60cb705a150db729a5b9781",
-    "CHANGELOG.md": "ee6449d7a970aab2ba16414171832280b1374ba1ddeadc778d40722e73089420",
+    "CHANGELOG.md": "26cbd648e2009a674a2c664636f34860e1ef4cd14882fedc266a8a11a7845005",
     "CLAUDE.md": "e47119e84d4f99ac5114371c01d991f6fe1d8e71101466778a09718dd43bbc36",
     "CONTRIBUTING.md": "91ec51ffbf84b2ef22ce5e5e09eea93199819c58799c94c4de796b24e9574f87",
     "README.md": "613d8bf580da2c497e3396c84f32e59d2dca8acd4d424b11e53322c8f4ab07d7",
-    "VERSION": "0ab4fa190ca1b1d1f630ac87cf34672bfbaf1395d0148c7568d38e58335b8d68",
+    "VERSION": "bb59919018ee76482c23f1ce44219ce4c9c6393c65ef0ddae40d32d79d413bb5",
     "docs/benchmark.md": "81939cea56b824c7482af7768dc3a846cdbc9685b6c7309d0f30123d5be92ae3",
     "docs/design.md": "2c004377c34e756fab75ecd0abcf42307ba2c62a75be67417ca9336c004ee4d6",
     "docs/jira-mcp.md": "3cf8c296ab914dabf6bbd1a6bec8a3172fb8f0a87f0d4043739d4e9394b8b3cb",
@@ -53,8 +52,8 @@
     "plugins/ai-enabler-metrics/skills/metrics-usage-report/SKILL.md": "652ab8857d665797420d2557be0588a255931a4d67389f087a1eeea81bb58475",
     "plugins/ai-enabler-metrics/tests/test_delivery.py": "1955521b60e1a02fe8a1a4bcee414757171b0c4e4e080fff8c47f368f03cc9be",
     "plugins/ai-enabler-metrics/tests/test_usage.py": "b71cdeb981cc743bd605cdfac9e17641b2ccaea6a09c0f71bc2a3ebe74e38ba7",
-    "plugins/ai-enabler/.claude-plugin/plugin.json": "7f7f098461978daf5d266a7e8ec82c646c8a460fd2a91a0f938ee82f9dd529e5",
-    "plugins/ai-enabler/README.md": "ae0c2eb30b10afe82e6d128f8faef94e8ec70c4dbb81820a35cb6e7f33bfce91",
+    "plugins/ai-enabler/.claude-plugin/plugin.json": "80dd4fd2a2b55fc97ec76cb13ad1a1101d5d9ee60bce5805604faf83747fd08f",
+    "plugins/ai-enabler/README.md": "df8f6f2398d00390662387b66f3119b5758c4401631f046c0288f40dcf9f8f37",
     "plugins/ai-enabler/agents/delivery-code-implementer.md": "50c3b36b914b26da9d2ddc031a631732aeb63816b8d3d526d407df67e6a80218",
     "plugins/ai-enabler/agents/delivery-code-reviewer.md": "fda046abc8133d852d88da30203296cd5ffc8be04ac7c25aeeb666edf431a17f",
     "plugins/ai-enabler/agents/delivery-repo-scout.md": "bd10d35560bede453598bb9ba7901e888b5a396a7e69bf35982bca3ada693c1a",
@@ -82,7 +81,7 @@
     "plugins/ai-enabler/scripts/run-python.sh": "c135796e6a2904678e59fd301b899cc6662eb34d943eb8051745e3ec47b87df7",
     "plugins/ai-enabler/scripts/run_state.py": "36f8b3af0e75dc47b6fc77ca1bd33589d8af3f2c1d9568d5be7d49219582464e",
     "plugins/ai-enabler/scripts/sources.py": "1097ab2c6397fd1fde360ac079a5c1c37bf9bb1fc11945ae973711673f893f11",
-    "plugins/ai-enabler/skills/delivery-doctor/SKILL.md": "5879e69456a132f91c66a8bb9504bfc592a7808c35939f8305d68b82ea883950",
+    "plugins/ai-enabler/skills/delivery-doctor/SKILL.md": "a021a666c01594e4fabc0ef499818876e68c24c9ed393f39fc102d609c6465e4",
     "plugins/ai-enabler/skills/delivery-implement/SKILL.md": "60faf6da1600f3889f29599c124f759a5797aa3ff44bd637d26bab4e14854094",
     "plugins/ai-enabler/skills/delivery-plan/SKILL.md": "ef202b71d300a11394f6c3faa6fd1e1d56dc05d524720c36ce718a982afa7dc9",
     "plugins/ai-enabler/skills/delivery-review/SKILL.md": "4b0b05c954faf832d710905d3d9917166652ecc78d49de3c214f0fa539c3fbcf",
@@ -128,6 +127,7 @@
     "release/archive/1.9.0/usage-report-internal-agents.json": "4ca7d2e6dcd325bdb7a724de337417af5674d44cf64b9aa694ab6c144a830a0a",
     "release/archive/1.9.1/real-delivery-fixes.json": "eb9394763fb2f40d4f3ba5c949f0949efe95bed4efca07c654b96c53cf607a19",
     "release/archive/1.9.1/usage-test-timing.json": "be4ffd816667e0d06edfa77e454448da79be48741ab007e44f8be3761de503eb",
+    "release/archive/1.9.2/doctor-windows-auto-mode.json": "e35774f87dc07d3edb07e3d604740adba6524666c8989a1232c3c241b245b66b",
     "release/dependencies.json": "7fa30c317e9745072803456767318374ea4734ad1c39b2817eb5fa49f33a2c2b",
     "tools/bench.py": "804f2db330de322a80ab9f654dc16eecc16166330a8defd92cd2898141f9fa5a",
     "tools/check_conventions.py": "73ae7ad11f4edc76de266dcd630ad05159ef3c07e9a9b8b7daf1c9764e37fef1",
@@ -141,14 +141,13 @@
   "schema": 1,
   "status": "prepared-not-proof-of-publication",
   "tags": [
-    "marketplace-v1.9.1",
-    "ai-enabler-v1.7.1",
-    "ai-enabler-metrics-v1.2.3"
+    "marketplace-v1.9.2",
+    "ai-enabler-v1.7.2"
   ],
   "versions": {
-    "ai-enabler": "1.7.1",
+    "ai-enabler": "1.7.2",
     "ai-enabler-metrics": "1.2.3",
-    "marketplace": "1.9.1",
+    "marketplace": "1.9.2",
     "plugins/ai-enabler-metrics/agents/metrics-jira-collector.md": "1.0.4",
     "plugins/ai-enabler-metrics/skills/metrics-cycle-time/SKILL.md": "1.0.5",
     "plugins/ai-enabler-metrics/skills/metrics-delivery-report/SKILL.md": "1.1.4",
@@ -166,7 +165,7 @@
     "plugins/ai-enabler/agents/delivery-test-engineer.md": "1.4.1",
     "plugins/ai-enabler/agents/delivery-ticket-analyst.md": "1.2.1",
     "plugins/ai-enabler/agents/delivery-ticket-refiner.md": "1.1.4",
-    "plugins/ai-enabler/skills/delivery-doctor/SKILL.md": "1.4.1",
+    "plugins/ai-enabler/skills/delivery-doctor/SKILL.md": "1.4.2",
     "plugins/ai-enabler/skills/delivery-implement/SKILL.md": "1.2.4",
     "plugins/ai-enabler/skills/delivery-plan/SKILL.md": "1.3.4",
     "plugins/ai-enabler/skills/delivery-review/SKILL.md": "1.3.1",
