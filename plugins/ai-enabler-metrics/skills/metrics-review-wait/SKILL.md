@@ -1,7 +1,7 @@
 ---
 name: metrics-review-wait
 description: Measures review waiting time — the median hours from a pull request being ready for review to its first human review — per week, per PR size, per author and per reviewer, and writes an HTML report with charts. Reads GitHub through the GitHub CLI and computes everything with a bundled script. Use when the user says "review waiting time", "how long do PRs wait for review", "time to first review", "who reviews the most", "are reviews a bottleneck", or "review turnaround".
-argument-hint: "[--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--refresh]"
+argument-hint: "[--profile NAME] [--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--refresh]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
   version: "1.0.5"
@@ -31,6 +31,10 @@ The arithmetic is done by a script, not by you: `pr_metrics.py` reads GitHub thr
    - how many PRs had no ready-for-review event, because for those the clock starts when the PR was opened;
    - the path of the HTML report, as the thing to open.
 4. If the person wants the whole picture, point to `/ai-enabler-metrics:metrics-delivery-report`, which runs every delivery metric and builds one dashboard, with a verdict for each metric the team has set a target for.
+
+## Optional profile
+
+Forward `--profile NAME` to the script and any dashboard command. It loads `<metrics-dir>/profiles/NAME.json` with CLI > profile delivery > legacy base/default precedence. Snapshots and GitHub cache then belong only to `<metrics-dir>/profiles-data/NAME/delivery/`, reports to that profile's `reports/<date>/`; never read another root. Explicit offline PR input requires matching top-level `profile`, repo/base scope, and retains its recorded window. `--out-dir` moves only reports and must be empty or owned by the same profile. See the plugin README for the shared schema. GitHub authentication still uses `gh`, never the Jira connection.
 
 ## Which folder
 

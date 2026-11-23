@@ -67,24 +67,30 @@ def main():
     ap = argparse.ArgumentParser(description="Delivery-flow dashboard from the metric snapshots.")
     ap.add_argument("--metrics-dir", "--kpi-dir", dest="metrics_dir")
     ap.add_argument("--out-dir")
+    ap.add_argument("--profile", help="Read only this named profile's delivery snapshots.")
     args = ap.parse_args()
     metrics_dir = args.metrics_dir or L.find_metrics_dir()
+    try:
+        cfg = L.load_config(metrics_dir, args.profile)
+    except L.ConfigError as exc:
+        L.die("Configuration problem: %s" % exc)
     global REP_DIR
-    snap_dir, rep_dir = L.output_dirs(metrics_dir, args.out_dir, create=False)
+    snap_dir, rep_dir = L.output_dirs(metrics_dir, args.out_dir, create=False, profile=args.profile)
     size, wait, rework, cycle = (L.load_snapshot(snap_dir, n) for n in ("pr-size", "review-wait", "rework", "cycle-time"))
     if not any((size, wait, rework, cycle)):
         L.die("No delivery snapshots in %s. Run the metric skills first." % snap_dir)
-    os.makedirs(rep_dir, exist_ok=True)
+    L.output_dirs(metrics_dir, args.out_dir, profile=args.profile)
     REP_DIR = rep_dir
     scopes = {(s_["repo"], s_["base"], s_["window"][0][:10], s_["window"][1][:10])
               for s_ in (size, wait, rework) if s_}
 
-    try:
-        cfg = L.load_config(metrics_dir)
-    except L.ConfigError as exc:
-        L.die("Configuration problem in the metrics config: %s" % exc)
+    for snap in (size, wait, rework, cycle):
+        if snap and snap.get("profile") != args.profile:
+            L.die("Snapshot profile does not match --profile; recollect into its isolated directory.")
+    if args.profile and cycle and cycle.get("scope", {}).get("connection_url") != (cfg.get("_connection") or {}).get("url"):
+        L.die("Jira snapshot endpoint no longer matches this profile; recollect before building the dashboard.")
     verdicts = L.evaluate_targets(cfg, {"pr-size": size, "review-wait": wait, "rework": rework, "cycle-time": cycle})
-    L.save_snapshot(snap_dir, "kpis", {"generated": datetime.now(timezone.utc).isoformat(), "kpis": verdicts,
+    L.save_snapshot(snap_dir, "kpis", {"generated": datetime.now(timezone.utc).isoformat(), "profile": args.profile, "kpis": verdicts,
                                        "rejected_targets": cfg["_rejected_targets"]})
     marks = {"met": "✓ met", "not met": "✗ not met", "inconclusive": "~ inconclusive", "no data": "– no data"}
 
@@ -118,22 +124,35 @@ def main():
         o = cycle["overall"]
         tiles += [("Cycle time", fmt(o["median"], "days", 1), "median working days, in progress to done"),
                   ("Tickets moved backward", pct(o["revert_rate"]), "%d of %d resolved" % (o["reverted"], o["total"]))]
-        names = [s["name"] for s in cycle["sprints"]]
+        periods, by_period, kind = L.cycle_periods(cycle)
+        names = [s["name"] for s in periods]
+        if cycle.get("mode") == "kanban":
+            scope = cycle.get("scope", {})
+            cycle_note = "Kanban · %s buckets · [%s, %s), UTC · board %s · filter %s · observed %s." % (
+                kind, cycle["window"][0], cycle["window"][1], scope.get("board") or "—",
+                scope.get("filter") or "—", cycle.get("collected_at", "unknown"))
+            cycle_note += " Historical blocking is bounded by the window; %d blocked at collection (separate current status)." % len(cycle.get("blocked_now", []))
+            if cycle.get("truncated_changelogs") or cycle.get("unverified_changelogs"):
+                cycle_note += " Warning: some issue histories are incomplete or unverified; see the detail report."
+        else:
+            cycle_note = "Last %d closed sprints, %s to %s · computed %s." % (
+                len(names), periods[0]["start"][:10] if periods else "—",
+                periods[-1]["end"][:10] if periods else "—", (cycle.get("generated") or "")[:10])
+            if cycle.get("scope", {}).get("scope_verified") is False:
+                cycle_note += " Legacy input: board scope and freshness are unverified."
         parts.append(C.section(
             "Cycle time — %s" % (cycle.get("project") or "Jira"),
-            C.grid(C.card("Median cycle time per sprint", C.columns(
-                [{"label": n, "value": cycle["by_sprint"][n]["median"], "lo": cycle["by_sprint"][n]["ci_lo"],
-                  "hi": cycle["by_sprint"][n]["ci_hi"], "low": cycle["by_sprint"][n]["low"],
-                  "n": "n=%d" % cycle["by_sprint"][n]["n"]} for n in names], "days", digits=1),
+            C.grid(C.card("Median cycle time per " + kind, C.columns(
+                [{"label": n, "value": by_period[n]["median"], "lo": by_period[n]["ci_lo"],
+                  "hi": by_period[n]["ci_hi"], "low": by_period[n]["low"],
+                  "n": "n=%d" % by_period[n]["n"]} for n in names], "days", digits=1),
                 "working days · whisker = 90 % CI"),
                    C.card("Blocked time per ticket", C.hbars(
                        [{"label": b["key"], "value": b["days"],
                          "note": "blocked now" if b["still_blocked"] else b["type"]} for b in cycle["blocked"][:8]],
                        "days", color_index=7, digits=1), "calendar days, longest first")),
             link("cycle-time", "Full cycle-time report: per issue type, per developer, every backward move →"),
-            note="Last %d closed sprints, %s to %s · computed %s."
-                 % (len(names), cycle["sprints"][0]["start"][:10], cycle["sprints"][-1]["end"][:10],
-                    (cycle.get("generated") or "")[:10])))
+            note=cycle_note))
     else:
         missing.append("cycle time (Jira)")
     if size:
@@ -219,7 +238,7 @@ def main():
                  "has large PRs, someone finishing a colleague's ticket has follow-ups, and whoever reviews "
                  "most is carrying the team's review load. Read them together, and with the people concerned.")
         if cycle:
-            by = cycle["by_assignee"]
+            by = cycle.get("by_assignee", {})
             order = sorted(by, key=lambda k: -(by[k]["n"]))
             people += (C.card("Cycle time per assignee (Jira names)", C.hbars(
                 [{"label": k, "value": by[k]["median"], "low": by[k]["low"], "note": "%d tickets" % by[k]["n"]}
@@ -227,6 +246,8 @@ def main():
 
     ai = ""
     try:
+        if args.profile:
+            raise FileNotFoundError("Global usage is not attributed to delivery profiles.")
         with open(os.path.join(rep_dir, "usage.json"), encoding="utf-8") as fh:
             usage = json.load(fh)
         k = usage["overall"]
@@ -244,7 +265,7 @@ def main():
         pass
 
     first = size or wait or rework
-    meta = []
+    meta = ["profile %s" % args.profile] if args.profile else []
     if first:
         meta.append("%s · base %s · %s to %s" % (first["repo"], first["base"], first["window"][0][:10],
                                                  first["window"][1][:10]))
@@ -266,4 +287,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except L.ConfigError as exc:
+        L.die("Configuration problem: %s" % exc)

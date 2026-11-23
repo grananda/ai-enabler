@@ -1,7 +1,7 @@
 ---
 name: metrics-pr-size
 description: Measures pull request size — the median lines changed per merged PR, with lock files and generated code left out — per week, per area of the repository and per developer, and writes an HTML report with charts. Reads GitHub through the GitHub CLI and computes everything with a bundled script. Use when the user says "PR size report", "how big are our pull requests", "are our PRs too large", "pull request size per developer", or "lines changed per PR".
-argument-hint: "[--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--refresh]"
+argument-hint: "[--profile NAME] [--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--refresh]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
   version: "1.0.5"
@@ -30,6 +30,10 @@ The arithmetic is done by a script, not by you: `pr_metrics.py` reads GitHub thr
    - which exclusion patterns actually matched files, and anything under "Data quality";
    - the path of the HTML report, as the thing to open.
 4. If the person wants the whole picture, point to `/ai-enabler-metrics:metrics-delivery-report`, which runs every delivery metric and builds one dashboard, with a verdict for each metric the team has set a target for.
+
+## Optional profile
+
+Forward `--profile NAME` to the script and any dashboard command. It loads `<metrics-dir>/profiles/NAME.json` with CLI > profile delivery > legacy base/default precedence. Snapshots and GitHub cache then belong only to `<metrics-dir>/profiles-data/NAME/delivery/`, reports to that profile's `reports/<date>/`; never read another root. Explicit offline PR input requires matching top-level `profile`, repo/base scope, and retains its recorded window. `--out-dir` moves only reports and must be empty or owned by the same profile. See the plugin README for the shared schema. GitHub authentication still uses `gh`, never the Jira connection.
 
 ## Which folder
 

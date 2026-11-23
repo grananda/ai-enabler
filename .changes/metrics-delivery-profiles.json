@@ -1,0 +1,15 @@
+{
+  "summary": "Named delivery profiles (--profile NAME) on the Jira, PR and dashboard commands: each profile has its own Jira endpoint, the names of the environment variables holding its credentials (never the credentials), its workflow settings, and its own snapshots, caches and reports. A collection made under one profile is refused under another; without --profile nothing changes, and global AI usage is not attributed to a profile.",
+  "category": "Added",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler-metrics": "minor"
+  },
+  "assets": {
+    "plugins/ai-enabler-metrics/skills/metrics-delivery-report/SKILL.md": "minor",
+    "plugins/ai-enabler-metrics/skills/metrics-pr-size/SKILL.md": "minor",
+    "plugins/ai-enabler-metrics/skills/metrics-review-wait/SKILL.md": "minor",
+    "plugins/ai-enabler-metrics/skills/metrics-rework/SKILL.md": "minor"
+  },
+  "migration": ""
+}

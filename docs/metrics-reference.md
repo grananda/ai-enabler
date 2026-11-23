@@ -148,7 +148,7 @@ The Bedrock table carries all five prices explicitly, as published by AWS. Where
 
 ## Delivery-flow metrics
 
-Computed by `scripts/pr_metrics.py` and `scripts/jira_cycle.py`, not by the hooks. Each writes a snapshot to `.enabler/metrics/delivery/<metric>.json` with the same structure: `overall`, then one summary per bucket (`by_week` or `by_sprint`, `by_area` / `by_type` / `by_app`, `by_author` / `by_assignee` / `by_reviewer`).
+Computed by `scripts/pr_metrics.py` and `scripts/jira_cycle.py`, not by the hooks. Each writes a snapshot to `.enabler/metrics/delivery/<metric>.json` with the same structure: `overall`, then one summary per bucket (`by_week`, Scrum `by_sprint` or Kanban `by_period`, `by_area` / `by_type` / `by_app`, `by_author` / `by_assignee` / `by_reviewer`).
 
 A summary of sizes or durations holds: `n` (observations), `total` (items in the bucket), `coverage` (`n ÷ total`), `median`, `mean`, `ci_lo` and `ci_hi` (90 % percentile bootstrap interval of the median, 5,000 resamples, fixed seed), and `flags`: `low n` under 20 observations, `low coverage` under 70 %, `skewed` when the mean is more than twice the median. Rates carry a 90 % Wilson interval.
 
@@ -162,6 +162,12 @@ A summary of sizes or durations holds: `n` (observations), `total` (items in the
 | **Blocked time** | Calendar days in a blocked status from the start of the first analysed sprint on, all visits added; an open visit runs until resolution or now |
 
 All pull-request metrics place a PR in the ISO week of its merge date (UTC).
+
+The Jira definitions above remain the default `delivery.jira.mode: scrum`. Opt-in `kanban` uses `jira.since`/`until` as a UTC `[start,end)` window and `group_by: week|month`; without dates it uses the last `jira.weeks` (default 6) complete weeks. Weekly boundaries are Monday, monthly boundaries the first, and partial/empty periods remain. Cycle time uses full history and the latest recorded resolution, assigned to one period. Backward moves are window-bounded, with the same flap filter and resolved-cohort denominator. Historical blocked time is clipped to the window and collection time for **all** lifetime-overlap candidates, including open and later-resolved work; per-period tables cover only resolved cohorts. `blocked_now` is a separate status-at-collection list among those candidates, not extra blocked duration. No resolutions means null cycle time/rate, not zero; blocked time can still exist.
+
+Kanban snapshots have `mode`, `period_kind`, `periods`, `by_period`, `window`, `boundary`, `timezone`, `scope` and `collected_at`. Scrum snapshots keep their existing keys, and the dashboard accepts old snapshots without mode fields. REST and MCP/offline use the same board-resolved saved-filter scope; inaccessible board configuration never falls back to whole-project search. Membership is current at collection rather than reconstructed historically. Histories are paginated when supported; `truncated_changelogs` and `unverified_changelogs` expose data limitations. See the [Jira input contract](../plugins/ai-enabler-metrics/skills/metrics-cycle-time/references/jira-input.md) for collection, scope validation and compatibility.
+
+Named delivery profiles are optional: `--profile NAME` loads `<metrics-dir>/profiles/NAME.json` and puts all delivery snapshots/cache/reports under `profiles-data/NAME/`. Profile delivery settings layer over the legacy configuration; CLI overrides them. Connection URL and credential environment-variable references are separate, with no global credential fallback. Context switches reset inherited Jira selectors/window/workflow. Offline collections and snapshots carry matching profile identity; profile Jira collections also match the configured endpoint. The dashboard never borrows another profile's PR metrics or global usage. See [profile configuration](../plugins/ai-enabler-metrics/README.md#optional-named-delivery-profiles) for schema and exact merge rules.
 
 ## Targets and KPIs
 
