@@ -1,7 +1,7 @@
 ---
 name: metrics-rework
 description: Measures rework — reverts plus follow-up pull requests for the same ticket within 14 days, as a share of merged PRs — per week, per app and per developer, and writes an HTML report with charts. Reads GitHub through the GitHub CLI and computes everything with a bundled script. Use when the user says "rework rate", "how many reverts", "follow-up fixes", "how often do we fix what we just merged", "revert rate", or "rework per developer".
-argument-hint: "[--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--followup-days 14] [--refresh]"
+argument-hint: "[--profile NAME] [--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--followup-days 14] [--refresh]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
   version: "1.0.5"
@@ -31,6 +31,10 @@ The arithmetic is done by a script, not by you: `pr_metrics.py` reads GitHub thr
    - whether a ticket pattern is configured (`default_ticket_pattern` in the snapshot). Without one, keys are guessed from anything shaped like ABC-123 and lower-case branch names are not read, so the follow-up count is less reliable: recommend setting `ticket_pattern` in `.enabler/metrics/config.json`;
    - the path of the HTML report, as the thing to open.
 4. If the person wants the whole picture, point to `/ai-enabler-metrics:metrics-delivery-report`, which runs every delivery metric and builds one dashboard, with a verdict for each metric the team has set a target for.
+
+## Optional profile
+
+Forward `--profile NAME` to the script and any dashboard command. It loads `<metrics-dir>/profiles/NAME.json` with CLI > profile delivery > legacy base/default precedence. Snapshots and GitHub cache then belong only to `<metrics-dir>/profiles-data/NAME/delivery/`, reports to that profile's `reports/<date>/`; never read another root. Explicit offline PR input requires matching top-level `profile`, repo/base scope, and retains its recorded window. `--out-dir` moves only reports and must be empty or owned by the same profile. See the plugin README for the shared schema. GitHub authentication still uses `gh`, never the Jira connection.
 
 ## Which folder
 

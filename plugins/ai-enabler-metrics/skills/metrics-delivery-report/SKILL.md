@@ -1,7 +1,7 @@
 ---
 name: metrics-delivery-report
 description: Builds the delivery-flow dashboard — one HTML page with charts over pull request size, review waiting time, rework and Jira cycle time, including per-developer figures — by running the four delivery metric skills and combining their results. Use when the user says "delivery report", "delivery metrics", "team flow report", "DORA-style report", "how is the team delivering", "all the delivery metrics", "sprint and PR metrics together", or "numbers per developer".
-argument-hint: "[--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--followup-days 14] [--project KEY] [--sprints 3] [--refresh] [--no-jira]"
+argument-hint: "[--profile NAME] [--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--followup-days 14] [--project KEY] [--mode scrum|kanban] [--sprints 3] [--board ID | --filter ID] [--since DATE --until DATE] [--group-by week|month] [--refresh] [--no-jira]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
   version: "1.1.4"
@@ -11,6 +11,12 @@ metadata:
 
 Runs every delivery metric and puts the results on one page. The four metrics are also skills of their own (`metrics-pr-size`, `metrics-review-wait`, `metrics-rework`, `metrics-cycle-time`); this one calls them all.
 
+## Optional profile
+
+When `--profile NAME` is passed, forward it to **all** PR, Jira and dashboard commands. Load `<metrics-dir>/profiles/NAME.json`; CLI overrides profile delivery, then legacy base/defaults. Read/write only `<metrics-dir>/profiles-data/NAME/{delivery,reports/...}` and never borrow snapshots from the global or another profile's root. The Jira collector must match both profile identity and the configured connection endpoint. Profile connection stores only HTTPS URL and credential environment-variable references; never values or automatic `.env` loading. See the plugin README for schema/context reset rules.
+
+Skip step 3 (global AI usage) for profile reports: usage capture is not profile-attributed. `--out-dir` changes only HTML location, must belong to this profile, and cannot redirect the snapshot/cache root. An explicit input is validated against profile identity and scope, never used to infer or switch profile. No `--profile` retains the legacy root.
+
 ## Flow
 
 1. **Pull-request metrics, in one go.** One command fetches once and computes the three of them:
@@ -19,10 +25,10 @@ Runs every delivery metric and puts the results on one page. The four metrics ar
    /bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/pr_metrics.py" all [--repo ...] [--base ...] [--weeks N] [--followup-days N] [--refresh]
    ```
 
-   Only those flags go to this script. `--project`, `--sprints` and `--no-jira` belong to the cycle-time step, and `--refresh` applies to both.
+   Only those flags go to this script. `--project`, `--mode`, `--sprints`, `--board`, `--filter`, `--since`, `--until`, `--group-by` and `--no-jira` belong to the cycle-time step, and `--refresh` applies to both.
 
    If it stops because the GitHub CLI is missing or not signed in, relay the message and recommend `gh` as `${CLAUDE_PLUGIN_ROOT}/skills/metrics-pr-size/SKILL.md` describes, then continue with what can be collected.
-2. **Cycle time.** Unless `--no-jira` was passed, follow `${CLAUDE_PLUGIN_ROOT}/skills/metrics-cycle-time/SKILL.md` from its step 1. If the project has no Jira project configured and none was given, skip it and say so rather than asking in the middle of a report. If Jira can only be read through MCP and a snapshot `.enabler/metrics/delivery/cycle-time.json` less than 7 days old exists, reuse it unless `--refresh` was passed: closed sprints do not change.
+2. **Cycle time.** Unless `--no-jira` was passed, follow `${CLAUDE_PLUGIN_ROOT}/skills/metrics-cycle-time/SKILL.md` from its step 1. If the project has no Jira project configured and none was given, skip it and say so rather than asking in the middle of a report. Forward every Jira scope flag to that step. Jira defaults to Scrum; Kanban is an explicit per-project opt-in with its own window (PR `--weeks` does not alter it). **Scrum, as before:** if Jira can only be read through MCP and a snapshot `cycle-time.json` less than 7 days old exists for the same project, reuse it unless `--refresh` was passed. **Kanban, or a named profile:** reuse an MCP snapshot only when `collected_at` is less than 24 hours old, its scope exactly matches mode/project/board/resolved filter/UTC window/grouping (and the profile and its endpoint), and `--refresh` was not passed; missing metadata means recollect. The dashboard accepts legacy Scrum snapshots.
 3. **AI usage, for context.** If today's report folder already holds `usage.json` — because `/ai-enabler-metrics:metrics-usage-report` just wrote it, possibly with filters — leave it as it is. Otherwise, if usage capture is on (`.enabler/metrics/events/` has data), run `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/usage_report.py" --quiet` so its headline figures appear on the dashboard too.
 4. **The dashboard:**
 

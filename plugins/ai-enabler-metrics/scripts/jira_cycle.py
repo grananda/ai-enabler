@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Jira cycle time, backward moves and blocked time for the last closed sprints.
+"""Jira cycle time, backward moves and blocking for Scrum or opt-in Kanban.
 
-    jira_cycle.py [--project KEY] [--sprints N] [--board ID]
-                  [--input DIR] [--metrics-dir DIR] [--out-dir DIR]
+    jira_cycle.py [--project KEY] [--mode scrum|kanban] [--sprints N]
+                  [--board ID | --filter ID] [--since DATE --until DATE]
+                  [--group-by week|month] [--input DIR] [--metrics-dir DIR] [--out-dir DIR]
 
 Two ways to get the data, both ending in the same deterministic computation:
 
@@ -25,7 +26,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import charts as C                      # noqa: E402
@@ -37,10 +38,17 @@ FLAP_SECONDS = 60
 # ---------------------------------------------------------------------- REST
 
 class Jira:
-    def __init__(self):
-        self.base = (os.environ.get("JIRA_URL") or "").rstrip("/")
-        token = os.environ.get("JIRA_PERSONAL_TOKEN")
-        user, api_token = os.environ.get("JIRA_USERNAME"), os.environ.get("JIRA_API_TOKEN")
+    def __init__(self, connection=None, profile=None):
+        if profile:
+            connection = L.validate_connection(connection) if connection is not None else {}
+            self.base = connection.get("url", "")
+            token = os.environ.get(connection.get("personal_token_env", ""))
+            user = os.environ.get(connection.get("username_env", ""))
+            api_token = os.environ.get(connection.get("api_token_env", ""))
+        else:
+            self.base = (os.environ.get("JIRA_URL") or "").rstrip("/")
+            token = os.environ.get("JIRA_PERSONAL_TOKEN")
+            user, api_token = os.environ.get("JIRA_USERNAME"), os.environ.get("JIRA_API_TOKEN")
         if token:
             self.auth = "Bearer " + token
         elif user and api_token:
@@ -54,6 +62,8 @@ class Jira:
 
     def check_url(self):
         u = urllib.parse.urlparse(self.base)
+        if u.username or u.password or u.query or u.fragment:
+            raise RuntimeError("JIRA_URL must not contain credentials, a query or a fragment.")
         if u.scheme != "https" and u.hostname not in ("localhost", "127.0.0.1", "::1"):
             raise RuntimeError("JIRA_URL must be https (got %s://): the token would travel in clear text."
                                % (u.scheme or "no scheme"))
@@ -62,11 +72,13 @@ class Jira:
         url = self.base + path + ("?" + urllib.parse.urlencode(params) if params else "")
         req = urllib.request.Request(url, headers={"Authorization": self.auth, "Accept": "application/json"})
         host = urllib.parse.urlparse(self.base).netloc
+        scheme = urllib.parse.urlparse(self.base).scheme
 
         class SameHost(urllib.request.HTTPRedirectHandler):
             # urllib would resend the Authorization header to wherever a redirect points.
             def redirect_request(self, req_, fp, code, msg, headers, newurl):
-                if urllib.parse.urlparse(newurl).netloc != host:
+                destination = urllib.parse.urlparse(newurl)
+                if (destination.netloc != host or destination.scheme != scheme):
                     raise urllib.error.HTTPError(newurl, code, "redirect to another host refused", headers, fp)
                 return super().redirect_request(req_, fp, code, msg, headers, newurl)
 
@@ -75,18 +87,67 @@ class Jira:
                 return json.load(resp)
         except urllib.error.HTTPError as exc:
             raise RuntimeError("Jira answered %s for %s" % (exc.code, path))
-        except urllib.error.URLError as exc:
-            raise RuntimeError("Jira is not reachable at %s: %s" % (self.base, exc.reason))
+        except urllib.error.URLError:
+            raise RuntimeError("Jira is not reachable; check its URL, network and TLS configuration.")
 
     def paged(self, path, key, **params):
         start, out = 0, []
         while True:
             page = self.get(path, startAt=start, maxResults=50, **params)
             items = page.get(key) or []
+            if page.get("startAt", start) != start:
+                raise RuntimeError("Jira returned an unexpected page offset for %s." % path)
             out += items
             start += len(items)
-            if not items or page.get("isLast") or start >= (page.get("total") or 10 ** 9):
+            total = page.get("total")
+            if page.get("isLast") is True and total is not None and start < total:
+                raise RuntimeError("Jira ended pagination before the reported total for %s." % path)
+            if not items and total is not None and start < total:
+                raise RuntimeError("Jira returned an incomplete page for %s." % path)
+            if page.get("isLast") is True or (total is not None and start >= total):
                 return out
+            if not items:
+                raise RuntimeError("Jira omitted pagination completeness for %s." % path)
+
+    def complete_history(self, issue):
+        """Cloud has paged histories; unsupported DC endpoints remain explicitly incomplete."""
+        log = issue.get("changelog") or {}
+        histories = log.get("histories") or []
+        if log.get("total") is not None and log["total"] == len(histories) and not log.get("startAt"):
+            issue["history_complete"] = True
+            return issue
+        try:
+            histories = self.paged("/rest/api/2/issue/%s/changelog" % urllib.parse.quote(issue["key"], safe=""), "values")
+            issue["changelog"] = {"histories": histories, "total": len(histories)}
+            issue["history_complete"] = True
+        except RuntimeError:
+            issue["history_complete"] = False
+        return issue
+
+    def collect_kanban(self, project, periods, board=None, filter_id=None, group_by="week"):
+        self.check_url()
+        if not board and not filter_id:
+            boards = self.paged("/rest/agile/1.0/board", "values", projectKeyOrId=project, type="kanban")
+            if len(boards) != 1:
+                raise RuntimeError("Expected one Kanban board for %s, found %d; choose --board or --filter."
+                                   % (project, len(boards)))
+            board = boards[0]["id"]
+        if board:
+            # The board's saved filter includes completed tickets hidden by the board UI.
+            # Never fall back to a project-wide query if configuration is inaccessible.
+            config = self.get("/rest/agile/1.0/board/%s/configuration" % board)
+            filter_id = (config.get("filter") or {}).get("id")
+            if not filter_id:
+                raise RuntimeError("Cannot establish board %s saved-filter scope; collection stopped." % board)
+        scope = collection_scope("kanban", project, board, filter_id, periods, group_by)
+        # Deliberately broad within the saved filter: no created/resolved LOWER bound.
+        # Jira JQL date literals use the account timezone; pad by a day and apply exact
+        # UTC overlap in Python. This retains work started long before the window.
+        upper = (L.parse_ts(periods[-1]["end"]) + timedelta(days=1)).strftime("%Y-%m-%d")
+        jql = 'filter = %s AND created < "%s" ORDER BY key' % (filter_id, upper)
+        issues = self.paged("/rest/api/2/search", "issues", jql=jql, expand="changelog",
+                            fields="summary,issuetype,status,assignee,created,resolutiondate")
+        return [self.complete_history(i) for i in issues], scope
 
     def collect(self, project, n_sprints, board=None):
         self.check_url()
@@ -100,22 +161,77 @@ class Jira:
                         key=lambda s: s.get("completeDate") or s["endDate"])[-n_sprints:]
         if not closed:
             raise RuntimeError("Board %s has no closed sprint." % board)
+        self.scope = {"mode": "scrum", "project": project, "board": str(board), "filter": None,
+                      "sprint_ids": [s["id"] for s in closed]}
         issues, seen = [], set()
         for s in closed:
-            for it in self.paged("/rest/agile/1.0/sprint/%s/issue" % s["id"], "issues", expand="changelog",
+            for it in self.paged("/rest/agile/1.0/board/%s/sprint/%s/issue" % (board, s["id"]), "issues", expand="changelog",
                                  fields="summary,issuetype,status,assignee,created,resolutiondate"):
                 if it["key"] not in seen:
                     seen.add(it["key"])
-                    issues.append(it)
+                    issues.append(self.complete_history(it))
         return closed, issues
 
 
 # --------------------------------------------------------------------- input
 
+def collection_scope(mode, project, board, filter_id, periods, group_by=None):
+    return {"mode": mode, "project": project, "board": str(board) if board else None,
+            "filter": str(filter_id) if filter_id else None,
+            "window": [periods[0]["start"], periods[-1]["end"]],
+            "group_by": group_by, "timezone": "UTC", "boundary": "[start,end)",
+            "selection": "saved-filter-membership-at-collection; lifetime-overlap"}
+
+
+def load_collection(path, jira, periods, profile=None, connection=None):
+    """Validate the same scope contract for REST exports and MCP/offline data."""
+    try:
+        with open(os.path.join(path, "collection.json"), encoding="utf-8") as fh:
+            meta = json.load(fh)
+    except FileNotFoundError:
+        if jira["mode"] == "kanban" or profile:
+            raise ValueError("collection.json is required for Kanban or a named profile; recollect with scope metadata.")
+        return {"mode": "scrum", "project": jira.get("project"), "board": None,
+                "requested_board": str(jira["board"]) if jira.get("board") else None,
+                "scope_verified": False}, None
+    scope = meta.get("scope") or {}
+    if scope.get("profile") != profile:
+        raise ValueError("collection.json profile does not match the requested profile.")
+    if profile:
+        if not connection or scope.get("connection_url") != connection["url"]:
+            raise ValueError("Profile collection must match the configured connection URL (including context path).")
+    for key in ("mode", "project"):
+        if scope.get(key) != jira.get(key):
+            raise ValueError("collection.json %s does not match the requested scope." % key)
+    for key in ("board", "filter"):
+        if jira.get(key) and str(scope.get(key)) != str(jira[key]):
+            raise ValueError("collection.json %s does not match the requested scope." % key)
+    collected = L.parse_ts(meta.get("collected_at"))
+    if not collected or meta.get("issues_complete") is not True:
+        raise ValueError("collection.json needs collected_at and issues_complete: true; finish collection first.")
+    clean = {k: scope[k] for k in ("mode", "project", "board", "filter", "sprint_ids") if k in scope}
+    if scope.get("board") is not None and not str(scope["board"]).isdigit():
+        raise ValueError("collection.json board must be a numeric ID.")
+    if jira["mode"] == "scrum" and (not scope.get("board") or not scope.get("sprint_ids")):
+        raise ValueError("Scrum collection metadata needs a board and sprint_ids.")
+    if jira["mode"] == "kanban":
+        expected = collection_scope("kanban", jira.get("project"), scope.get("board"), scope.get("filter"),
+                                    periods, jira["group_by"])
+        if not str(scope.get("filter") or "").isdigit():
+            raise ValueError("Kanban collection scope needs the resolved saved-filter ID.")
+        for key in ("window", "group_by", "timezone", "boundary", "selection"):
+            if scope.get(key) != expected[key]:
+                raise ValueError("collection.json %s does not match the requested scope." % key)
+        clean = expected
+    if profile:
+        clean.update(profile=profile, connection_url=connection["url"])
+    return clean, collected
+
+
 def load_dir(path):
     sprints, issues = [], []
     for name in sorted(os.listdir(path)):
-        if not name.endswith(".json"):
+        if not name.endswith(".json") or name == "collection.json":
             continue
         with open(os.path.join(path, name), encoding="utf-8") as fh:
             data = json.load(fh)
@@ -131,7 +247,9 @@ def load_dir(path):
     # collection) must count once: keep the record with the longest history.
     best = {}
     for it in issues:
-        key = it.get("key")
+        if not isinstance(it, dict) or not it.get("key"):
+            raise ValueError("Every issue record needs a nonempty key.")
+        key = it["key"]
         size = len(it.get("transitions") or (it.get("changelog") or {}).get("histories") or [])
         if key not in best or size > best[key][0]:
             best[key] = (size, it)
@@ -152,7 +270,7 @@ def normalize(issue):
         f = issue.get("fields") or {}
         trans = []
         log = issue.get("changelog") or {}
-        truncated = bool(log.get("total") and log["total"] > len(log.get("histories") or []))
+        truncated = bool(log.get("startAt") or (log.get("total") and log["total"] > len(log.get("histories") or [])))
         for h in log.get("histories") or []:
             for item in h.get("items") or []:
                 if item.get("field") == "status":
@@ -163,7 +281,9 @@ def normalize(issue):
                "status": (f.get("status") or {}).get("name"), "created": L.parse_ts(f.get("created")),
                "resolved": L.parse_ts(f.get("resolutiondate")), "summary": f.get("summary") or ""}
     out["transitions"] = sorted([t for t in trans if t["at"]], key=lambda t: t["at"])
-    out["truncated"] = truncated
+    out["truncated"] = truncated or issue.get("history_complete") is False
+    out["history_unverified"] = issue.get("history_complete") is not True and (
+        "fields" not in issue or "total" not in (issue.get("changelog") or {}))
     return out
 
 
@@ -171,6 +291,9 @@ def normalize(issue):
 
 def analyse(sprints, raw_issues, cfg, now=None):
     now = now or datetime.now(timezone.utc)
+    kanban = cfg["jira"].get("mode", "scrum") == "kanban"
+    if kanban:
+        sprints = L.jira_periods(cfg["jira"], now)
     st = cfg["jira"]["statuses"]
     rank = {}
     for i, group in enumerate(st["order"]):
@@ -202,6 +325,12 @@ def analyse(sprints, raw_issues, cfg, now=None):
     period_start, period_end = sprints[0]["start"], sprints[-1]["end"]
     unknown = set()
     issues = [normalize(i) for i in raw_issues]
+    if kanban:
+        # Include all lifetime-overlap candidates, even unresolved or resolved later.
+        # A post-window transition retains reopened issues whose old resolution is stale.
+        issues = [i for i in issues if (not i["created"] or i["created"] < period_end) and (
+            not i["resolved"] or i["resolved"] >= period_start or
+            any(t["at"] >= period_start for t in i["transitions"]))]
     for it in issues:
         tr = it["transitions"]
         for t in tr:
@@ -214,9 +343,15 @@ def analyse(sprints, raw_issues, cfg, now=None):
         # Blocked time inside the analysed period: every visit to a blocked status,
         # an open visit running until resolution or now. Time blocked years ago is not this report's.
         days = 0.0
-        for i, t in enumerate(tr):
+        visits = tr
+        if kanban and it["created"]:
+            initial = tr[0]["from"] if tr else it["status"]
+            visits = [{"at": it["created"], "to": initial}] + tr
+        for i, t in enumerate(visits):
             if (t["to"] or "").lower() in blocked:
-                until = tr[i + 1]["at"] if i + 1 < len(tr) else (it["resolved"] or now)
+                until = visits[i + 1]["at"] if i + 1 < len(visits) else (it["resolved"] or now)
+                if kanban:
+                    until = min(until, period_end, now)
                 since = max(t["at"], period_start)
                 days += max(0.0, (until - since).total_seconds() / 86400.0)
         it["blocked_days"] = days
@@ -231,7 +366,8 @@ def analyse(sprints, raw_issues, cfg, now=None):
                 last_ranked = t["from"]
             origin = t["from"] if frm in rank else last_ranked
             a, b = rank.get((origin or "").lower()), rank.get(to)
-            if a is None or b is None or b >= a or not (period_start <= t["at"] <= period_end):
+            in_window = period_start <= t["at"] and (t["at"] < period_end if kanban else t["at"] <= period_end)
+            if a is None or b is None or b >= a or not in_window:
                 continue
             nxt = tr[i + 1] if i + 1 < len(tr) else None
             prv = tr[i - 1] if i > 0 else None
@@ -246,7 +382,10 @@ def analyse(sprints, raw_issues, cfg, now=None):
         # A ticket resolved between two sprints (after one ended, before the next began)
         # belongs to the sprint that had just ended: that is where the work was done.
         it["sprint"] = None
-        if it["resolved"] and period_start <= it["resolved"] <= period_end:
+        if kanban:
+            inside = [s for s in sprints if it["resolved"] and s["start"] <= it["resolved"] < s["end"]]
+            it["sprint"] = inside[0]["name"] if inside else None
+        elif it["resolved"] and period_start <= it["resolved"] <= period_end:
             inside = [s for s in sprints if s["start"] <= it["resolved"] <= s["end"]]
             ended = [s for s in sprints if s["end"] < it["resolved"]]
             it["sprint"] = (inside[0] if inside else ended[-1])["name"]
@@ -267,7 +406,7 @@ def analyse(sprints, raw_issues, cfg, now=None):
     by_type = {k: stats(v) for k, v in L.group_by(resolved, lambda i: i["type"]).items()}
     by_assignee = {k: stats(v) for k, v in L.group_by(resolved, lambda i: i["assignee"]).items()}
     blocked_rank = sorted([i for i in issues if i["blocked_days"] > 0], key=lambda i: -i["blocked_days"])
-    return {
+    result = {
         "sprints": [{"name": s["name"], "start": s["start"].isoformat(), "end": s["end"].isoformat()} for s in sprints],
         "issues": len(issues), "resolved_in_window": len(resolved),
         "overall": stats(resolved), "by_sprint": by_sprint, "by_type": by_type, "by_assignee": by_assignee,
@@ -284,6 +423,18 @@ def analyse(sprints, raw_issues, cfg, now=None):
                      "sprint": i["sprint"]} for i in sorted([i for i in resolved if i["cycle"] is not None],
                                                              key=lambda i: -i["cycle"])[:10]],
     }
+    if kanban:
+        result.update({"mode": "kanban", "period_kind": cfg["jira"]["group_by"],
+                       "periods": result.pop("sprints"), "by_period": result.pop("by_sprint"),
+                       "window": [period_start.isoformat(), period_end.isoformat()],
+                       "boundary": "[start,end)", "timezone": "UTC",
+                       "unverified_changelogs": sorted(i["key"] for i in issues if i["history_unverified"]),
+                       "blocked_now": [{"key": i["key"], "status": i["status"]} for i in issues if i["still_blocked"]],
+                       "blocking_observed_at": now.isoformat()})
+        for key in ("reverted", "longest"):
+            for item in result[key]:
+                item["period"] = item.pop("sprint")
+    return result
 
 
 # -------------------------------------------------------------------- render
@@ -299,7 +450,12 @@ def pct(v):
 def render(r, project, cfg):
     o = r["overall"]
     show = cfg["show_people"]
-    names = [s["name"] for s in r["sprints"]]
+    periods, by_period, kind = L.cycle_periods(r)
+    kanban = r.get("mode") == "kanban"
+    names = [s["name"] for s in periods]
+    now_blocked = len(r.get("blocked_now", [])) if kanban else sum(1 for b in r["blocked"] if b["still_blocked"])
+    scope_note = ("Kanban · %s buckets · [start, end), UTC · board %s · filter %s"
+                  % (kind, r.get("scope", {}).get("board") or "—", r.get("scope", {}).get("filter") or "—")) if kanban else "%d closed sprints: %s" % (len(names), ", ".join(names))
 
     def row(name, s):
         ci = "–" if s["ci_lo"] is None else "%s – %s days" % (C.fmt_num(s["ci_lo"], 1), C.fmt_num(s["ci_hi"], 1))
@@ -324,7 +480,10 @@ def render(r, project, cfg):
     late = sum(1 for t in r["reverted"] if any(m["from_late_stage"] for m in t["moves"]))
     blocked_total = sum(b["days"] for b in r["blocked"])
     if not o["total"]:
-        bottom = ["No ticket was resolved inside these sprints, so there is nothing to measure."]
+        bottom = ["No ticket was resolved in this window; cycle time and backward rate have no observations."]
+        if kanban:
+            bottom.append("Historical blocking still covers open tickets: %s; %d tickets blocked at collection."
+                          % (fmt(blocked_total, "days"), now_blocked))
     else:
         bottom = [
             ("Median cycle time is %s over %d tickets (90 %% CI %s – %s days); %s of resolved tickets have one."
@@ -335,37 +494,48 @@ def render(r, project, cfg):
             "were sent back from a stage after in progress (review, test, acceptance or done), the rest were "
             "re-planned." % (pct(o["revert_rate"]), o["reverted"], o["total"], late),
             "%d tickets spent time blocked during these sprints, %s in total; %d are blocked now."
-            % (len(r["blocked"]), fmt(blocked_total, "days"), sum(1 for b in r["blocked"] if b["still_blocked"])),
+            % (len(r["blocked"]), fmt(blocked_total, "days"), now_blocked),
         ]
     if "skewed" in o["flags"]:
         bottom.append("The mean (%s) is far above the median: a few long-running tickets pull it up."
                       % fmt(o["mean"], "days"))
+    if kanban:
+        bottom = [line.replace("these sprints", "this window").replace("blocked now", "blocked at collection") for line in bottom]
     return C.page(
         "Cycle time — %s" % project,
-        ["%s to %s" % (r["sprints"][0]["start"][:10], r["sprints"][-1]["end"][:10]),
-         "%d closed sprints: %s" % (len(names), ", ".join(names)),
-         "%d tickets, %d resolved inside these sprints" % (r["issues"], r["resolved_in_window"]),
+        (["profile %s" % r["profile"]] if r.get("profile") else []) +
+        ["%s to %s" % (periods[0]["start"], periods[-1]["end"]),
+         scope_note,
+         "%d tickets, %d resolved in window" % (r["issues"], r["resolved_in_window"]),
          "generated %s UTC" % datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")],
         C.bullets(bottom),
         C.tiles([("Median cycle time", fmt(o["median"], "days"), "working days, in progress to done"),
                  ("Backward rate", pct(o["revert_rate"]), "%d of %d tickets" % (o["reverted"], o["total"])),
                  ("Blocked time", fmt(blocked_total, "days"), "%d tickets, open ones included" % len(r["blocked"])),
-                 ("Blocked now", "%d tickets" % sum(1 for b in r["blocked"] if b["still_blocked"]), None),
+                 ("Blocked at collection" if kanban else "Blocked now", "%d tickets" % now_blocked,
+                  r.get("blocking_observed_at")),
                  ("Coverage", pct(o["coverage"]), "%d of %d resolved tickets" % (o["n"], o["total"]))]),
         C.definitions([
             ("Cycle time", "Working days (Monday to Friday, no holiday calendar) from a ticket's first entry "
-                           "into %s to its resolution, for tickets resolved inside the sprint. It includes "
+                           "into %s to its resolution, for tickets resolved inside the window. It includes "
                            "time spent blocked or reworked." % " / ".join(cfg["jira"]["statuses"]["in_progress"])),
-            ("Sprint", "A ticket belongs to the sprint during which it was resolved, not to every sprint it "
+            ("Period" if kanban else "Sprint", ("Resolution belongs to exactly one UTC [start,end) week/month bucket. "
+                       "Cycle time uses the first in-progress transition in the full history, even before the window. "
+                       "A reopened ticket is measured to its latest recorded resolution.") if kanban else
+                       "A ticket belongs to the sprint during which it was resolved, not to every sprint it"
                        "was planned in. A resolution between two sprints counts for the one that was ending. "
                        "A reopened ticket is measured to its final resolution."),
             ("Moved backward", "A move to an earlier status in the configured order, dated inside the analysed "
-                               "sprints. A move undone within a minute is ignored. Blocked is neither forward "
+                               "window. A move undone within a minute is ignored. Blocked is neither forward "
                                "nor backward, but a ticket that returns from Blocked to an earlier status "
                                "than it left has moved backward."),
             ("Status order", " < ".join("/".join([g] if isinstance(g, str) else g)
                                         for g in cfg["jira"]["statuses"]["order"])),
-            ("Blocked time", "Calendar days in %s from the start of the first sprint on, all visits added up; "
+            ("Blocked time", ("Historical calendar days clipped to [start,end) and the collection time, all "
+                             "visits added up, including unresolved and later-resolved tickets. Tables by period "
+                             "cover only the resolved cohort. Blocked at collection is a separate current-status "
+                             "count among window candidates, not historical blocked duration.") if kanban else
+                             "Calendar days in %s from the start of the first sprint on, all visits added up;"
                              "a ticket blocked now is counted until today. The headline covers every ticket "
                              "of these sprints, open ones included; the tables per sprint cover resolved ones."
                              % " / ".join(cfg["jira"]["statuses"]["blocked"])),
@@ -373,13 +543,13 @@ def render(r, project, cfg):
                          "never entered an in-progress status has none."),
             ("Flags", "low n: fewer than %d tickets. skewed: mean more than twice the median." % L.LOW_N),
         ]),
-        C.section("Per sprint",
-                  C.grid(C.card("Median cycle time per sprint", C.columns(pts(names, r["by_sprint"]), "days", digits=1),
+        C.section("Per " + kind,
+                  C.grid(C.card("Median cycle time per " + kind, C.columns(pts(names, by_period), "days", digits=1),
                                 "working days · whisker = 90 % CI · faded = little data"),
-                         C.card("Tickets moved backward per sprint", C.columns(
-                             pts(names, r["by_sprint"], "revert_rate", "revert_lo", "revert_hi", 100.0), "%",
+                         C.card("Tickets moved backward per " + kind, C.columns(
+                             pts(names, by_period, "revert_rate", "revert_lo", "revert_hi", 100.0), "%",
                              color_index=1), "% of resolved tickets · whisker = 90 % CI")),
-                  C.table(cols, [row(n, r["by_sprint"][n]) for n in names] + [row("All sprints", o)], num)),
+                  C.table(cols, [row(n, by_period[n]) for n in names] + [row("All periods", o)], num)),
         C.section("Per issue type",
                   C.card("Median cycle time per type", C.hbars(
                       [{"label": t, "value": r["by_type"][t]["median"], "low": r["by_type"][t]["low"],
@@ -404,14 +574,14 @@ def render(r, project, cfg):
                             b["assignee"] if show else "–", fmt(b["days"], "days"), b["bucket"]] for b in r["blocked"]],
                           numeric=(4,))),
         C.section("Tickets that moved backward", C.table(
-            ["Ticket", "Type", "Sprint", "Assignee", "Moves"],
-            [[t["key"], t["type"], t["sprint"], t["assignee"] if show else "–",
+            ["Ticket", "Type", "Period" if kanban else "Sprint", "Assignee", "Moves"],
+            [[t["key"], t["type"], t.get("period", t.get("sprint")), t["assignee"] if show else "–",
               "; ".join("%s → %s%s (%s)" % (m["from"], m["to"], " via blocked" if m.get("via_blocked") else "",
                                            m["at"][:10]) for m in t["moves"])]
              for t in r["reverted"]])),
         C.section("Longest cycle times", C.table(
-            ["Ticket", "Type", "Sprint", "Assignee", "Cycle time"],
-            [[t["key"], t["type"], t["sprint"], t["assignee"] if show else "–", fmt(t["cycle"], "days")]
+            ["Ticket", "Type", "Period" if kanban else "Sprint", "Assignee", "Cycle time"],
+            [[t["key"], t["type"], t.get("period", t.get("sprint")), t["assignee"] if show else "–", fmt(t["cycle"], "days")]
              for t in r["longest"]], numeric=(4,))),
         C.section("Data quality", C.bullets([
             ("Statuses not in the configured order, ignored when looking for backward moves: %s. Add them to "
@@ -419,12 +589,17 @@ def render(r, project, cfg):
             if r["unknown_statuses"] else "Every status seen is in the configured order.",
             ("Resolved without entering an in-progress status first, so without a cycle time: %s."
              % ", ".join(r["no_cycle"])) if r["no_cycle"] else "Every resolved ticket has a cycle time.",
-            ("Resolved outside the analysed sprints (before the first began or after the last ended) and "
+            ("Resolved outside the analysed window and "
              "therefore in no bucket: %s." % ", ".join(r["resolved_outside"])) if r.get("resolved_outside") else "",
             ("Jira returned only part of the history of: %s. Their figures may be wrong; collect them one "
              "by one." % ", ".join(r["truncated_changelogs"])) if r.get("truncated_changelogs") else "",
             ("%d duplicate ticket records in the input were dropped." % r["duplicates_dropped"])
             if r.get("duplicates_dropped") else "",
+            ("History completeness was not verified for: %s." % ", ".join(r["unverified_changelogs"]))
+            if r.get("unverified_changelogs") else "",
+            "Board/filter membership is evaluated at collection, not reconstructed historically." if kanban else "",
+            "Legacy input has no collection metadata: board scope and freshness are unverified; recollect to verify."
+            if r.get("scope", {}).get("scope_verified") is False else "",
             "Source: " + r.get("source", "files"),
         ])),
         footer="Computed by jira_cycle.py.")
@@ -433,48 +608,94 @@ def render(r, project, cfg):
 # ---------------------------------------------------------------------- main
 
 def main():
-    ap = argparse.ArgumentParser(description="Jira cycle time for the last closed sprints.")
+    ap = argparse.ArgumentParser(description="Jira cycle time for Scrum sprints or Kanban date windows.")
+    ap.add_argument("--profile", help="Named delivery profile in <metrics-dir>/profiles/NAME.json.")
     ap.add_argument("--project")
     ap.add_argument("--sprints", type=int)
     ap.add_argument("--board")
-    ap.add_argument("--input", help="Directory with sprints.json and issue files, instead of the REST API.")
+    ap.add_argument("--mode", choices=("scrum", "kanban"))
+    ap.add_argument("--filter", dest="filter_id", help="Kanban saved-filter ID, instead of a board.")
+    ap.add_argument("--since", help="Kanban inclusive ISO 8601 start (UTC).")
+    ap.add_argument("--until", help="Kanban exclusive ISO 8601 end (UTC).")
+    ap.add_argument("--group-by", choices=("week", "month"))
+    ap.add_argument("--input", help="Directory with scope metadata and issue files (plus sprints.json for Scrum).")
     ap.add_argument("--metrics-dir", "--kpi-dir", dest="metrics_dir")
     ap.add_argument("--out-dir")
     args = ap.parse_args()
 
     metrics_dir = args.metrics_dir or L.find_metrics_dir()
     try:
-        cfg = L.load_config(metrics_dir)
+        cfg = L.load_config(metrics_dir, args.profile)
     except L.ConfigError as exc:
         L.die("Configuration problem in %s: %s" % (os.path.join(metrics_dir or ".enabler/metrics", "config.json"), exc))
-    project = args.project or cfg["jira"]["project"]
+    overrides = {key: getattr(args, key) for key in
+                 ("project", "sprints", "board", "mode", "since", "until", "group_by")
+                 if getattr(args, key) is not None}
+    if args.filter_id is not None:
+        overrides["filter"] = args.filter_id
+    # Profile context switches reset inherited selectors. Legacy CLI merge stays compatible.
+    cfg["jira"] = L.jira_overlay(cfg["jira"], overrides) if args.profile else L.merge(cfg["jira"], overrides)
+    jcfg = cfg["jira"]
+    try:
+        L.validate_jira(jcfg)
+    except L.ConfigError as exc:
+        L.die(str(exc))
+    project = jcfg["project"]
+    kanban = jcfg["mode"] == "kanban"
+    collected = datetime.now(timezone.utc)
+    periods = L.jira_periods(jcfg, collected) if kanban else []
     dropped = 0
     if args.input:
-        sprints, issues, dropped = load_dir(args.input)
-        source = "files in %s" % args.input
-        if not sprints or not issues:
-            L.die("Expected sprints.json and at least one issue file in %s." % args.input)
+        try:
+            scope, observed = load_collection(args.input, jcfg, periods, args.profile, cfg.get("_connection"))
+            sprints, issues, dropped = load_dir(args.input)
+        except (OSError, ValueError) as exc:
+            L.die("Invalid Jira input: %s" % exc)
+        collected = observed or collected
+        source = "offline collection"
+        if not kanban and not sprints:
+            L.die("Expected sprints.json in %s." % args.input)
+        if not kanban and scope.get("sprint_ids") and (
+                {str(s.get("id")) for s in sprints} != {str(i) for i in scope["sprint_ids"]}):
+            L.die("sprints.json IDs do not match collection.json sprint_ids.")
     else:
-        jira = Jira()
+        jira = Jira(cfg.get("_connection"), args.profile)
+        if not jira.available and args.profile:
+            L.die("NO_JIRA_ACCESS: profile connection or its referenced environment variables are missing; "
+                  "configure this profile's connection or collect matching MCP data with --input. No default credentials were used.")
         if not jira.available:
             L.die("NO_JIRA_ACCESS: set JIRA_URL and JIRA_PERSONAL_TOKEN (or JIRA_USERNAME and "
                   "JIRA_API_TOKEN) in the environment, or collect the data to a directory and pass --input.")
         if not project:
             L.die("Which Jira project? Pass --project KEY or set delivery.jira.project in the metrics config.")
         try:
-            sprints, issues = jira.collect(project, args.sprints or cfg["jira"]["sprints"],
-                                           args.board or cfg["jira"]["board"])
+            if kanban:
+                issues, scope = jira.collect_kanban(project, periods, jcfg["board"], jcfg["filter"], jcfg["group_by"])
+                sprints = []
+            else:
+                sprints, issues = jira.collect(project, jcfg["sprints"], jcfg["board"])
+                scope = jira.scope
         except RuntimeError as exc:
             L.die(str(exc))
-        source = "Jira REST API at %s" % jira.base
+        source = "Jira REST API"
+        collected = datetime.now(timezone.utc)
+    if kanban:
+        # Freeze rolling defaults before using the observation timestamp of an offline collection.
+        jcfg["since"], jcfg["until"] = periods[0]["start"], periods[-1]["end"]
     try:
-        result = analyse(sprints, issues, cfg)
+        result = analyse(sprints, issues, cfg, now=collected)
     except ValueError as exc:
         L.die(str(exc))
+    if args.profile:
+        scope.update(profile=args.profile, connection_url=cfg["_connection"]["url"])
+        result["profile"] = args.profile
+    result["scope"] = scope
+    result["workflow_statuses"] = cfg["jira"]["statuses"]
+    result["collected_at"] = collected.isoformat()
     result["duplicates_dropped"] = dropped
     result.update({"metric": "cycle-time", "unit": "working days", "project": project, "source": source,
                    "generated": datetime.now(timezone.utc).isoformat()})
-    snap_dir, rep_dir = L.output_dirs(metrics_dir, args.out_dir)
+    snap_dir, rep_dir = L.output_dirs(metrics_dir, args.out_dir, profile=args.profile)
     page = render(result, project or "Jira", cfg)
     if not cfg["show_people"]:
         # The snapshot can end up committed: hiding names only in the HTML is not enough.
@@ -489,4 +710,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except L.ConfigError as exc:
+        L.die("Configuration problem: %s" % exc)

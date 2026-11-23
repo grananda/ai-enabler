@@ -33,8 +33,14 @@ DEFAULTS = {
     "size_buckets": [100, 500],    # S below the first, L from the second
     "jira": {
         "project": None,
+        "mode": "scrum",
         "sprints": 3,
         "board": None,
+        "filter": None,             # Kanban saved-filter ID, instead of a board
+        "since": None,              # Kanban UTC inclusive start
+        "until": None,              # Kanban UTC exclusive end
+        "group_by": "week",         # week (ISO Monday) or month
+        "weeks": 6,                 # complete weeks when no explicit window is given
         "statuses": {
             "order": [["To Do", "Open", "Backlog", "Ready", "Selected for Development",
                        "In Estimation", "In Definition"],
@@ -195,8 +201,73 @@ def merge(base, over):
     return out
 
 
-def load_config(metrics_dir):
-    """The `delivery` block of .enabler/metrics/config.json over the defaults."""
+def profile_root(metrics_dir, profile=None):
+    """An isolated delivery namespace; never changes where usage hooks capture."""
+    if profile is None:
+        return metrics_dir
+    if not isinstance(profile, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", profile):
+        raise ConfigError("--profile must be a lowercase slug (letters, digits, _ or -, at most 64 characters).")
+    if profile in {"con", "prn", "aux", "nul"} or re.fullmatch(r"(?:com|lpt)[0-9]", profile):
+        raise ConfigError("--profile cannot be a reserved Windows device name.")
+    if not metrics_dir:
+        raise ConfigError("--profile requires a metrics directory; pass --metrics-dir.")
+    return os.path.join(metrics_dir, "profiles-data", profile)
+
+
+def read_profile(metrics_dir, profile):
+    profile_root(metrics_dir, profile)
+    try:
+        with open(os.path.join(metrics_dir, "profiles", profile + ".json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        raise ConfigError("Profile %s is missing or is not valid JSON." % profile)
+    if not isinstance(data, dict) or set(data) - {"connection", "delivery"}:
+        raise ConfigError("A profile must be an object with only connection and delivery fields.")
+    if not isinstance(data.get("delivery", {}), dict):
+        raise ConfigError("Profile delivery must be an object.")
+    if "jira" in data.get("delivery", {}) and not isinstance(data["delivery"]["jira"], dict):
+        raise ConfigError("Profile delivery.jira must be an object.")
+    return data
+
+
+def jira_overlay(base, over):
+    """A context switch resets selectors/window/workflow, not unrelated delivery options."""
+    if not isinstance(over, dict):
+        raise ConfigError("delivery.jira must be an object.")
+    context = ("project", "mode", "board", "filter")
+    changed = any(k in over and over[k] != base.get(k) for k in context)
+    clean = merge(DEFAULTS["jira"], {k: base.get(k) for k in ("project", "mode")}) if changed else base
+    return merge(clean, over)
+
+
+def validate_connection(connection):
+    """Profiles name environment variables; credentials themselves are never configuration."""
+    from urllib.parse import urlparse
+    allowed = {"url", "personal_token_env", "username_env", "api_token_env"}
+    if not isinstance(connection, dict) or set(connection) - allowed:
+        raise ConfigError("connection accepts only url and credential environment-variable references.")
+    url = connection.get("url")
+    if not isinstance(url, str):
+        raise ConfigError("Profile connection requires an HTTPS url.")
+    try:
+        parsed = urlparse(url)
+        valid = parsed.scheme == "https" and parsed.hostname and not (
+            parsed.username or parsed.password or parsed.query or parsed.fragment)
+        parsed.port
+    except ValueError:
+        valid = False
+    if not valid:
+        raise ConfigError("Profile connection url must be HTTPS without userinfo, query or fragment.")
+    refs = {k: v for k, v in connection.items() if k != "url"}
+    if not (set(refs) == {"personal_token_env"} or set(refs) == {"username_env", "api_token_env"}):
+        raise ConfigError("Profile connection requires personal_token_env OR username_env + api_token_env; no credential fallback.")
+    if any(not isinstance(v, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", v) for v in refs.values()):
+        raise ConfigError("Connection credential references must be environment-variable names, not secret values.")
+    return dict(connection, url=url.rstrip("/"))
+
+
+def load_config(metrics_dir, profile=None):
+    """Defaults < legacy delivery config < optional named profile; CLI is applied by callers."""
     raw = {}
     if metrics_dir:
         try:
@@ -205,6 +276,21 @@ def load_config(metrics_dir):
         except (OSError, ValueError):
             raw = {}
     cfg = merge(DEFAULTS, raw.get("delivery") or {})
+    if profile is not None:
+        selected = read_profile(metrics_dir, profile)
+        delivery = selected.get("delivery", {})
+        inherited_jira = DEFAULTS["jira"] if "connection" in selected else cfg["jira"]
+        cfg = merge(cfg, delivery)
+        if "connection" in selected:
+            cfg["jira"] = merge(DEFAULTS["jira"], delivery.get("jira", {}))
+        if "jira" in delivery:
+            cfg["jira"] = jira_overlay(inherited_jira, delivery["jira"])
+        if "connection" in selected:
+            cfg["_connection"] = validate_connection(selected["connection"])
+        else:
+            # A named profile must never inherit credentials for an unrelated endpoint.
+            cfg["_connection"] = None
+        cfg["_profile"] = profile
     custom = cfg.get("ticket_pattern") or raw.get("ticket_pattern")
     cfg["ticket_pattern"] = custom or DEFAULT_TICKET_PATTERN
     cfg["_ticket_default"] = not custom
@@ -221,7 +307,62 @@ def load_config(metrics_dir):
     cfg["_targets"], cfg["_rejected_targets"] = read_targets(cfg.get("targets") or {})
     if not isinstance(cfg["area_roots"], list):
         raise ConfigError("delivery.area_roots must be a list of directory names.")
+    validate_jira(cfg["jira"])
     return cfg
+
+
+def validate_jira(jira):
+    if not isinstance(jira, dict):
+        raise ConfigError("delivery.jira must be an object.")
+    if jira.get("mode", "scrum") not in ("scrum", "kanban"):
+        raise ConfigError("delivery.jira.mode must be scrum or kanban.")
+    if jira.get("group_by", "week") not in ("week", "month"):
+        raise ConfigError("delivery.jira.group_by must be week or month.")
+    for name in ("sprints", "weeks"):
+        value = jira.get(name, DEFAULTS["jira"][name])
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ConfigError("delivery.jira.%s must be a positive integer." % name)
+    for name in ("board", "filter"):
+        value = jira.get(name)
+        if value is not None and (isinstance(value, bool) or not str(value).isdigit() or int(value) <= 0):
+            raise ConfigError("delivery.jira.%s must be a positive numeric ID." % name)
+    if jira.get("board") and jira.get("filter"):
+        raise ConfigError("Choose delivery.jira.board or delivery.jira.filter, not both.")
+    since, until = jira.get("since"), jira.get("until")
+    if bool(since) != bool(until):
+        raise ConfigError("Set both delivery.jira.since and delivery.jira.until.")
+    if since and (not parse_ts(since) or not parse_ts(until) or parse_ts(since) >= parse_ts(until)):
+        raise ConfigError("Jira dates must be ISO 8601 with since before until ([since, until), UTC).")
+    if jira.get("mode", "scrum") == "scrum" and (since or jira.get("filter")):
+        raise ConfigError("Jira date windows and saved filters require mode kanban.")
+
+
+def jira_periods(jira, now=None):
+    """Kanban [start, end) buckets. Explicit partial weeks/months stay partial."""
+    validate_jira(jira)
+    now = now or datetime.now(timezone.utc)
+    end = parse_ts(jira.get("until"))
+    if end is None:
+        end = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = parse_ts(jira.get("since")) or end - timedelta(weeks=jira.get("weeks", 6))
+    periods, cur = [], start
+    while cur < end:
+        if jira.get("group_by", "week") == "week":
+            label = iso_week(cur)
+            nxt = (cur + timedelta(days=7 - cur.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        else:
+            label = cur.strftime("%Y-%m")
+            nxt = (cur.replace(day=1) + timedelta(days=32)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        periods.append({"name": label, "start": cur.isoformat(), "end": min(nxt, end).isoformat()})
+        cur = nxt
+    return periods
+
+
+def cycle_periods(snapshot):
+    """Neutral fields for new Kanban snapshots; old Scrum files still work."""
+    return (snapshot.get("periods", snapshot.get("sprints", [])),
+            snapshot.get("by_period", snapshot.get("by_sprint", {})),
+            snapshot.get("period_kind", "sprint"))
 
 
 def project_root():
@@ -234,13 +375,15 @@ def project_root():
     return os.getcwd()
 
 
-def output_dirs(metrics_dir, out_dir=None, create=True):
+def output_dirs(metrics_dir, out_dir=None, create=True, profile=None):
     """(snapshot dir, report dir).
 
     Without a metrics directory the files go to <repository root>/.enabler/delivery/
     and never to .enabler/metrics/: that directory is what switches the usage hooks
     on, and running a report must not opt a project into capture.
     """
+    config_root = os.path.normcase(os.path.realpath(metrics_dir)) if metrics_dir else None
+    metrics_dir = profile_root(metrics_dir, profile)
     if metrics_dir:
         snap = os.path.join(metrics_dir, "delivery")
         base = os.path.join(metrics_dir, "reports")
@@ -248,9 +391,25 @@ def output_dirs(metrics_dir, out_dir=None, create=True):
         snap = os.path.join(project_root(), ".enabler", "delivery")
         base = os.path.join(snap, "reports")
     rep = out_dir or os.path.join(base, datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    marker = os.path.join(rep, ".delivery-profile.json")
+    try:
+        with open(marker, encoding="utf-8") as fh:
+            ownership = json.load(fh)
+        if ownership.get("profile") != profile or (profile and ownership.get("config_root") != config_root):
+            raise ConfigError("Report directory belongs to another profile/root or has an older ownership marker; choose a separate empty --out-dir.")
+    except FileNotFoundError:
+        if profile and os.path.isdir(rep) and any(os.path.isfile(os.path.join(rep, n + ext))
+                for n in ("delivery", "cycle-time", "pr-size", "review-wait", "rework", "usage")
+                for ext in (".html", ".json")):
+            raise ConfigError("Unowned report directory contains reports; choose an empty --out-dir for this profile.")
+    except (OSError, ValueError, AttributeError):
+        raise ConfigError("Report directory profile marker is unreadable or invalid.")
     if create:
         os.makedirs(snap, exist_ok=True)
         os.makedirs(rep, exist_ok=True)
+        if profile:
+            with open(marker, "w", encoding="utf-8") as fh:
+                json.dump({"profile": profile, "config_root": config_root}, fh)
     return snap, rep
 
 

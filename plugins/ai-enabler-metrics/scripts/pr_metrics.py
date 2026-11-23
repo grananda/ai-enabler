@@ -120,7 +120,14 @@ def fetch(args, cfg, need):
     """Everything the requested metrics need, as plain data."""
     if args.input:
         with open(args.input, encoding="utf-8") as fh:
-            return json.load(fh)
+            data = json.load(fh)
+        if data.get("profile") != getattr(args, "profile", None):
+            raise L.GhError("PR input profile does not match --profile.")
+        if getattr(args, "profile", None):
+            for field, expected in (("repo", args.repo or cfg["repo"]), ("base", args.base or cfg["base_branch"])):
+                if expected and data.get(field) != expected:
+                    raise L.GhError("PR input %s does not match the profile/CLI scope." % field)
+        return data
     L.gh_check()
     repo, default_branch, host = L.gh_repo(args.repo or cfg["repo"])
     base = args.base or cfg["base_branch"] or default_branch
@@ -130,7 +137,7 @@ def fetch(args, cfg, need):
     start = (now - timedelta(weeks=weeks)).replace(hour=0, minute=0, second=0, microsecond=0)
     lookback = start - timedelta(days=followup) if "rework" in need else start
     metrics_dir = args.metrics_dir or L.find_metrics_dir()
-    snap_dir, _ = L.output_dirs(metrics_dir, args.out_dir)
+    snap_dir, _ = L.output_dirs(metrics_dir, args.out_dir, profile=getattr(args, "profile", None))
     gh = L.Gh(repo, host, os.path.join(snap_dir, "cache"), refresh=args.refresh)
     prs = gh.merged_prs(base, lookback)
     in_window = [p for p in prs if not p["bot"] and L.parse_ts(p["merged_at"]) >= start]
@@ -657,13 +664,14 @@ def main():
     ap.add_argument("--followup-days", type=int)
     ap.add_argument("--metrics-dir", "--kpi-dir", dest="metrics_dir")
     ap.add_argument("--out-dir")
+    ap.add_argument("--profile", help="Named delivery profile; isolates snapshots and GitHub cache.")
     ap.add_argument("--refresh", action="store_true", help="Ignore the local cache of GitHub answers.")
     ap.add_argument("--input", help="Use this JSON file instead of fetching from GitHub.")
     args = ap.parse_args()
 
     metrics_dir = args.metrics_dir or L.find_metrics_dir()
     try:
-        cfg = L.load_config(metrics_dir)
+        cfg = L.load_config(metrics_dir, args.profile)
     except L.ConfigError as exc:
         L.die("Configuration problem in %s: %s" % (os.path.join(metrics_dir or ".enabler/metrics", "config.json"), exc))
     need = list(METRICS) if args.metric == "all" else [args.metric]
@@ -671,9 +679,11 @@ def main():
         data = fetch(args, cfg, need)
     except L.GhError as exc:
         L.die(str(exc))
-    snap_dir, rep_dir = L.output_dirs(metrics_dir, args.out_dir)
+    snap_dir, rep_dir = L.output_dirs(metrics_dir, args.out_dir, profile=args.profile)
     for name in need:
         snapshot, html_ = METRICS[name](data, cfg)
+        if args.profile:
+            snapshot["profile"] = args.profile
         if not cfg["show_people"]:
             snapshot = without_people(snapshot)
         L.save_snapshot(snap_dir, name, snapshot)
@@ -684,4 +694,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except L.ConfigError as exc:
+        L.die("Configuration problem: %s" % exc)

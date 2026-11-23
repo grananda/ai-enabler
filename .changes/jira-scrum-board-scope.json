@@ -1,0 +1,10 @@
+{
+  "summary": "Scrum metrics count only the chosen board's tickets when a sprint is shared by several boards: the sprint's issues are read through the board (REST and MCP). Through a Jira MCP server without board tools, collection works as before and the report says the board scope is unverified. The delivery dashboard renders snapshots without per-person data.",
+  "category": "Fixed",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler-metrics": "patch"
+  },
+  "assets": {},
+  "migration": ""
+}

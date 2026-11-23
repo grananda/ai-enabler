@@ -1,0 +1,16 @@
+{
+  "summary": "Kanban delivery metrics for teams without sprints: delivery.jira.mode kanban (scrum stays the default and unchanged) reports cycle time, blocked time and backward moves per week or month over an explicit UTC window (the last six complete weeks by default), for a board or saved filter, without widening to the whole project. Collections carry scope metadata (collection.json) and incomplete histories are reported. The dashboard accepts both Scrum and Kanban snapshots.",
+  "category": "Added",
+  "components": {
+    "marketplace": "minor",
+    "ai-enabler-metrics": "minor"
+  },
+  "assets": {
+    "plugins/ai-enabler-metrics/agents/metrics-jira-collector.md": "minor",
+    "plugins/ai-enabler-metrics/skills/metrics-cycle-time/SKILL.md": "minor",
+    "plugins/ai-enabler-metrics/skills/metrics-stale-assets/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-init/SKILL.md": "patch",
+    "plugins/ai-enabler-metrics/skills/metrics-usage-report/SKILL.md": "patch"
+  },
+  "migration": ""
+}

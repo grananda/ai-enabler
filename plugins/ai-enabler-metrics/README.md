@@ -112,11 +112,79 @@ Under `delivery` in `.enabler/metrics/config.json`; everything is optional:
 | `size_buckets` | `[100, 500]` | S below the first, L from the second |
 | `targets` | `{}` | Targets for the four delivery metrics; a metric with one is a KPI. See "Metrics, and when one is a KPI" |
 | `show_people` | `true` | Per-developer charts and tables. Set to `false` to leave people out of the reports and of the snapshots |
-| `jira.project`, `jira.sprints`, `jira.board` | none, `3`, first scrum board | What to analyse in Jira |
+| `jira.mode` | `scrum` | `scrum` retains closed-sprint reporting; `kanban` opts this project into date-window reporting |
+| `jira.project`, `jira.sprints`, `jira.board` | none, `3`, first Scrum board | Jira project/board; Kanban auto-selection requires exactly one Kanban board |
+| `jira.filter` | none | Kanban saved-filter ID instead of a board; explicit boards always use their saved-filter scope, never the whole project |
+| `jira.since`, `jira.until` | none | Kanban ISO 8601 UTC `[since, until)` window; provide both or neither |
+| `jira.group_by`, `jira.weeks` | `week`, `6` | Kanban `week` or `month` buckets; no dates means the last 6 complete Monday-to-Monday weeks (independent of PR `weeks`) |
 | `jira.statuses.order` | a common workflow | The statuses from first to last; statuses in the same group are the same step. Decides what "backward" means |
 | `jira.statuses.in_progress`, `jira.statuses.blocked` | `In Progress`…, `Blocked`… | Where cycle time starts, and what counts as blocked |
 
 The ticket key pattern is the top-level `ticket_pattern`, shared with the AI usage capture; `delivery.ticket_pattern` overrides it for the delivery metrics alone. Without either, a key is two to ten capitals or digits, a hyphen and a number (`PROJ-123`).
+
+### Scrum and Kanban per project
+
+In Scrum, a sprint's tickets are taken through the chosen board, so a sprint shared by several boards counts only that board's tickets. Through a Jira MCP server without board tools, collection works as it did before and the report says the board scope is unverified. Nothing else changes for Scrum, and nothing is asked that was not asked before.
+
+Existing configurations keep Scrum's last three closed sprints, snapshot fields and resolution/gap rules. To opt one project into Kanban:
+
+```json
+{
+  "delivery": {
+    "jira": {
+      "project": "TEAM", "mode": "kanban", "board": 42,
+      "since": "2026-09-01", "until": "2026-10-01", "group_by": "week"
+    }
+  }
+}
+```
+
+Or override it for one run:
+
+```
+/bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/scripts/jira_cycle.py --project TEAM --mode kanban --board 42 --since 2026-09-01 --until 2026-10-01 --group-by month
+```
+
+A date without a time means midnight UTC. Kanban buckets and backward moves use inclusive start/exclusive end; weeks start Monday, months on the first, with partial edge buckets and empty buckets retained. Cycle time still uses the first in-progress entry in the **full lifetime history** to the latest recorded resolution, even if work began before the window. No resolved tickets means no cycle-time observation, not zero.
+
+Historical Kanban blocking is bounded by the window and collection time, including unresolved and later-resolved tickets. Current blocked status is a separate count among the window's candidates; it is not added to historical time. Scrum's existing blocking semantics remain unchanged. Bootstrap/Wilson statistics and KPI targets are unchanged; no WIP or cumulative-flow metrics are added.
+
+REST and MCP collect the chosen board's saved-filter scope (or `--filter ID`), with every issue/history page. They must stop rather than widen an inaccessible board to a project. A broad filter can be expensive to collect because old active issues require lifetime histories; a filter excluding completed issues cannot yield their cycle times. Membership is evaluated **at collection**, not reconstructed historically. Incomplete or unverifiable histories are flagged; inspect the data-quality section before trusting provisional figures.
+
+Offline Kanban requires `collection.json` with the same mode/project/board/resolved filter/window/grouping and `collected_at`; see the [input contract](skills/metrics-cycle-time/references/jira-input.md). New snapshots expose neutral `periods`/`by_period`, while the dashboard still reads legacy Scrum snapshots. Reuse collections/snapshots only with exact matching scope, unchanged status and board/filter definitions, and collection age under 24 hours; `--refresh` on the skills recollects. File age alone is not enough, and closed-sprint issues can change.
+
+### Optional named delivery profiles
+
+Use `--profile NAME` on `jira_cycle.py`, `pr_metrics.py` and `delivery_report.py` (and their skills) to separate contexts without changing the legacy base configuration. Profiles live at `<metrics-dir>/profiles/NAME.json`; `NAME` is a lowercase slug, 1–64 letters/digits/underscores/hyphens, beginning with a letter or digit. Missing/malformed files and traversal names fail. No active profile is selected implicitly, no `.env` file is loaded, and no environment variables are modified.
+
+Example **fictitious** `profiles/demo-team.json` (never put real client material or secrets in this public repository):
+
+```json
+{
+  "connection": {
+    "url": "https://jira.example.test",
+    "personal_token_env": "DEMO_JIRA_TOKEN"
+  },
+  "delivery": {
+    "repo": "example/demo", "base_branch": "main",
+    "jira": {"project": "DEMO", "mode": "kanban", "board": 42}
+  }
+}
+```
+
+Connection holds an HTTPS endpoint plus **environment-variable names**, never token values. Cloud authentication uses `username_env` and `api_token_env` together instead of `personal_token_env`. A profile never falls back to global Jira credentials: an absent connection is usable for PR-only work but cannot collect Jira, and missing referenced credentials require matching MCP/offline data. URLs with userinfo, query or fragment are refused; redirects cannot forward authorization to another origin or downgrade HTTPS. Each Jira client holds its own connection.
+
+Precedence is **CLI > profile delivery > base delivery config > defaults**. Connection is explicit and never inherited. Declaring a connection resets inherited Jira context to defaults, so the profile supplies its own project/mode/selectors/workflow. Within an existing context, Jira fields merge normally; changing project, mode, board or filter resets selectors, dates and status workflow to defaults while retaining project/mode unless overridden. Specify any desired statuses/window alongside that context switch. Non-Jira delivery options still inherit. Legacy invocations without `--profile` retain their existing merge behavior. CLI dates are run-specific; profile files need not store a window.
+
+```
+/bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/scripts/jira_cycle.py --profile demo-team --since 2026-09-01 --until 2026-10-01
+/bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/scripts/pr_metrics.py all --profile demo-team
+/bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/scripts/delivery_report.py --profile demo-team
+```
+
+Snapshots and GitHub cache are under `<metrics-dir>/profiles-data/NAME/delivery/`; default reports are under `profiles-data/NAME/reports/<date>/`. The dashboard reads **only** this root and requires matching snapshot profile identity; it never borrows legacy/other-profile PR results. Global usage is deliberately omitted from a profile dashboard, not attributed arbitrarily.
+
+`--input` reads exactly the explicit location and never infers profile from it. Jira profile collections require `scope.profile` and the exact configured `scope.connection_url`, in addition to normal scope fields; MCP must connect to that endpoint/context, not just any Jira server. PR inputs require top-level `profile` and must match configured/CLI repo/base when specified; their recorded time window remains authoritative (offline data cannot be refetched by date flags). `--out-dir` changes report location only, never snapshot/cache root. A small `.delivery-profile.json` marker claims that output directory with the profile slug and canonical configuration-root path; another profile, the same slug from a different metrics root, or a legacy invocation cannot reuse it. Older markers missing root identity are refused: select a separate empty directory rather than guessing ownership. Use a separate empty report directory per profile to avoid stale detail links. Profile isolation is a data namespace, not an OS security boundary; keep local profile files/reports private.
 
 ### Per-developer figures
 
@@ -338,6 +406,8 @@ For organisation-wide dashboards, Claude Code's OpenTelemetry export is the comp
 ```
 /bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/tests/test_usage.py
 /bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/tests/test_delivery.py
+/bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/tests/test_jira_kanban.py
+/bin/bash plugins/ai-enabler-metrics/scripts/run-python.sh plugins/ai-enabler-metrics/tests/test_delivery_profiles.py
 ```
 
 Neither needs Claude Code, GitHub or Jira.
