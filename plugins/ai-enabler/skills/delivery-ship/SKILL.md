@@ -52,7 +52,7 @@ If the person answers the confirmation below with a refusal to upload — "no", 
    1. Stage the run's files by path; verify the staged diff (no secrets, no unrelated files, nothing under `.enabler/`). If there is nothing to stage because the work was already committed — after a `local` commit, for example — skip this step and the next and go on with the commits that exist.
    2. Commit.
    3. Push, setting the upstream if needed. On rejection, one `git pull --rebase`; on conflict, abort the rebase and stop.
-   4. Open the pull request (`--draft` if requested or recommended), unless `--no-pr` or `git.pull_request` is false. Without an authenticated `gh` or `glab`, print the compare URL instead.
+   4. Open the pull request (`--draft` if requested or recommended), unless `--no-pr` or `git.pull_request` is false. Without an authenticated `gh` or `glab`, give the person the address that opens it — `run_state.py pr-url <run_dir>` prints it for the run's branch and base; without a run, build the same address from the `origin` remote — and say that the body is in `pull-request.md`, ready to paste.
    5. Jira, unless `--no-jira`, there is no key, or the run's `source` is `file`: add the comment; perform the transition only if it is configured and available from the current status.
 6. **Report** what actually happened, step by step: commit hash, branch, pull-request URL, Jira comment and transition (done, skipped and why, or failed and why). Update `state.json` with `pr_url` and the stage.
 
@@ -74,7 +74,7 @@ The body follows a template: a real file, so that every pull request the pipelin
 4. **Fill it** from `delivery-report.md`, or from the diff when there is no run: what changed, why, how to verify.
    - The plugin's template: the report already has its sections; remove the guidance comments and the sections that do not apply.
    - Another template: keep its headings, their order and its checklists exactly; put each part of the report under the heading where a reviewer of this repository would look for it; tick a checkbox only when the run's files prove it, and leave the rest unticked instead of deleting them. What the template has no place for and a reviewer needs — the acceptance-criteria table, failing tests, open findings, what refinement added — goes at the end under "Delivery details". Never drop a failing test or an open finding because the template did not ask.
-5. Save the body as `pull-request.md` in the run directory (or `.enabler/runs/adhoc/` without a run) and pass that file to `gh pr create --body-file` or `glab mr create`. Nothing local is referenced in it: no `.enabler/` path means anything to a reviewer.
+5. Save the body as `pull-request.md` in the run directory (or `.enabler/runs/adhoc/` without a run) and pass that file to `gh pr create --body-file` or `glab mr create`. Write it whether or not a pull request can be opened from here: when only the tool is missing, the person opens it by hand and pastes this body, so the template is settled all the same. Nothing local is referenced in it: no `.enabler/` path means anything to a reviewer.
 
 ## Rules
 

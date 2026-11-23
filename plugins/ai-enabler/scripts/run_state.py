@@ -35,6 +35,13 @@
         Writes test-report.md and acceptance-tests.md from the test engineer's test-report.json and
         acceptance-tests.json, for people and for the stages that read Markdown. `update` does it too,
         whenever a JSON file is newer than its Markdown, so the orchestrator rarely calls it.
+    run_state.py check  <run_dir> [FILE ...]
+        Parses the run's JSON files (every *.json in the run directory, or only the files named) and
+        prints which are valid and which are not, with the line and column of each syntax error.
+        Exits 1 when one is invalid. An agent runs it on the file it has just written, before returning.
+    run_state.py pr-url <run_dir> [--branch BRANCH] [--base BRANCH]
+        The address that opens a new pull request (GitHub, GitLab, Bitbucket) for the run's branch
+        against its base, from the `origin` remote. For when no PR tool can open it from here.
 
 Every command prints a compact JSON view of the state (or of the intake). Times are UTC.
 No third-party dependencies; no model involved.
@@ -43,6 +50,7 @@ No third-party dependencies; no model involved.
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -289,6 +297,9 @@ def cmd_intake(args):
     p = path_of(args.run_dir, "requirements.json")
     if not os.path.isfile(p):
         sys.exit("run_state: no requirements.json in %s" % args.run_dir)
+    problem = json_problem(p)
+    if problem:
+        sys.exit("run_state: %s. Fix its syntax only, then run intake again." % describe("requirements.json", problem))
     with open(p, encoding="utf-8") as fh:
         req = json.load(fh)
     crit = [c for c in req.get("acceptance_criteria") or [] if isinstance(c, dict)]
@@ -463,12 +474,13 @@ def render(run_dir, force=False):
             continue
         if not force and os.path.isfile(dst) and os.path.getmtime(dst) >= os.path.getmtime(src):
             continue
+        problem = json_problem(src)
+        if problem:
+            errors.append(describe(name + ".json", problem))
+            continue
         try:
             with open(src, encoding="utf-8") as fh:
-                data = json.load(fh)
-            if not isinstance(data, dict):
-                raise ValueError("not a JSON object")
-            text = fn(data, key)
+                text = fn(json.load(fh), key)
         except (ValueError, OSError) as e:
             errors.append("%s.json: %s" % (name, e))
             continue
@@ -478,13 +490,76 @@ def render(run_dir, force=False):
     return written, errors
 
 
-def read_json(run_dir, name):
+def json_problem(path):
+    """None when the file parses as a JSON object; otherwise what is wrong, with the line and column."""
     try:
-        with open(path_of(run_dir, name), encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    except json.JSONDecodeError as e:
+        return {"line": e.lineno, "column": e.colno, "error": e.msg}
+    except (OSError, ValueError) as e:
+        return {"line": None, "column": None, "error": str(e)}
+    return None if isinstance(data, dict) else {"line": 1, "column": 1, "error": "not a JSON object"}
+
+
+def describe(name, problem):
+    where = " at line %s, column %s" % (problem["line"], problem["column"]) if problem.get("line") else ""
+    return "%s is not valid JSON%s: %s" % (name, where, problem["error"])
+
+
+def load_json(run_dir, name):
+    """(data, problem): ({}, None) when the file is missing; ({}, problem) when it does not parse."""
+    p = path_of(run_dir, name)
+    if not os.path.isfile(p):
+        return {}, None
+    problem = json_problem(p)
+    if problem:
+        return {}, problem
+    with open(p, encoding="utf-8") as fh:
+        return json.load(fh), None
+
+
+def read_json(run_dir, name):
+    return load_json(run_dir, name)[0]
+
+
+def cmd_check(args):
+    if args.files:
+        paths = [f if os.path.isabs(f) or os.path.exists(f) else path_of(args.run_dir, f) for f in args.files]
+    else:
+        paths = sorted(path_of(args.run_dir, n) for n in os.listdir(args.run_dir) if n.endswith(".json"))
+    out = {"valid": [], "invalid": []}
+    for p in paths:
+        name = os.path.basename(p)
+        problem = json_problem(p) if os.path.isfile(p) else {"line": None, "column": None, "error": "no such file"}
+        if problem:
+            out["invalid"].append(dict(file=name, message=describe(name, problem), **problem))
+        else:
+            out["valid"].append(name)
+    return out
+
+
+def new_pr_url(remote, branch, base):
+    """The web address that opens a new pull request for `branch` against `base`, or None."""
+    from urllib.parse import quote
+    remote = (remote or "").strip()
+    m = re.match(r"^(?:ssh://)?[^@/]+@([^:/]+)(?::\d+)?[:/](.+?)(?:\.git)?/?$", remote) \
+        or re.match(r"^https?://(?:[^@/]+@)?([^/]+)/(.+?)(?:\.git)?/?$", remote)
+    if not m or not branch:
+        return None
+    host, path = m.group(1), m.group(2)
+    if remote.startswith("http"):
+        web = remote.split("://", 1)[0] + "://" + host + "/" + path
+    else:
+        web = "https://" + host + "/" + path
+    base_name = base or "main"
+    b, base = quote(branch, safe=""), quote(base_name, safe="")
+    if "github" in host:
+        return "%s/compare/%s...%s?expand=1" % (web, quote(base_name, safe="/"), quote(branch, safe="/"))
+    if "bitbucket" in host:
+        return "%s/pull-requests/new?source=%s&dest=%s" % (web, b, base)
+    return "%s/-/merge_requests/new?merge_request%%5Bsource_branch%%5D=%s&merge_request%%5Btarget_branch%%5D=%s" \
+        % (web, b, base)
 
 
 def git(root, *args):
@@ -502,10 +577,11 @@ def ship_gate(run_dir, state, jira_write=True, pull_request=True):
     root = os.path.abspath(os.path.join(run_dir, os.pardir, os.pardir, os.pardir))
     config = load_config(run_dir)
     key, base, branch = state.get("key", "?"), state.get("base_branch") or "main", state.get("branch") or "?"
-    req, rep, acc = read_json(run_dir, "requirements.json"), read_json(run_dir, "test-report.json"), \
-        read_json(run_dir, "acceptance-tests.json")
+    (req, req_bad), (rep, rep_bad), (acc, acc_bad) = [load_json(run_dir, n) for n in
+                                                       ("requirements.json", "test-report.json", "acceptance-tests.json")]
     review = state.get("review_result") or {}
-    blockers = []
+    blockers = [describe(n, p) + " — fix its syntax only" for n, p in
+                (("requirements.json", req_bad), ("test-report.json", rep_bad), ("acceptance-tests.json", acc_bad)) if p]
 
     stat = git(root, "diff", "--shortstat", base)
     untracked = [p for p in git(root, "ls-files", "--others", "--exclude-standard").splitlines()
@@ -541,7 +617,8 @@ def ship_gate(run_dir, state, jira_write=True, pull_request=True):
         blockers.append("%d open defects" % len(rep["defects"]))
     tests = "%s passed, %s failed · coverage %s line (target %s · minimum %s) — %s" % (
         suite.get("passed", "?"), suite.get("failed", "?"), pct(cov.get("line_percent")),
-        pct(cov.get("target", 80)), pct(cov.get("minimum", 70)), verdict) if rep else "? — no test-report.json"
+        pct(cov.get("target", 80)), pct(cov.get("minimum", 70)), verdict) if rep \
+        else "? — test-report.json is not valid JSON" if rep_bad else "? — no test-report.json"
     before = len(acc.get("tests") or [])
     mut = rep.get("mutation") or {}
     if mut.get("enabled") is False:
@@ -579,7 +656,10 @@ def ship_gate(run_dir, state, jira_write=True, pull_request=True):
         if pr and pull_request:
             will += " → open PR against %s" % base
         elif pr:
-            will += "\n            pull request: not opened from here — no PR tool for this remote; the link to open it is given"
+            url = new_pr_url(git(root, "remote", "get-url", "origin"), state.get("branch"), base)
+            will += "\n            pull request: not opened from here — no PR tool for this remote; open it at\n" \
+                    "              %s\n            with the body in .enabler/runs/%s/pull-request.md" % (
+                        url or "? — the remote's new pull-request page", key)
         if state.get("source") == "jira":
             wants = jira_cfg.get("comment_on_ship", True) is not False or jira_cfg.get("transition_on_ship")
             if not jira_write:
@@ -609,7 +689,7 @@ def ship_gate(run_dir, state, jira_write=True, pull_request=True):
     if "plan" not in ((state.get("settings") or {}).get("gates") or ["plan"]):
         lines.append("Plan      : not reviewed before the code — .enabler/runs/%s/plan.md" % key)
     lines.append("Will do   : %s" % will)
-    if not local and pull_request and git_cfg.get("pull_request", True) is not False:
+    if not local and git_cfg.get("pull_request", True) is not False:
         lines.append("PR body   : %s" % (state.get("pr_template") or "? — the template settled for this run"))
     lines += ["Report    : .enabler/runs/%s/delivery-report.md" % key, "", question]
     return "\n".join(lines)
@@ -664,6 +744,13 @@ def main(argv=None):
     p = sub.add_parser("render")
     p.add_argument("run_dir")
     p.add_argument("--force", action="store_true", help="Render even when the Markdown is newer.")
+    p = sub.add_parser("check")
+    p.add_argument("run_dir")
+    p.add_argument("files", nargs="*", metavar="FILE", help="Default: every *.json in the run directory.")
+    p = sub.add_parser("pr-url")
+    p.add_argument("run_dir")
+    p.add_argument("--branch", help="Default: the run's branch, else the current one.")
+    p.add_argument("--base", help="Default: the run's base branch, else main.")
     args = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")    # the gates print arrows and dashes; Windows consoles default to cp1252
@@ -676,6 +763,17 @@ def main(argv=None):
     elif args.cmd == "render":
         written, errors = render(args.run_dir, force=args.force)
         out = {"rendered": written, "errors": errors}
+    elif args.cmd == "check":
+        out = cmd_check(args)
+        json.dump(out, sys.stdout)
+        sys.stdout.write("\n")
+        return 1 if out["invalid"] else 0
+    elif args.cmd == "pr-url":
+        root = os.path.abspath(os.path.join(args.run_dir, os.pardir, os.pardir, os.pardir))
+        state = load_json(args.run_dir, "state.json")[0]
+        branch = args.branch or state.get("branch") or git(root, "rev-parse", "--abbrev-ref", "HEAD")
+        out = {"url": new_pr_url(git(root, "remote", "get-url", "origin"), branch,
+                                 args.base or state.get("base_branch") or "main")}
     elif args.cmd == "gate":
         text = cmd_gate(args)
         if text is not None:

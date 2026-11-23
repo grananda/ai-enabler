@@ -142,7 +142,16 @@ def main():
     with open(os.path.join(run_dir, "test-report.json"), "w", encoding="utf-8") as fh:
         fh.write("[1, 2")
     out = run("render", run_dir, "--force")
-    assert out["errors"] and out["errors"][0].startswith("test-report.json"), out   # reported, not raised
+    assert out["errors"] == ["test-report.json is not valid JSON at line 1, column 6: Expecting ',' delimiter"], out
+    # check: the file an agent has just written, or every JSON of the run; the position of a syntax error.
+    proc = subprocess.run([sys.executable, SCRIPT, "check", run_dir], capture_output=True, text=True)
+    out = json.loads(proc.stdout)
+    assert proc.returncode == 1 and "state.json" in out["valid"] and "acceptance-tests.json" in out["valid"], out
+    assert [(i["file"], i["line"], i["column"]) for i in out["invalid"]] == [("test-report.json", 1, 6)], out
+    proc = subprocess.run([sys.executable, SCRIPT, "check", run_dir, "acceptance-tests.json"], capture_output=True, text=True)
+    assert proc.returncode == 0 and json.loads(proc.stdout) == {"valid": ["acceptance-tests.json"], "invalid": []}
+    proc = subprocess.run([sys.executable, SCRIPT, "check", run_dir, "missing.json"], capture_output=True, text=True)
+    assert proc.returncode == 1 and json.loads(proc.stdout)["invalid"][0]["error"] == "no such file"
 
     # Lanes: the size and risk areas decide what the run spends; a person's choice wins.
     def lane_case(size, risks, readiness="ready", quality="sufficient", config=None, *extra):
@@ -222,8 +231,27 @@ def main():
     assert "→ comment on PROJ-7" in gate_of() and "→ open PR against" in gate_of()
     gate = gate_of("--no-jira-write", "--no-pr")
     assert "comment on PROJ-7" not in gate and "Jira: not possible — no Jira write tool connected" in gate, gate
-    assert "open PR against" not in gate and "pull request: not opened from here" in gate and "PR body" not in gate
-    print("ok — run state: init, resume, transitions, interventions, notes, intake, reports, lanes, gates")
+    assert "open PR against" not in gate and "pull request: not opened from here" in gate, gate
+    assert "pull-request.md" in gate and "PR body   : the plugin's" in gate, gate     # the body is written all the same
+
+    # An invalid report is not taken for a missing one: the gate names the file and the position.
+    with open(os.path.join(run_dir, "test-report.json"), "w", encoding="utf-8") as fh:
+        fh.write('{\n  "suite": {"passed": 1}\n  "notes": []\n}')
+    gate = gate_of()
+    assert "NOT READY — test-report.json is not valid JSON at line 3, column 3" in gate, gate
+    assert "? — test-report.json is not valid JSON" in gate and "no test-report.json" not in gate, gate
+
+    # The page that opens a pull request, when no PR tool can.
+    sys.path.insert(0, os.path.dirname(SCRIPT))
+    import run_state
+    url = run_state.new_pr_url
+    assert url("https://host/git/G/p.git", "feature/K-1", "main") == \
+        "https://host/git/G/p/-/merge_requests/new?merge_request%5Bsource_branch%5D=feature%2FK-1" \
+        "&merge_request%5Btarget_branch%5D=main"
+    assert url("git@github.com:o/r.git", "feature/K-1", "main") == "https://github.com/o/r/compare/main...feature/K-1?expand=1"
+    assert url("ssh://git@bitbucket.org:7999/t/r.git", "b", "dev") == "https://bitbucket.org/t/r/pull-requests/new?source=b&dest=dev"
+    assert url("", "b", "main") is None and url("https://h/g/p.git", "", "main") is None
+    print("ok — run state: init, resume, transitions, interventions, notes, intake, reports, lanes, gates, JSON check, PR link")
 
 
 if __name__ == "__main__":
