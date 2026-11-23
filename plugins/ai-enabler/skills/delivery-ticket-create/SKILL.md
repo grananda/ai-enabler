@@ -4,7 +4,7 @@ description: Turns a few sentences typed to Claude Code into a complete ticket, 
 argument-hint: <what is needed, in a few sentences> [--out <path>]
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.1.4"
+  version: "1.1.5"
 ---
 
 # ai-enabler:delivery-ticket-create — a few sentences into a ticket

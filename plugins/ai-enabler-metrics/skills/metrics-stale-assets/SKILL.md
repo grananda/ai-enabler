@@ -4,7 +4,7 @@ description: Lists every installed skill and agent with its owner, version, last
 argument-hint: "[--stale-days 90] [--assets-dir <dir> ...] [--metrics-dir <dir> ...]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.4"
+  version: "1.0.5"
 ---
 
 # ai-enabler-metrics:metrics-stale-assets — skills and agents nobody uses

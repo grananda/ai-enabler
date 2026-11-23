@@ -4,7 +4,7 @@ description: Measures rework — reverts plus follow-up pull requests for the sa
 argument-hint: "[--profile NAME] [--repo OWNER/NAME] [--base <branch>] [--weeks 6] [--followup-days 14] [--refresh]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.5"
+  version: "1.1.0"
 ---
 
 # ai-enabler-metrics:metrics-rework — rework and reverts

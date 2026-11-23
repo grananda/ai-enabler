@@ -6,6 +6,21 @@ Each release is a version of the marketplace (the `VERSION` file). Plugins and t
 
 Entries are grouped as **Breaking**, **Added**, **Changed** and **Fixed**, newest release first.
 
+## [1.10.0] — 2026-11-23
+
+`ai-enabler` 1.8.0 · `ai-enabler-metrics` 1.3.0
+
+### Added
+
+- **ai-enabler-metrics, marketplace:** Kanban delivery metrics for teams without sprints: delivery.jira.mode kanban (scrum stays the default and unchanged) reports cycle time, blocked time and backward moves per week or month over an explicit UTC window (the last six complete weeks by default), for a board or saved filter, without widening to the whole project. Collections carry scope metadata (collection.json) and incomplete histories are reported. The dashboard accepts both Scrum and Kanban snapshots.
+- **ai-enabler, marketplace:** The pipeline reads the images of a Jira ticket: screenshots embedded in the description or attached are read once by the ticket analyst through the Jira MCP server's image tool (jira_get_issue_images on mcp-atlassian), what each shows is recorded in requirements.json and used as part of the ticket, with requirements and criteria traced to the image; the refiner and planner work from that description without opening the images again. No approval or setting: without images nothing changes, and images that cannot be read are reported in the intake, the delivery report and the pull request. delivery-doctor reports whether the server has an image tool and how to enable it.
+- **ai-enabler-metrics, marketplace:** Named delivery profiles (--profile NAME) on the Jira, PR and dashboard commands: each profile has its own Jira endpoint, the names of the environment variables holding its credentials (never the credentials), its workflow settings, and its own snapshots, caches and reports. A collection made under one profile is refused under another; without --profile nothing changes, and global AI usage is not attributed to a profile.
+
+### Fixed
+
+- **ai-enabler, marketplace:** Runs no longer stop on a slow guard or a broken run file: the guard hooks (remote, source, scout) get 30 seconds instead of 10, since starting Bash and Python before each command can exceed 10 seconds on a busy Windows machine, and a guard that timed out is treated as no decision and the command is run once more (a refusal is still never retried). Agents check the JSON files they write with the new run_state.py check, which gives the line and column of a syntax error, and the ship gate reports an invalid file as invalid instead of missing. Without gh or glab, the ship stage still writes pull-request.md and gives the address that opens the pull request (run_state.py pr-url, for GitLab, GitHub and Bitbucket).
+- **ai-enabler-metrics, marketplace:** Scrum metrics count only the chosen board's tickets when a sprint is shared by several boards: the sprint's issues are read through the board (REST and MCP). Through a Jira MCP server without board tools, collection works as before and the report says the board scope is unverified. The delivery dashboard renders snapshots without per-person data.
+
 ## [1.9.2] — 2026-11-19
 
 `ai-enabler` 1.7.2 · `ai-enabler-metrics` 1.2.3
