@@ -1,0 +1,29 @@
+{
+  "summary": "Runs no longer stop on a slow guard or a broken run file: the guard hooks (remote, source, scout) get 30 seconds instead of 10, since starting Bash and Python before each command can exceed 10 seconds on a busy Windows machine, and a guard that timed out is treated as no decision and the command is run once more (a refusal is still never retried). Agents check the JSON files they write with the new run_state.py check, which gives the line and column of a syntax error, and the ship gate reports an invalid file as invalid instead of missing. Without gh or glab, the ship stage still writes pull-request.md and gives the address that opens the pull request (run_state.py pr-url, for GitLab, GitHub and Bitbucket).",
+  "category": "Fixed",
+  "components": {
+    "marketplace": "patch",
+    "ai-enabler": "patch"
+  },
+  "assets": {
+    "plugins/ai-enabler/agents/delivery-code-implementer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-code-reviewer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-repo-scout.md": "patch",
+    "plugins/ai-enabler/agents/delivery-solution-planner.md": "patch",
+    "plugins/ai-enabler/agents/delivery-source-scout.md": "patch",
+    "plugins/ai-enabler/agents/delivery-test-engineer.md": "patch",
+    "plugins/ai-enabler/agents/delivery-ticket-analyst.md": "patch",
+    "plugins/ai-enabler/agents/delivery-ticket-refiner.md": "patch",
+    "plugins/ai-enabler/skills/delivery-doctor/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-implement/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-plan/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-review/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-run/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-ship/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-sources/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-test/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-ticket-create/SKILL.md": "patch",
+    "plugins/ai-enabler/skills/delivery-ticket-refine/SKILL.md": "patch"
+  },
+  "migration": ""
+}
