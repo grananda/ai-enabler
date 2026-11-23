@@ -4,7 +4,7 @@ description: Turns a Jira ticket (read through the Jira MCP server) or a require
 argument-hint: "<JIRA-KEY | requirements.md> [--context <url|path>] [--no-refine] [--refresh] [--relearn]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.3.4"
+  version: "1.3.5"
 ---
 
 # ai-enabler:delivery-plan — ticket to implementation plan

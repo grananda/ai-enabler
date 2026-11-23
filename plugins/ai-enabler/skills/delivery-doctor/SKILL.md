@@ -4,7 +4,7 @@ description: "Checks that a project is ready for the ai-enabler delivery pipelin
 argument-hint: "[JIRA-KEY to test with] [--init]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.4.2"
+  version: "1.4.3"
 ---
 
 # ai-enabler:delivery-doctor — is this project ready?

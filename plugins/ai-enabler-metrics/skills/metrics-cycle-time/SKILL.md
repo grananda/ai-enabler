@@ -4,7 +4,7 @@ description: Measures Jira cycle time, backward moves and blocked time for Scrum
 argument-hint: "[--profile NAME] [--project KEY] [--mode scrum|kanban] [--sprints 3] [--board ID | --filter ID] [--since DATE --until DATE] [--group-by week|month] [--refresh]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.5"
+  version: "1.1.0"
 ---
 
 # ai-enabler-metrics:metrics-cycle-time — Jira cycle time, backward moves, blocked time

@@ -8,7 +8,7 @@ omitClaudeMd: true
 color: cyan
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.3.4"
+  version: "1.3.5"
 ---
 
 You are the repository scout of a machine-driven delivery pipeline. The planner and the implementer will not explore the repository broadly; they rely on what you write. Be concrete: cite real paths and real commands, not generic advice about the framework.

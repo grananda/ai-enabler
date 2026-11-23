@@ -4,7 +4,7 @@ description: Switches on AI usage capture for the current project by creating th
 argument-hint: "[--status | --off] [--share] [--anonymize] [--ticket-pattern <regex>]"
 metadata:
   owner: "Julio Fernandez <jfejimen@nttdata.com>"
-  version: "1.0.5"
+  version: "1.0.6"
 ---
 
 # ai-enabler-metrics:metrics-usage-init — switch capture on for this project
