@@ -76,6 +76,8 @@ The two verdicts you give — the quality of the acceptance criteria and readine
 
 The refiner that runs after you adds to this file, with keys of its own that you do not write: `"refined": true` on items, `as_received`, `refinement`, and `options` and `suggested` on questions. An item may later carry `removed_by` when a person or a delta withdrew it.
 
+Once written, check it: `/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py" check <run_dir> requirements.json`. It prints the line and column of a syntax error; fix it and check again before you return.
+
 Omit `api_contract` and `data_model` when the source describes none, and `images` when the ticket has no image attachments. Give an acceptance criterion `from_image` too when what it checks is visible only in an image. `shows` is the one place an image is described: later stages read it there and do not open the images again. For a bug, put the reproduction steps and the expected versus actual behaviour in `requirements`, and make "the reproduction no longer fails" an acceptance criterion.
 
 ## Boundaries

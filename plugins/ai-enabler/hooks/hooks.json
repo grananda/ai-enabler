@@ -10,7 +10,7 @@
             "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/remote_guard.py\"",
             "shell": "bash",
             "onFailure": "block",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       },
@@ -22,7 +22,7 @@
             "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/source_guard.py\"",
             "shell": "bash",
             "onFailure": "block",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       },
@@ -34,7 +34,7 @@
             "command": "exec /bin/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/scout_guard.py\"",
             "shell": "bash",
             "onFailure": "block",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }
